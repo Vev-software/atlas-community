@@ -1,6 +1,6 @@
 # Keeps the linked Atlas issue item on the Vev-software org Project board (#1)
-# aligned with issue lifecycle, so the Project can be used as the operative
-# overview instead of a stale list of cards.
+# aligned with issue lifecycle and product ownership, so the Project can be used
+# as the operative overview instead of a stale list of cards.
 #
 # Requires the ORG secret ADD_TO_PROJECT_PAT (classic PAT with `project` + `repo`
 # scopes). The default GITHUB_TOKEN cannot write to Projects v2.
@@ -23,19 +23,24 @@ jobs:
           PROJECT_OWNER: Vev-software
           PROJECT_NUMBER: "1"
           STATUS_FIELD_NAME: Status
+          PRODUCT_FIELD_NAME: Product
           STATUS_ON_OPEN: Backlog|Todo|To do
           STATUS_ON_REOPEN: Backlog|Todo|To do
           STATUS_ON_CLOSE: Done|Closed
           STATUS_ON_NOT_PLANNED: Won't do|Not planned|Cancelled|Canceled
+          PRODUCT_ATLAS: Atlas
+          PRODUCT_PORTIC: Portic
         with:
           github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
           script: |
             const owner = process.env.PROJECT_OWNER;
             const projectNumber = Number(process.env.PROJECT_NUMBER);
             const statusFieldName = process.env.STATUS_FIELD_NAME;
+            const productFieldName = process.env.PRODUCT_FIELD_NAME;
             const issueNodeId = context.payload.issue.node_id;
             const action = context.payload.action;
             const stateReason = context.payload.issue.state_reason ?? "";
+            const repoName = context.repo.repo;
 
             const candidates = (value) =>
               (value ?? "")
@@ -58,6 +63,18 @@ jobs:
                 default:
                   return [];
               }
+            };
+
+            const resolveTargetProductNames = () => {
+              if (repoName.startsWith("atlas-")) {
+                return candidates(process.env.PRODUCT_ATLAS);
+              }
+
+              if (repoName.startsWith("portic-")) {
+                return candidates(process.env.PRODUCT_PORTIC);
+              }
+
+              return [];
             };
 
             const query = `
@@ -136,57 +153,56 @@ jobs:
               core.info(`Issue already present on project as item ${projectItem.id}.`);
             }
 
-            const targetStatusNames = resolveTargetStatusNames();
-            if (targetStatusNames.length === 0) {
-              core.info(`No status-field update needed for action '${action}'.`);
-              return;
-            }
+            const updateSingleSelectField = async (fieldName, targetNames) => {
+              if (targetNames.length === 0) {
+                core.info(`No value mapping configured for project field '${fieldName}'.`);
+                return;
+              }
 
-            const statusField = project.fields.nodes.find(
-              (field) => field?.name === statusFieldName,
-            );
+              const field = project.fields.nodes.find((candidate) => candidate?.name === fieldName);
+              if (!field) {
+                core.warning(`Project field '${fieldName}' not found. Item presence was ensured, but this field was not updated.`);
+                return;
+              }
 
-            if (!statusField) {
-              core.warning(`Project field '${statusFieldName}' not found. Item presence was ensured, but no status was updated.`);
-              return;
-            }
+              const targetOption = targetNames
+                .map((name) => field.options.find((option) => option.name === name))
+                .find(Boolean);
 
-            const targetOption = targetStatusNames
-              .map((name) => statusField.options.find((option) => option.name === name))
-              .find(Boolean);
+              if (!targetOption) {
+                core.warning(
+                  `None of the configured option names matched field '${fieldName}': ${targetNames.join(", ")}.`,
+                );
+                return;
+              }
 
-            if (!targetOption) {
-              core.warning(
-                `None of the configured status names matched field '${statusFieldName}': ${targetStatusNames.join(", ")}.`,
-              );
-              return;
-            }
-
-            await github.graphql(
-              `
-                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-                  updateProjectV2ItemFieldValue(
-                    input: {
-                      projectId: $projectId
-                      itemId: $itemId
-                      fieldId: $fieldId
-                      value: { singleSelectOptionId: $optionId }
-                    }
-                  ) {
-                    projectV2Item {
-                      id
+              await github.graphql(
+                `
+                  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                    updateProjectV2ItemFieldValue(
+                      input: {
+                        projectId: $projectId
+                        itemId: $itemId
+                        fieldId: $fieldId
+                        value: { singleSelectOptionId: $optionId }
+                      }
+                    ) {
+                      projectV2Item {
+                        id
+                      }
                     }
                   }
-                }
-              `,
-              {
-                projectId: project.id,
-                itemId: projectItem.id,
-                fieldId: statusField.id,
-                optionId: targetOption.id,
-              },
-            );
+                `,
+                {
+                  projectId: project.id,
+                  itemId: projectItem.id,
+                  fieldId: field.id,
+                  optionId: targetOption.id,
+                },
+              );
 
-            core.info(
-              `Updated project status field '${statusFieldName}' to '${targetOption.name}' for action '${action}'.`,
-            );
+              core.info(`Updated project field '${fieldName}' to '${targetOption.name}'.`);
+            };
+
+            await updateSingleSelectField(statusFieldName, resolveTargetStatusNames());
+            await updateSingleSelectField(productFieldName, resolveTargetProductNames());
