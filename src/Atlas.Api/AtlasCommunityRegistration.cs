@@ -1,0 +1,44 @@
+using Microsoft.EntityFrameworkCore;
+using Vev.Atlas.Domain;
+using Vev.Atlas.Fabric;
+using Vev.Atlas.Fabric.Dev;
+using Vev.Atlas.Persistence;
+
+namespace Vev.Atlas.Api;
+
+/// <summary>Composition root for Atlas Community Edition. Wires the domain onto the Fabric shim.</summary>
+public static class AtlasCommunityRegistration
+{
+    /// <summary>Register the Community catalogue services against the given SQLite connection string.</summary>
+    public static IServiceCollection AddAtlasCommunity(this IServiceCollection services, string connectionString)
+    {
+        // --- Fabric shim (dev implementations; swap for Vev.Fabric.* when it lands, handbook 11 §4) ---
+        var contextAccessor = new AmbientRequestContextAccessor();
+        services.AddSingleton(contextAccessor);
+        services.AddSingleton<IRequestContextAccessor>(contextAccessor);
+
+        // Atlas declares its own role→permission definitions on top of the Fabric authz mechanism (11 §4).
+        var policies = new AuthorizationPolicyRegistry()
+            .Require(AtlasActions.AssetWrite, AtlasRoles.Architect);
+        services.AddSingleton(policies);
+        services.AddSingleton<IAuthorizer, DevAuthorizer>();
+
+        // Community Edition: no paid capabilities granted → the entitlement seam denies them all (atlas#8).
+        services.AddSingleton<IEntitlementService>(CommunityEntitlementService.Community);
+
+        services.AddSingleton<InMemoryAuditSink>();
+        services.AddSingleton<IAuditSink>(sp => sp.GetRequiredService<InMemoryAuditSink>());
+
+        services.AddSingleton(TimeProvider.System);
+
+        // --- Persistence (thin storage behind the repository port) ---
+        services.AddDbContext<AtlasDbContext>(options => options.UseSqlite(connectionString));
+        services.AddScoped<IAssetRepository, EfAssetRepository>();
+
+        // --- Domain ---
+        services.AddScoped<AssetService>();
+        services.AddScoped<PaidCapabilityGate>();
+
+        return services;
+    }
+}

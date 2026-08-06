@@ -1,0 +1,26 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Public contract surface (Apache-2.0). The AGPL runtime consumes it; never the reverse. -->
+    <PackageVersion Include="Vev.Atlas.Contracts" Version="0.1.0" />
+
+    <!-- Persistence: thin storage behind the Fabric storage abstraction, not an ORM religion (05 §2). -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0" />
+
+    <!-- API surface / OpenAPI (API-first, E1). -->
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+
+    <!-- Architecture fitness tests. -->
+    <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
+
+    <!-- Test stack. -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Vev.Atlas.Persistence</RootNamespace>
+    <AssemblyName>Atlas.Persistence</AssemblyName>
+    <Description>
+      Thin persistence adapter for the Atlas catalogue (handbook 05 §2 Storage — not an ORM religion).
+      EF Core over SQLite for self-hosted Community; the same port swaps to Postgres for hosted.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <ProjectReference Include="../Atlas.Domain/Atlas.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

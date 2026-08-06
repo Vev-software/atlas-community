@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Vev.Atlas.Architecture.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetArchTest.Rules" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Atlas.Domain/Atlas.Domain.csproj" />
+    <ProjectReference Include="../../src/Atlas.Fabric.Abstractions/Atlas.Fabric.Abstractions.csproj" />
+    <ProjectReference Include="../../src/Atlas.Persistence/Atlas.Persistence.csproj" />
+    <ProjectReference Include="../../src/Atlas.Api/Atlas.Api.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Vev.Atlas.Fabric.Dev</RootNamespace>
+    <AssemblyName>Atlas.Fabric.Dev</AssemblyName>
+    <Description>
+      Development implementations of the Fabric contract shim: an ambient request context, a role-gated
+      authorizer, a fail-static community entitlement evaluator (denies all paid capabilities) and an
+      in-memory audit sink. Swapped for the real Vev.Fabric.* runtime when it lands (handbook 11 §4).
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Atlas.Fabric.Abstractions/Atlas.Fabric.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

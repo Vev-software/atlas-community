@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Vev.Atlas.Fabric</RootNamespace>
+    <AssemblyName>Atlas.Fabric.Abstractions</AssemblyName>
+    <Description>
+      Local shim for the Fabric foundation contracts Atlas leans on: tenant/principal context,
+      authorization, audit and entitlements (fabric#3-7). Shaped to match the forthcoming
+      Vev.Fabric.* packages so the implementation swaps without touching Atlas domain code
+      (handbook 11 §4). Carries NO Atlas product domain — Fabric must not know what an asset is.
+    </Description>
+  </PropertyGroup>
+
+</Project>

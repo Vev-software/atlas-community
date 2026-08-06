@@ -427,3 +427,9 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Atlas Community local dev
+src/**/atlas.db
+*.db
+*.db-shm
+*.db-wal

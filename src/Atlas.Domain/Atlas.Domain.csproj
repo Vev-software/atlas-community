@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Vev.Atlas.Domain</RootNamespace>
+    <AssemblyName>Atlas.Domain</AssemblyName>
+    <Description>
+      Atlas Community Edition domain: the asset repository (cataloguing systems, applications, servers,
+      infrastructure plus manual relationships and tags). Consumes the public atlas-contracts model and
+      the Fabric contracts (tenancy, authz, audit, entitlements). Cataloguing only — no analysis (11 §1).
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Vev.Atlas.Contracts" />
+    <ProjectReference Include="../Atlas.Fabric.Abstractions/Atlas.Fabric.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

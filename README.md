@@ -8,9 +8,11 @@ systems, applications, servers and infrastructure you run and keeps that picture
 The paid capabilities that *work with* that data live in **Atlas Enterprise**
 (`atlas-enterprise`, private) and compose onto this runtime through entitlements.
 
-> **Status: early.** This repository is being set up. What follows describes the shape Atlas
-> is built toward; treat anything not yet present in the source tree as intended direction
-> rather than a shipped feature.
+> **Status: early.** The Community runtime foundation is in place — a tenant-scoped asset
+> catalogue (CRUD, manual relationships, tags) over an API-first .NET stack, on the Fabric
+> contract shim, with architecture fitness tests that fail the build on a boundary violation.
+> Basic visualisation and self-hosted packaging are still landing; treat anything not yet in
+> the source tree as intended direction rather than a shipped feature.
 
 ## What you get (free, self-hostable)
 
@@ -57,9 +59,21 @@ Your data is yours, and the map is meant to interoperate with the tools you alre
 
 ## Repository layout
 
-This repository currently contains project scaffolding (license, ignore rules, CI). Source,
-build and run instructions will land here as the product takes shape, at which point this
-section becomes a real quickstart rather than a placeholder.
+```
+src/
+  Atlas.Fabric.Abstractions  Fabric contract shim: tenant/principal, authz, audit, entitlements
+  Atlas.Fabric.Dev           Dev implementations (single tenant, role-gated authz, in-memory audit)
+  Atlas.Domain               Asset catalogue domain; consumes the public atlas-contracts model
+  Atlas.Persistence          EF Core / SQLite behind the repository port
+  Atlas.Api                  ASP.NET Core minimal API (API/SDK-first) + OpenAPI
+tests/
+  Atlas.Architecture.Tests   Boundary fitness tests — fail the build on a violation
+  Atlas.Api.Tests            Full-stack integration tests
+```
+
+Build, test and run instructions — including the temporary local-feed step for
+`Vev.Atlas.Contracts` until it is on nuget.org — are in
+[`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md).
 
 ## License
 
