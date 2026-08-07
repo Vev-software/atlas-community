@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-fitness:
+    name: build · test · fitness (public feeds only)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout atlas-community
+        uses: actions/checkout@v4
+        with:
+          path: atlas-community
+
+      # Until Vev.Atlas.Contracts is on nuget.org (#10), reconstruct the local feed the
+      # nuget.config expects (../.local-nuget) by packing the PUBLIC atlas-contracts repo.
+      # This keeps the build public-feed-clean (AGENTS.md §1.9): only public repos, no private feed.
+      - name: Checkout atlas-contracts (public)
+        uses: actions/checkout@v4
+        with:
+          repository: Vev-software/atlas-contracts
+          path: atlas-contracts
+
+      - name: Setup .NET (pinned by global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: atlas-community/global.json
+
+      - name: Pack public contracts into the local feed
+        run: >-
+          dotnet pack atlas-contracts/sdk/dotnet/Vev.Atlas.Contracts/Vev.Atlas.Contracts.csproj
+          -c Release -o "$GITHUB_WORKSPACE/.local-nuget"
+
+      - name: Restore
+        working-directory: atlas-community
+        run: dotnet restore Atlas.slnx
+
+      # Build enforces analyzers + TreatWarningsAsErrors (Directory.Build.props). NuGet audit
+      # advisories stay warnings (NU19xx) by design — tracked in #9.
+      - name: Build
+        working-directory: atlas-community
+        run: dotnet build Atlas.slnx -c Release --no-restore
+
+      - name: Lint (format verify)
+        working-directory: atlas-community
+        run: dotnet format Atlas.slnx --verify-no-changes --no-restore
+
+      # Full suite: architecture/fitness (dependency direction, no plan==, no direct provider
+      # calls) + full-stack API integration tests.
+      - name: Test
+        working-directory: atlas-community
+        run: dotnet test Atlas.slnx -c Release --no-build
+
+      # Run the fitness guardrails again in isolation so a red boundary is unmistakable.
+      - name: Fitness (architecture guardrails)
+        working-directory: atlas-community
+        run: dotnet test tests/Atlas.Architecture.Tests/Atlas.Architecture.Tests.csproj -c Release --no-build

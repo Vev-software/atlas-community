@@ -1,0 +1,52 @@
+using Vev.Atlas.Fabric;
+
+namespace Vev.Atlas.Domain;
+
+/// <summary>
+/// Atlas role names. Atlas owns its role <i>definitions</i>; Fabric owns the authorization mechanism
+/// that evaluates them (handbook 11 §4).
+/// </summary>
+public static class AtlasRoles
+{
+    /// <summary>May edit the catalogue.</summary>
+    public const string Architect = "AtlasArchitect";
+
+    /// <summary>Read-only access to the catalogue (e.g. the customer portal).</summary>
+    public const string Customer = "AtlasCustomer";
+}
+
+/// <summary>Coarse Atlas actions passed to the Fabric authorizer.</summary>
+public static class AtlasActions
+{
+    /// <summary>Read the catalogue.</summary>
+    public const string AssetRead = "atlas.asset.read";
+
+    /// <summary>Create, edit or delete catalogue entries.</summary>
+    public const string AssetWrite = "atlas.asset.write";
+}
+
+/// <summary>
+/// Atlas capability identifiers from the VEV taxonomy (fabric#7). The <b>free</b> asset-management
+/// capabilities do not pass through entitlement — they are the hook. The <b>paid</b> capabilities are
+/// reserved here so the entitlement seam exists before the features do (handbook 09, 11 §4, atlas#8),
+/// and are denied in Community.
+/// </summary>
+public static class AtlasCapabilities
+{
+    // --- Paid capabilities: reserved seams, entitlement-denied in Community ---
+
+    /// <summary>Integration mapping with ownership + criticality (paid Atlas core).</summary>
+    public static readonly CapabilityId IntegrationMapping = new("atlas.integration.mapping");
+
+    /// <summary>End-of-life tracking + risk (paid Atlas core).</summary>
+    public static readonly CapabilityId EndOfLifeTracking = new("atlas.eol.tracking");
+
+    /// <summary>Application-portfolio management heatmap (paid Atlas core).</summary>
+    public static readonly CapabilityId PortfolioManagement = new("atlas.portfolio.apm");
+
+    /// <summary>EA roadmap generation (paid Atlas core, via the Fabric AI contract).</summary>
+    public static readonly CapabilityId RoadmapGeneration = new("atlas.roadmap.generate");
+
+    /// <summary>AI architecture review (paid Atlas core, via the Fabric AI contract).</summary>
+    public static readonly CapabilityId AiReview = new("atlas.ai.review");
+}

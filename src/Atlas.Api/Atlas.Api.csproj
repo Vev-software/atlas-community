@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>Vev.Atlas.Api</RootNamespace>
+    <AssemblyName>Atlas.Api</AssemblyName>
+    <Description>Atlas Community Edition HTTP API. API/SDK-first: the UI orchestrates this API, never the other way round (handbook 15 §2 E1).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <ProjectReference Include="../Atlas.Domain/Atlas.Domain.csproj" />
+    <ProjectReference Include="../Atlas.Persistence/Atlas.Persistence.csproj" />
+    <ProjectReference Include="../Atlas.Fabric.Dev/Atlas.Fabric.Dev.csproj" />
+  </ItemGroup>
+
+</Project>
