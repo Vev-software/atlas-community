@@ -91,6 +91,25 @@ public sealed class AssetService(
     }
 
     /// <summary>
+    /// Read the whole tenant landscape — every asset plus every manual relationship — resolved into a
+    /// single <see cref="LandscapeDocument"/>. This is the read model behind the read-only landscape
+    /// browse/visualisation (atlas#6): still cataloguing, no analysis. Requires read authorization.
+    /// </summary>
+    public async Task<LandscapeDocument> GetLandscapeAsync(CancellationToken ct = default)
+    {
+        AuthorizeRead(AssetResource("*"));
+
+        var tenant = context.Tenant;
+        var assets = await repository.ListAssetsAsync(tenant, kind: null, ct);
+        var relationships = await repository.ListRelationshipsAsync(tenant, ct);
+
+        return new LandscapeDocument(
+            Assets: assets,
+            Relationships: relationships,
+            ExportedAt: clock.GetUtcNow());
+    }
+
+    /// <summary>
     /// Create a manual relationship between two assets. Both endpoints must already exist — this is a
     /// held link, not a discovered one (handbook 11 §1). Requires write authorization; audited.
     /// </summary>

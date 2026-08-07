@@ -26,6 +26,12 @@ await using (var scope = app.Services.CreateAsyncScope())
 }
 
 app.UseExceptionHandler();
+
+// The read-only landscape browser (atlas#6) is a static single-page client of the API, served from
+// wwwroot so a self-hoster gets a visualisation out of the box with no separate front-end to deploy.
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.UseMiddleware<RequestContextMiddleware>();
 
 app.MapOpenApi();
