@@ -60,6 +60,42 @@ curl http://localhost:5199/api/v1/assets -H "X-Tenant-Id: demo"
 curl http://localhost:5199/api/v1/assets/app-1/integration-mapping -H "X-Tenant-Id: demo"
 ```
 
+## Run with Docker
+
+Atlas Community ships a container image and a Compose file so a self-hoster gets the API, the
+read-only landscape UI and a persistent SQLite database with one command. Compose builds with the
+**monorepo root as the build context** so the temporary sibling contracts feed (`.local-nuget`) is
+available to the build — the same reconstruction CI does. Once `Vev.Atlas.Contracts` is on nuget.org
+(`atlas#10`), the context can narrow to this repo and the `.local-nuget` copy in the `Dockerfile`
+drops out.
+
+```bash
+# From the atlas-community repo root. Works with Docker or Podman.
+docker compose up --build          # podman compose up --build
+```
+
+Then:
+
+```bash
+curl http://localhost:8080/health                        # {"status":"ok"}
+curl http://localhost:8080/api/v1/assets -H "X-Tenant-Id: demo"
+# The landscape UI: open http://localhost:8080/ in a browser.
+```
+
+The catalogue is stored in SQLite on the `atlas-data` volume (`/data/atlas.db` in the container), so
+it survives `docker compose down` / restarts. Remove it with `docker compose down -v`.
+
+To build or run the image directly (note the `..` context — the monorepo root):
+
+```bash
+docker build -f Dockerfile -t atlas-community:local ..
+docker run --rm -p 8080:8080 -v atlas-data:/data atlas-community:local
+```
+
+The image runs as a non-root user, listens on port 8080, and carries a `HEALTHCHECK` that polls
+`/health`. Configuration is standard ASP.NET Core — override the database location with
+`ConnectionStrings__Atlas`, e.g. `-e ConnectionStrings__Atlas="Data Source=/data/atlas.db"`.
+
 ## Dev request context (temporary)
 
 Real identity/tenancy comes from Fabric (fabric#3). Until then the `X-Tenant-Id`, `X-Principal-Id`
