@@ -166,4 +166,219 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
             e.TenantId == "t-audit" &&
             e.Resource == "atlas:asset/app-audit");
     }
+
+    // --- Portability surface (issue #12): customer-owned export + import ---
+
+    [Fact]
+    public async Task Export_downloads_the_landscape_as_a_schema_valid_contract_document()
+    {
+        var client = Client(tenant: "t-export");
+        await client.PostAsJsonAsync("/api/v1/assets", SampleApp("app"), Json);
+        await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("srv", AssetKind.Server, "srv-01", Lifecycle.Active), Json);
+        await client.PostAsJsonAsync("/api/v1/relationships",
+            new Relationship("r1", "app", "srv", RelationshipType.RunsOn), Json);
+
+        var response = await client.GetAsync("/api/v1/export");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        // Customer-owned export: an attachment the user downloads and keeps.
+        var disposition = response.Content.Headers.ContentDisposition;
+        Assert.Equal("attachment", disposition?.DispositionType);
+        Assert.Equal("atlas-landscape.json", disposition?.FileNameStar ?? disposition?.FileName);
+
+        // The bytes must round-trip through the published contract type with its canonical serializer:
+        // that is schema conformance in practice — the wire shape the schemas describe.
+        var raw = await response.Content.ReadAsStringAsync();
+        var document = JsonSerializer.Deserialize<LandscapeDocument>(raw, AtlasContracts.SerializerOptions);
+        Assert.NotNull(document);
+        Assert.Equal(2, document!.Assets.Length);
+        Assert.Single(document.Relationships);
+        // Versioned compatibility: the document declares the contract major version and its provenance.
+        Assert.Contains("\"contractVersion\":\"1\"", raw);
+        Assert.Equal("Atlas Community", document.Generator?.Name);
+    }
+
+    [Fact]
+    public async Task Import_merge_upserts_assets_and_relationships()
+    {
+        var client = Client(tenant: "t-import-merge");
+        // An asset already in the catalogue, to prove merge updates rather than duplicates.
+        await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("app", AssetKind.Application, "Old name", Lifecycle.Active), Json);
+
+        var bundle = new ImportBundle(
+            Assets:
+            [
+                new ImportAsset(AssetKind.Application, "New name", Lifecycle.Active, Id: "app"),
+                new ImportAsset(AssetKind.Server, "srv-01", Lifecycle.Active, ExternalId: "srv"),
+            ],
+            Relationships:
+            [
+                new ImportRelationship("app", "srv", RelationshipType.RunsOn, Id: "r1"),
+            ],
+            Mode: ImportMode.Merge);
+
+        var response = await client.PostAsJsonAsync("/api/v1/import", bundle, Json);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("merge", result.GetProperty("mode").GetString());
+        Assert.Equal(1, result.GetProperty("assetsCreated").GetInt32());
+        Assert.Equal(1, result.GetProperty("assetsUpdated").GetInt32());
+        Assert.Equal(0, result.GetProperty("assetsDeleted").GetInt32());
+        Assert.Equal(1, result.GetProperty("relationshipsImported").GetInt32());
+
+        // The existing asset was replaced in place; the externalId asset was created under that id.
+        var updated = await client.GetFromJsonAsync<Asset>("/api/v1/assets/app", Json);
+        Assert.Equal("New name", updated!.Name);
+        var created = await client.GetFromJsonAsync<Asset>("/api/v1/assets/srv", Json);
+        Assert.Equal(AssetKind.Server, created!.Kind);
+    }
+
+    [Fact]
+    public async Task Import_is_idempotent_on_external_id()
+    {
+        var client = Client(tenant: "t-import-idem");
+        var bundle = new ImportBundle(
+            Assets: [new ImportAsset(AssetKind.Server, "srv-01", Lifecycle.Active, ExternalId: "srv")],
+            Mode: ImportMode.Merge);
+
+        var first = await (await client.PostAsJsonAsync("/api/v1/import", bundle, Json))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var second = await (await client.PostAsJsonAsync("/api/v1/import", bundle, Json))
+            .Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(1, first.GetProperty("assetsCreated").GetInt32());
+        // Re-importing the same externalId updates the same asset — no duplicate.
+        Assert.Equal(0, second.GetProperty("assetsCreated").GetInt32());
+        Assert.Equal(1, second.GetProperty("assetsUpdated").GetInt32());
+
+        var all = await client.GetFromJsonAsync<List<Asset>>("/api/v1/assets", Json);
+        Assert.Single(all!);
+    }
+
+    [Fact]
+    public async Task Import_replace_makes_the_catalogue_match_the_bundle()
+    {
+        var client = Client(tenant: "t-import-replace");
+        await client.PostAsJsonAsync("/api/v1/assets", SampleApp("stale"), Json);
+        await client.PostAsJsonAsync("/api/v1/assets", SampleApp("keep"), Json);
+
+        var bundle = new ImportBundle(
+            Assets: [new ImportAsset(AssetKind.Application, "Kept", Lifecycle.Active, Id: "keep")],
+            Mode: ImportMode.Replace);
+
+        var result = await (await client.PostAsJsonAsync("/api/v1/import", bundle, Json))
+            .Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("replace", result.GetProperty("mode").GetString());
+        Assert.Equal(1, result.GetProperty("assetsDeleted").GetInt32());
+
+        var all = await client.GetFromJsonAsync<List<Asset>>("/api/v1/assets", Json);
+        Assert.Single(all!);
+        Assert.Equal("keep", all![0].Id);
+    }
+
+    [Fact]
+    public async Task Import_rejects_an_unresolved_relationship_reference()
+    {
+        var client = Client(tenant: "t-import-bad");
+        var bundle = new ImportBundle(
+            Assets: [new ImportAsset(AssetKind.Application, "App", Lifecycle.Active, Id: "app")],
+            Relationships: [new ImportRelationship("app", "ghost", RelationshipType.RunsOn)],
+            Mode: ImportMode.Merge);
+
+        var response = await client.PostAsJsonAsync("/api/v1/import", bundle, Json);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        // Nothing is written when validation fails: the app asset must not have been created.
+        var all = await client.GetFromJsonAsync<List<Asset>>("/api/v1/assets", Json);
+        Assert.Empty(all!);
+    }
+
+    [Fact]
+    public async Task Export_then_import_round_trips_into_a_second_tenant()
+    {
+        var source = Client(tenant: "t-rt-source");
+        await source.PostAsJsonAsync("/api/v1/assets", SampleApp("app"), Json);
+        await source.PostAsJsonAsync("/api/v1/assets",
+            new Asset("srv", AssetKind.Server, "srv-01", Lifecycle.Active), Json);
+        await source.PostAsJsonAsync("/api/v1/relationships",
+            new Relationship("r1", "app", "srv", RelationshipType.RunsOn), Json);
+
+        // Export the source landscape in the published contract form...
+        var exported = await source.GetFromJsonAsync<LandscapeDocument>("/api/v1/export", Json);
+
+        // ...turn it into an import bundle (what a portability client does) and import into a fresh tenant.
+        var bundle = new ImportBundle(
+            Assets: [.. exported!.Assets.Select(a =>
+                new ImportAsset(a.Kind, a.Name, a.Lifecycle, Id: a.Id, Description: a.Description,
+                    Tags: a.Tags, Application: a.Application, Server: a.Server, Infrastructure: a.Infrastructure))],
+            Relationships: [.. exported.Relationships.Select(r =>
+                new ImportRelationship(r.FromId, r.ToId, r.Type, Id: r.Id, Description: r.Description))],
+            Mode: ImportMode.Merge);
+
+        var target = Client(tenant: "t-rt-target");
+        var import = await target.PostAsJsonAsync("/api/v1/import", bundle, Json);
+        Assert.Equal(HttpStatusCode.OK, import.StatusCode);
+
+        var landscape = await target.GetFromJsonAsync<LandscapeDocument>("/api/v1/landscape", Json);
+        Assert.Equal(2, landscape!.Assets.Length);
+        Assert.Single(landscape.Relationships);
+        Assert.Contains(landscape.Assets, a => a.Id == "app" && a.Name == "Checkout");
+        Assert.Equal("app", landscape.Relationships[0].FromId);
+    }
+
+    [Fact]
+    public async Task Import_is_isolated_by_tenant()
+    {
+        var bundle = new ImportBundle(
+            Assets: [new ImportAsset(AssetKind.Application, "Only A", Lifecycle.Active, Id: "only-a")],
+            Mode: ImportMode.Merge);
+        await Client(tenant: "t-imp-a").PostAsJsonAsync("/api/v1/import", bundle, Json);
+
+        var other = await Client(tenant: "t-imp-b").GetFromJsonAsync<List<Asset>>("/api/v1/assets", Json);
+        Assert.Empty(other!);
+    }
+
+    [Fact]
+    public async Task A_read_only_customer_cannot_import()
+    {
+        var readOnly = Client(tenant: "t-imp-authz", principal: "viewer", roles: "AtlasCustomer");
+        var bundle = new ImportBundle(
+            Assets: [new ImportAsset(AssetKind.Application, "Nope", Lifecycle.Active, Id: "nope")],
+            Mode: ImportMode.Merge);
+
+        var response = await readOnly.PostAsJsonAsync("/api/v1/import", bundle, Json);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task An_unknown_export_format_is_a_bad_request()
+    {
+        var response = await Client(tenant: "t-fmt").GetAsync("/api/v1/export?format=archimate");
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_relationship_missing_an_endpoint_is_a_bad_request_not_a_500()
+    {
+        var client = Client(tenant: "t-imp-nullref");
+        // Structurally valid JSON, but the relationship omits toRef — must be a 400, never an unhandled 500.
+        var body = new StringContent(
+            """
+            {"kind":"import","mode":"merge",
+             "assets":[{"id":"app","kind":"application","name":"App","lifecycle":"active"}],
+             "relationships":[{"fromRef":"app","type":"runs-on"}]}
+            """,
+            System.Text.Encoding.UTF8, "application/json");
+
+        var response = await client.PostAsync("/api/v1/import", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty((await client.GetFromJsonAsync<List<Asset>>("/api/v1/assets", Json))!);
+    }
 }

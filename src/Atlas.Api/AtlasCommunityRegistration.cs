@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Vev.Atlas.Domain;
+using Vev.Atlas.Domain.Portability;
 using Vev.Atlas.Fabric;
 using Vev.Atlas.Fabric.Dev;
 using Vev.Atlas.Persistence;
@@ -38,6 +39,13 @@ public static class AtlasCommunityRegistration
         // --- Domain ---
         services.AddScoped<AssetService>();
         services.AddScoped<PaidCapabilityGate>();
+
+        // --- Portability format-adapter seam (issue #12) ---
+        // The canonical atlas-contracts JSON adapter is always present. Community format modules
+        // (ArchiMate/BPMN/report) add themselves by registering more ILandscapeExporter/Importer here.
+        services.AddSingleton<ILandscapeExporter, AtlasJsonLandscapeExporter>();
+        services.AddSingleton<ILandscapeImporter, AtlasJsonLandscapeImporter>();
+        services.AddSingleton<LandscapeFormatRegistry>();
 
         return services;
     }
