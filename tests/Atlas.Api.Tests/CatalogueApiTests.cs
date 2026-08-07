@@ -113,6 +113,47 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
     }
 
     [Fact]
+    public async Task Landscape_read_composes_assets_and_relationships_for_the_tenant()
+    {
+        var client = Client(tenant: "t-landscape");
+        await client.PostAsJsonAsync("/api/v1/assets", SampleApp("app"), Json);
+        await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("srv", AssetKind.Server, "srv-01", Lifecycle.Active), Json);
+        await client.PostAsJsonAsync("/api/v1/relationships",
+            new Relationship("r1", "app", "srv", RelationshipType.RunsOn), Json);
+
+        var landscape = await client.GetFromJsonAsync<LandscapeDocument>("/api/v1/landscape", Json);
+
+        Assert.NotNull(landscape);
+        Assert.Equal(2, landscape!.Assets.Length);
+        Assert.Single(landscape.Relationships);
+        Assert.Equal("app", landscape.Relationships[0].FromId);
+        Assert.NotNull(landscape.ExportedAt);
+    }
+
+    [Fact]
+    public async Task Landscape_read_is_isolated_by_tenant()
+    {
+        await Client(tenant: "t-ls-a").PostAsJsonAsync("/api/v1/assets", SampleApp("only-a"), Json);
+
+        var other = await Client(tenant: "t-ls-b").GetFromJsonAsync<LandscapeDocument>("/api/v1/landscape", Json);
+
+        Assert.NotNull(other);
+        Assert.Empty(other!.Assets);
+    }
+
+    [Fact]
+    public async Task Landscape_visualisation_page_is_served_at_the_root()
+    {
+        var response = await factory.CreateClient().GetAsync("/");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("/api/v1/landscape", body);
+    }
+
+    [Fact]
     public async Task Mutations_emit_audit_events()
     {
         var client = Client(tenant: "t-audit");

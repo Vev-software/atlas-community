@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atlas · Community — Landscape</title>
+  <!--
+    Read-only landscape visualisation (atlas#6). A self-contained, dependency-free client of the
+    Atlas Community API: it reads GET /api/v1/landscape and draws the map. No external assets, so it
+    works offline on a self-hosted install. Cataloguing only — browse and visualise, never analysis.
+  -->
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #16181d;
+      --muted: #6b7280;
+      --line: #e4e7ec;
+      --accent: #4f46e5;
+      --edge: #b3b8c2;
+      --kind-system: #4f46e5;
+      --kind-application: #0e9f6e;
+      --kind-server: #d97706;
+      --kind-infrastructure: #2563eb;
+      --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .10);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      padding: 14px 20px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+    }
+    header h1 { font-size: 16px; margin: 0; letter-spacing: .2px; }
+    header .sub { color: var(--muted); font-size: 12.5px; }
+    header .badge {
+      margin-left: auto;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 10px;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      flex-wrap: wrap;
+    }
+    .chip {
+      font: inherit;
+      font-size: 12.5px;
+      cursor: pointer;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 5px 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .chip[aria-pressed="true"] { border-color: var(--accent); background: #eef2ff; color: var(--accent); }
+    .chip .dot { width: 9px; height: 9px; border-radius: 50%; }
+    .toolbar .count { margin-left: auto; color: var(--muted); font-size: 12.5px; }
+    .toolbar button.action {
+      font: inherit; font-size: 12.5px; cursor: pointer;
+      border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 5px 12px;
+    }
+    .toolbar button.action:hover { border-color: var(--accent); color: var(--accent); }
+    main { flex: 1; display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
+    #canvas { position: relative; overflow: auto; background:
+        radial-gradient(circle at 1px 1px, #e9ebf0 1px, transparent 0) 0 0 / 22px 22px, var(--bg); }
+    svg { display: block; }
+    .node rect { fill: #fff; stroke-width: 1.5; rx: 9; filter: drop-shadow(0 1px 1px rgba(16,24,40,.08)); cursor: pointer; }
+    .node .stripe { rx: 3; }
+    .node text { pointer-events: none; }
+    .node .name { font-weight: 600; font-size: 12.5px; fill: var(--ink); }
+    .node .kind { font-size: 10.5px; fill: var(--muted); text-transform: capitalize; }
+    .node.dim { opacity: .28; }
+    .edge { stroke: var(--edge); stroke-width: 1.5; fill: none; }
+    .edge.hot { stroke: var(--accent); stroke-width: 2; }
+    .edge.dim { opacity: .12; }
+    .lane-label { fill: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .7px; font-weight: 600; }
+    aside {
+      border-left: 1px solid var(--line);
+      background: var(--panel);
+      overflow: auto;
+      padding: 16px 18px;
+    }
+    aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0 0 10px; }
+    .detail .dname { font-size: 16px; font-weight: 650; margin: 0 0 2px; }
+    .detail .dkind { color: var(--muted); font-size: 12.5px; text-transform: capitalize; margin-bottom: 14px; }
+    .kv { display: grid; grid-template-columns: 88px 1fr; gap: 4px 10px; font-size: 13px; margin-bottom: 14px; }
+    .kv dt { color: var(--muted); }
+    .kv dd { margin: 0; word-break: break-word; }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
+    .tag { font-size: 11.5px; background: #f1f3f7; border-radius: 6px; padding: 2px 8px; color: #384150; }
+    .rel-list { list-style: none; margin: 0; padding: 0; }
+    .rel-list li { font-size: 12.5px; padding: 5px 0; border-top: 1px solid var(--line); color: #384150; }
+    .rel-list .rtype { color: var(--accent); font-weight: 600; }
+    .placeholder { color: var(--muted); font-size: 13px; }
+    .empty { display: grid; place-items: center; height: 100%; text-align: center; color: var(--muted); padding: 40px; }
+    .empty h3 { color: var(--ink); margin: 0 0 6px; }
+    code { background: #f1f3f7; padding: 1px 6px; border-radius: 5px; font-size: 12px; }
+    @media (max-width: 820px) { main { grid-template-columns: 1fr; } aside { border-left: none; border-top: 1px solid var(--line); } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Atlas · Community</h1>
+    <span class="sub">Landscape</span>
+    <span class="badge">Read-only</span>
+  </header>
+
+  <div class="toolbar" id="toolbar" hidden>
+    <button class="chip" data-kind="all" aria-pressed="true">All</button>
+    <button class="chip" data-kind="system"><span class="dot" style="background:var(--kind-system)"></span>Systems</button>
+    <button class="chip" data-kind="application"><span class="dot" style="background:var(--kind-application)"></span>Applications</button>
+    <button class="chip" data-kind="server"><span class="dot" style="background:var(--kind-server)"></span>Servers</button>
+    <button class="chip" data-kind="infrastructure"><span class="dot" style="background:var(--kind-infrastructure)"></span>Infrastructure</button>
+    <span class="count" id="count"></span>
+    <button class="action" id="refresh" title="Reload the landscape">Refresh</button>
+    <button class="action" id="export" title="Download the landscape as a portable JSON document">Export JSON</button>
+  </div>
+
+  <main>
+    <div id="canvas"><div class="empty"><h3>Loading landscape…</h3></div></div>
+    <aside>
+      <h2>Details</h2>
+      <div id="detail"><p class="placeholder">Select an asset in the map to inspect it.</p></div>
+    </aside>
+  </main>
+
+  <script>
+    const KINDS = ["system", "application", "server", "infrastructure"];
+    const KIND_COLOR = {
+      system: getComputedStyle(document.documentElement).getPropertyValue("--kind-system").trim(),
+      application: getComputedStyle(document.documentElement).getPropertyValue("--kind-application").trim(),
+      server: getComputedStyle(document.documentElement).getPropertyValue("--kind-server").trim(),
+      infrastructure: getComputedStyle(document.documentElement).getPropertyValue("--kind-infrastructure").trim(),
+    };
+    const SVGNS = "http://www.w3.org/2000/svg";
+
+    let landscape = { assets: [], relationships: [] };
+    let filter = "all";
+    let selectedId = null;
+
+    const el = (id) => document.getElementById(id);
+    const canvas = el("canvas");
+
+    async function load() {
+      canvas.innerHTML = '<div class="empty"><h3>Loading landscape…</h3></div>';
+      try {
+        const res = await fetch("/api/v1/landscape", { headers: { "Accept": "application/json" } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        landscape = await res.json();
+        landscape.assets ||= [];
+        landscape.relationships ||= [];
+        el("toolbar").hidden = false;
+        render();
+      } catch (err) {
+        canvas.innerHTML =
+          '<div class="empty"><h3>Could not load the landscape</h3>' +
+          '<p>The API responded with an error (' + escapeHtml(err.message) + ').</p></div>';
+      }
+    }
+
+    function visibleAssets() {
+      return filter === "all" ? landscape.assets : landscape.assets.filter(a => a.kind === filter);
+    }
+
+    function render() {
+      const assets = visibleAssets();
+      const total = landscape.assets.length;
+      el("count").textContent =
+        total === 0 ? "" : `${assets.length} of ${total} asset${total === 1 ? "" : "s"} · ${landscape.relationships.length} relationship${landscape.relationships.length === 1 ? "" : "s"}`;
+
+      if (total === 0) {
+        canvas.innerHTML =
+          '<div class="empty"><h3>Your landscape is empty</h3>' +
+          '<p>Nothing has been catalogued yet. Create assets via the API<br>' +
+          '(<code>POST /api/v1/assets</code>) and they will appear here.</p></div>';
+        return;
+      }
+      drawGraph(assets);
+    }
+
+    // Deterministic lane layout: one column per asset kind, nodes stacked within the lane. Simple and
+    // stable (no physics) — "basic visualisation", legible for a held landscape of tens of assets.
+    function drawGraph(assets) {
+      const NODE_W = 168, NODE_H = 46, GAP_Y = 20, LANE_W = 230, TOP = 54, LEFT = 30;
+      const lanes = KINDS.filter(k => filter === "all" || k === filter);
+      const byKind = Object.fromEntries(lanes.map(k => [k, []]));
+      for (const a of assets) (byKind[a.kind] ||= []).push(a);
+
+      const pos = new Map();
+      lanes.forEach((kind, li) => {
+        const cx = LEFT + li * LANE_W + NODE_W / 2;
+        byKind[kind].forEach((a, i) => {
+          pos.set(a.id, { x: LEFT + li * LANE_W, y: TOP + i * (NODE_H + GAP_Y), cx, cy: TOP + i * (NODE_H + GAP_Y) + NODE_H / 2 });
+        });
+      });
+
+      const rows = Math.max(1, ...lanes.map(k => byKind[k].length));
+      const width = Math.max(canvas.clientWidth, LEFT * 2 + lanes.length * LANE_W);
+      const height = Math.max(canvas.clientHeight, TOP + rows * (NODE_H + GAP_Y) + 30);
+
+      const svg = document.createElementNS(SVGNS, "svg");
+      svg.setAttribute("width", width);
+      svg.setAttribute("height", height);
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+      const defs = document.createElementNS(SVGNS, "defs");
+      defs.innerHTML =
+        '<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
+        '<path d="M0,0 L10,5 L0,10 z" fill="var(--edge)"/></marker>';
+      svg.appendChild(defs);
+
+      // Lane labels.
+      lanes.forEach((kind, li) => {
+        const t = document.createElementNS(SVGNS, "text");
+        t.setAttribute("class", "lane-label");
+        t.setAttribute("x", LEFT + li * LANE_W);
+        t.setAttribute("y", 30);
+        t.textContent = kind + (byKind[kind].length ? ` · ${byKind[kind].length}` : "");
+        svg.appendChild(t);
+      });
+
+      // Edges first (behind nodes). Only edges whose endpoints are both visible in the current filter.
+      const visibleIds = new Set(assets.map(a => a.id));
+      for (const r of landscape.relationships) {
+        if (!visibleIds.has(r.fromId) || !visibleIds.has(r.toId)) continue;
+        const a = pos.get(r.fromId), b = pos.get(r.toId);
+        if (!a || !b) continue;
+        const path = document.createElementNS(SVGNS, "path");
+        const mx = (a.cx + b.cx) / 2;
+        path.setAttribute("d", `M ${a.cx} ${a.cy} C ${mx} ${a.cy}, ${mx} ${b.cy}, ${b.cx} ${b.cy}`);
+        path.setAttribute("class", "edge");
+        path.setAttribute("marker-end", "url(#arrow)");
+        path.dataset.from = r.fromId;
+        path.dataset.to = r.toId;
+        const title = document.createElementNS(SVGNS, "title");
+        title.textContent = `${label(r.fromId)} —${r.type}→ ${label(r.toId)}`;
+        path.appendChild(title);
+        svg.appendChild(path);
+      }
+
+      // Nodes.
+      for (const a of assets) {
+        const p = pos.get(a.id);
+        const g = document.createElementNS(SVGNS, "g");
+        g.setAttribute("class", "node");
+        g.setAttribute("transform", `translate(${p.x}, ${p.y})`);
+        g.dataset.id = a.id;
+
+        const rect = document.createElementNS(SVGNS, "rect");
+        rect.setAttribute("width", NODE_W); rect.setAttribute("height", NODE_H);
+        rect.setAttribute("rx", 9); rect.setAttribute("stroke", KIND_COLOR[a.kind] || "#888");
+        g.appendChild(rect);
+
+        const stripe = document.createElementNS(SVGNS, "rect");
+        stripe.setAttribute("class", "stripe");
+        stripe.setAttribute("x", 0); stripe.setAttribute("y", 8);
+        stripe.setAttribute("width", 4); stripe.setAttribute("height", NODE_H - 16);
+        stripe.setAttribute("rx", 3); stripe.setAttribute("fill", KIND_COLOR[a.kind] || "#888");
+        g.appendChild(stripe);
+
+        const name = document.createElementNS(SVGNS, "text");
+        name.setAttribute("class", "name"); name.setAttribute("x", 14); name.setAttribute("y", 21);
+        name.textContent = truncate(a.name || a.id, 22);
+        g.appendChild(name);
+
+        const kind = document.createElementNS(SVGNS, "text");
+        kind.setAttribute("class", "kind"); kind.setAttribute("x", 14); kind.setAttribute("y", 36);
+        kind.textContent = a.kind;
+        g.appendChild(kind);
+
+        g.addEventListener("click", () => select(a.id));
+        svg.appendChild(g);
+      }
+
+      canvas.innerHTML = "";
+      canvas.appendChild(svg);
+      if (selectedId && visibleIds.has(selectedId)) applySelection(); else clearSelection();
+    }
+
+    function select(id) {
+      selectedId = id;
+      applySelection();
+      showDetail(id);
+    }
+
+    function applySelection() {
+      const svg = canvas.querySelector("svg");
+      if (!svg) return;
+      const neighbours = new Set([selectedId]);
+      for (const r of landscape.relationships) {
+        if (r.fromId === selectedId) neighbours.add(r.toId);
+        if (r.toId === selectedId) neighbours.add(r.fromId);
+      }
+      svg.querySelectorAll(".node").forEach(n =>
+        n.classList.toggle("dim", !neighbours.has(n.dataset.id)));
+      svg.querySelectorAll(".edge").forEach(e => {
+        const hot = e.dataset.from === selectedId || e.dataset.to === selectedId;
+        e.classList.toggle("hot", hot);
+        e.classList.toggle("dim", !hot);
+      });
+    }
+
+    function clearSelection() {
+      const svg = canvas.querySelector("svg");
+      if (!svg) return;
+      svg.querySelectorAll(".node").forEach(n => n.classList.remove("dim"));
+      svg.querySelectorAll(".edge").forEach(e => e.classList.remove("hot", "dim"));
+    }
+
+    function showDetail(id) {
+      const a = landscape.assets.find(x => x.id === id);
+      if (!a) return;
+      const rels = landscape.relationships.filter(r => r.fromId === id || r.toId === id);
+      const d = a.application || a.server || a.infrastructure || null;
+
+      let html = '<div class="detail">';
+      html += `<p class="dname">${escapeHtml(a.name || a.id)}</p>`;
+      html += `<p class="dkind">${escapeHtml(a.kind)} · ${escapeHtml(a.lifecycle || "—")}</p>`;
+      html += '<dl class="kv">';
+      html += `<dt>ID</dt><dd><code>${escapeHtml(a.id)}</code></dd>`;
+      if (a.description) html += `<dt>Notes</dt><dd>${escapeHtml(a.description)}</dd>`;
+      if (d) for (const [k, v] of Object.entries(d)) {
+        if (v == null || v === "") continue;
+        html += `<dt>${escapeHtml(labelCase(k))}</dt><dd>${escapeHtml(String(v))}</dd>`;
+      }
+      html += "</dl>";
+
+      if (a.tags && a.tags.length) {
+        html += '<div class="tags">' + a.tags.map(t =>
+          `<span class="tag">${escapeHtml(t.key)}${t.value ? ": " + escapeHtml(t.value) : ""}</span>`).join("") + "</div>";
+      }
+
+      html += `<h2>Relationships (${rels.length})</h2>`;
+      html += rels.length
+        ? '<ul class="rel-list">' + rels.map(r => {
+            const out = r.fromId === id;
+            return `<li>${out ? "" : label(r.fromId) + " "}<span class="rtype">${escapeHtml(r.type)}</span>${out ? " " + label(r.toId) : ""}</li>`;
+          }).join("") + "</ul>"
+        : '<p class="placeholder">No manual relationships.</p>';
+      html += "</div>";
+      el("detail").innerHTML = html;
+    }
+
+    function label(id) {
+      const a = landscape.assets.find(x => x.id === id);
+      return escapeHtml(a ? (a.name || a.id) : id);
+    }
+    function truncate(s, n) { return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+    function labelCase(s) { return s.replace(/([A-Z])/g, " $1").replace(/^./, c => c.toUpperCase()).trim(); }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    // Toolbar wiring.
+    document.querySelectorAll(".chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        filter = chip.dataset.kind;
+        document.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c === chip)));
+        render();
+      });
+    });
+    el("refresh").addEventListener("click", load);
+    el("export").addEventListener("click", () => {
+      const blob = new Blob([JSON.stringify(landscape, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "atlas-landscape.json"; a.click();
+      URL.revokeObjectURL(url);
+    });
+    window.addEventListener("resize", () => { if (landscape.assets.length) render(); });
+
+    load();
+  </script>
+</body>
+</html>

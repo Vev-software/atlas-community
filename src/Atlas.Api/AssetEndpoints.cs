@@ -64,6 +64,15 @@ public static class AssetEndpoints
             .WithName("GetAssetIntegrationMapping")
             .WithSummary("Paid capability seam: integration mapping (entitlement-gated).");
 
+        // Read-only landscape surface (atlas#6): the whole tenant map — assets + manual relationships —
+        // resolved into one atlas-contracts LandscapeDocument. Backs the browse/visualise UI, which is a
+        // pure client of this API (API/SDK-first — the UI is never the only way in, handbook 15 §2).
+        app.MapGet("/api/v1/landscape", async (AssetService service, CancellationToken ct) =>
+            Results.Ok(await service.GetLandscapeAsync(ct)))
+            .WithTags("Landscape")
+            .WithName("GetLandscape")
+            .WithSummary("Read the whole tenant landscape (assets + relationships) as a portable LandscapeDocument.");
+
         var relationships = app.MapGroup("/api/v1/relationships").WithTags("Relationships");
 
         relationships.MapGet("", async (AssetService service, CancellationToken ct) =>
