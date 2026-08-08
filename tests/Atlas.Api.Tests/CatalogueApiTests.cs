@@ -154,6 +154,24 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
     }
 
     [Fact]
+    public async Task Capabilities_report_author_for_an_architect()
+    {
+        var caps = await Client(roles: "AtlasArchitect")
+            .GetFromJsonAsync<JsonElement>("/api/v1/capabilities", Json);
+
+        Assert.True(caps.GetProperty("canAuthor").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Capabilities_report_read_only_for_a_customer()
+    {
+        var caps = await Client(principal: "viewer", roles: "AtlasCustomer")
+            .GetFromJsonAsync<JsonElement>("/api/v1/capabilities", Json);
+
+        Assert.False(caps.GetProperty("canAuthor").GetBoolean());
+    }
+
+    [Fact]
     public async Task Mutations_emit_audit_events()
     {
         var client = Client(tenant: "t-audit");

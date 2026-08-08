@@ -17,6 +17,20 @@ public sealed class AssetService(
     IAssetRepository repository,
     TimeProvider clock)
 {
+    /// <summary>
+    /// Describe what the current principal may do in the catalogue, so a pure API client (the landscape
+    /// UI) can show author affordances only to author-capable users and keep its badge honest. This is a
+    /// self-describing capability probe: it asks the Fabric authorizer for the real decision without
+    /// performing — or implying — any write. It is not itself gated, so a read-only principal can learn
+    /// that it is read-only.
+    /// </summary>
+    public CatalogueCapabilities DescribeCapabilities()
+    {
+        var decision = authorizer.Authorize(
+            context.Tenant, context.Principal, AtlasActions.AssetWrite, AssetResource("*"));
+        return new CatalogueCapabilities(CanAuthor: decision.Allowed);
+    }
+
     /// <summary>List assets in the current tenant, optionally filtered by kind.</summary>
     public Task<ImmutableArray<Asset>> ListAssetsAsync(AssetKind? kind, CancellationToken ct = default)
     {
@@ -179,3 +193,11 @@ public sealed class AssetService(
 
     private static ResourceId RelationshipResource(string id) => new($"atlas:relationship/{id}");
 }
+
+/// <summary>
+/// What the current principal may do in the catalogue — a small self-describing probe the UI uses to
+/// decide whether to show author affordances. Not an atlas-contracts portability type: it describes the
+/// live session, not held data.
+/// </summary>
+/// <param name="CanAuthor">Whether the principal may create, edit or delete catalogue entries.</param>
+public sealed record CatalogueCapabilities(bool CanAuthor);
