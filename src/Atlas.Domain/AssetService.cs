@@ -17,6 +17,20 @@ public sealed class AssetService(
     IAssetRepository repository,
     TimeProvider clock)
 {
+    /// <summary>
+    /// Describe what the current principal may do in the catalogue, so a pure API client (the landscape
+    /// UI) can show author affordances only to author-capable users and keep its badge honest. This is a
+    /// self-describing capability probe: it asks the Fabric authorizer for the real decision without
+    /// performing — or implying — any write. It is not itself gated, so a read-only principal can learn
+    /// that it is read-only.
+    /// </summary>
+    public CatalogueCapabilities DescribeCapabilities()
+    {
+        var decision = authorizer.Authorize(
+            context.Tenant, context.Principal, AtlasActions.AssetWrite, AssetResource("*"));
+        return new CatalogueCapabilities(CanAuthor: decision.Allowed);
+    }
+
     /// <summary>List assets in the current tenant, optionally filtered by kind.</summary>
     public Task<ImmutableArray<Asset>> ListAssetsAsync(AssetKind? kind, CancellationToken ct = default)
     {
@@ -68,7 +82,13 @@ public sealed class AssetService(
         return asset;
     }
 
-    /// <summary>Delete an asset. Requires write authorization; emits an audit event when something was removed.</summary>
+    /// <summary>
+    /// Delete an asset. Requires write authorization; emits an audit event when something was removed.
+    /// Cascades to the asset's manual relationships so the "both endpoints exist" invariant that
+    /// <see cref="CreateRelationshipAsync"/> enforces on create is not left broken on delete — otherwise a
+    /// relationship would dangle against a missing asset and leak into the portable landscape document. Each
+    /// removed relationship is audited in its own right.
+    /// </summary>
     public async Task<bool> DeleteAssetAsync(string id, CancellationToken ct = default)
     {
         var resource = AssetResource(id);
@@ -77,6 +97,12 @@ public sealed class AssetService(
         var removed = await repository.DeleteAssetAsync(context.Tenant, id, ct);
         if (removed)
         {
+            var orphaned = await repository.DeleteRelationshipsForAssetAsync(context.Tenant, id, ct);
+            foreach (var relationshipId in orphaned)
+            {
+                await EmitAsync("atlas.relationship.deleted", RelationshipResource(relationshipId), ct);
+            }
+
             await EmitAsync("atlas.asset.deleted", resource, ct);
         }
 
@@ -179,3 +205,11 @@ public sealed class AssetService(
 
     private static ResourceId RelationshipResource(string id) => new($"atlas:relationship/{id}");
 }
+
+/// <summary>
+/// What the current principal may do in the catalogue — a small self-describing probe the UI uses to
+/// decide whether to show author affordances. Not an atlas-contracts portability type: it describes the
+/// live session, not held data.
+/// </summary>
+/// <param name="CanAuthor">Whether the principal may create, edit or delete catalogue entries.</param>
+public sealed record CatalogueCapabilities(bool CanAuthor);

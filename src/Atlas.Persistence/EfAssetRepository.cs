@@ -92,6 +92,23 @@ public sealed class EfAssetRepository(AtlasDbContext db) : IAssetRepository
         return deleted > 0;
     }
 
+    public async Task<ImmutableArray<string>> DeleteRelationshipsForAssetAsync(TenantContext tenant, string assetId, CancellationToken ct = default)
+    {
+        var ids = await db.Relationships
+            .Where(r => r.TenantId == tenant.TenantId && (r.FromId == assetId || r.ToId == assetId))
+            .Select(r => r.Id)
+            .ToListAsync(ct);
+
+        if (ids.Count > 0)
+        {
+            await db.Relationships
+                .Where(r => r.TenantId == tenant.TenantId && (r.FromId == assetId || r.ToId == assetId))
+                .ExecuteDeleteAsync(ct);
+        }
+
+        return [.. ids];
+    }
+
     private static AssetRow ToRow(TenantContext tenant, Asset asset) => new()
     {
         TenantId = tenant.TenantId,

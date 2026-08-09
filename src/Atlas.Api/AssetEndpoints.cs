@@ -64,6 +64,15 @@ public static class AssetEndpoints
             .WithName("GetAssetIntegrationMapping")
             .WithSummary("Paid capability seam: integration mapping (entitlement-gated).");
 
+        // Session capability probe (atlas#17): tells a pure API client (the landscape UI) whether the
+        // current principal may author, so it can show create/edit/delete affordances only to author-capable
+        // users and keep its badge honest. The authz decision comes from Fabric, never from the UI.
+        app.MapGet("/api/v1/capabilities", (AssetService service) =>
+            Results.Ok(service.DescribeCapabilities()))
+            .WithTags("Session")
+            .WithName("GetCapabilities")
+            .WithSummary("Describe what the current principal may do in the catalogue (drives the UI's author affordances).");
+
         // Read-only landscape surface (atlas#6): the whole tenant map — assets + manual relationships —
         // resolved into one atlas-contracts LandscapeDocument. Backs the browse/visualise UI, which is a
         // pure client of this API (API/SDK-first — the UI is never the only way in, handbook 15 §2).

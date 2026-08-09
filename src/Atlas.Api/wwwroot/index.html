@@ -5,9 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Atlas · Community — Landscape</title>
   <!--
-    Read-only landscape visualisation (atlas#6). A self-contained, dependency-free client of the
-    Atlas Community API: it reads GET /api/v1/landscape and draws the map. No external assets, so it
-    works offline on a self-hosted install. Cataloguing only — browse and visualise, never analysis.
+    Landscape browser + author surface (atlas#6, #17, #18). A self-contained, dependency-free client of
+    the Atlas Community API: it reads GET /api/v1/landscape and draws the map, and — for an author-capable
+    principal — creates, edits and deletes assets and manual relationships through the existing
+    POST/PUT/DELETE endpoints. No external assets, so it works offline on a self-hosted install.
+
+    Cataloguing only — browse, visualise and record held facts, never analysis. The UI orchestrates the
+    API and is never the only way in: every write goes through the public atlas-contracts types the API
+    already speaks, and every rule (validation, conflicts, authorization) is the API's, surfaced here.
   -->
   <style>
     :root {
@@ -17,12 +22,16 @@
       --muted: #6b7280;
       --line: #e4e7ec;
       --accent: #4f46e5;
+      --accent-ink: #ffffff;
+      --danger: #dc2626;
+      --danger-soft: #fef2f2;
       --edge: #b3b8c2;
       --kind-system: #4f46e5;
       --kind-application: #0e9f6e;
       --kind-server: #d97706;
       --kind-infrastructure: #2563eb;
       --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .10);
+      --shadow-lg: 0 10px 25px rgba(16, 24, 40, .12), 0 4px 10px rgba(16, 24, 40, .08);
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
@@ -54,6 +63,7 @@
       border-radius: 999px;
       padding: 3px 10px;
     }
+    header .badge.author { color: var(--accent); border-color: #c7cbf5; background: #eef2ff; }
     .toolbar {
       display: flex;
       align-items: center;
@@ -84,7 +94,15 @@
       border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 5px 12px;
     }
     .toolbar button.action:hover { border-color: var(--accent); color: var(--accent); }
-    main { flex: 1; display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
+    /* Primary author affordance — the "New asset" call to action. */
+    button.primary {
+      font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink);
+      border-radius: 8px; padding: 6px 13px; display: inline-flex; align-items: center; gap: 6px;
+    }
+    button.primary:hover { background: #4338ca; border-color: #4338ca; }
+    button.primary .plus { font-size: 15px; line-height: 1; margin-top: -1px; }
+    main { flex: 1; display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
     #canvas { position: relative; overflow: auto; background:
         radial-gradient(circle at 1px 1px, #e9ebf0 1px, transparent 0) 0 0 / 22px 22px, var(--bg); }
     svg { display: block; }
@@ -107,18 +125,114 @@
     aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0 0 10px; }
     .detail .dname { font-size: 16px; font-weight: 650; margin: 0 0 2px; }
     .detail .dkind { color: var(--muted); font-size: 12.5px; text-transform: capitalize; margin-bottom: 14px; }
-    .kv { display: grid; grid-template-columns: 88px 1fr; gap: 4px 10px; font-size: 13px; margin-bottom: 14px; }
+    .detail-actions { display: flex; gap: 8px; margin: 0 0 16px; }
+    .btn-sm {
+      font: inherit; font-size: 12px; cursor: pointer;
+      border: 1px solid var(--line); background: #fff; color: var(--ink);
+      border-radius: 7px; padding: 5px 11px;
+    }
+    .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-sm.danger:hover { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
+    .kv { display: grid; grid-template-columns: 92px 1fr; gap: 4px 10px; font-size: 13px; margin-bottom: 14px; }
     .kv dt { color: var(--muted); }
     .kv dd { margin: 0; word-break: break-word; }
     .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
     .tag { font-size: 11.5px; background: #f1f3f7; border-radius: 6px; padding: 2px 8px; color: #384150; }
+    .rel-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+    .rel-head h2 { margin: 0; }
+    .rel-head .add-rel {
+      margin-left: auto; font: inherit; font-size: 11.5px; cursor: pointer;
+      border: 1px dashed var(--line); background: #fff; color: var(--accent);
+      border-radius: 7px; padding: 3px 9px;
+    }
+    .rel-head .add-rel:hover { border-color: var(--accent); }
     .rel-list { list-style: none; margin: 0; padding: 0; }
-    .rel-list li { font-size: 12.5px; padding: 5px 0; border-top: 1px solid var(--line); color: #384150; }
+    .rel-list li { font-size: 12.5px; padding: 6px 0; border-top: 1px solid var(--line); color: #384150; display: flex; align-items: center; gap: 8px; }
+    .rel-list .rtext { flex: 1; }
     .rel-list .rtype { color: var(--accent); font-weight: 600; }
+    .rel-list .rel-del {
+      font: inherit; font-size: 11px; cursor: pointer; color: var(--muted);
+      border: none; background: none; padding: 2px 6px; border-radius: 6px;
+    }
+    .rel-list .rel-del:hover { color: var(--danger); background: var(--danger-soft); }
     .placeholder { color: var(--muted); font-size: 13px; }
     .empty { display: grid; place-items: center; height: 100%; text-align: center; color: var(--muted); padding: 40px; }
     .empty h3 { color: var(--ink); margin: 0 0 6px; }
+    .empty .cta { margin-top: 16px; }
     code { background: #f1f3f7; padding: 1px 6px; border-radius: 5px; font-size: 12px; }
+
+    /* --- Modal (asset & relationship forms) --- */
+    .backdrop {
+      position: fixed; inset: 0; background: rgba(16, 24, 40, .38);
+      display: grid; place-items: center; padding: 24px; z-index: 50;
+    }
+    .backdrop[hidden] { display: none; }
+    .modal {
+      background: var(--panel); border-radius: 14px; box-shadow: var(--shadow-lg);
+      width: 100%; max-width: 520px; max-height: calc(100vh - 48px);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .modal header {
+      display: flex; align-items: center; gap: 10px; padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+    .modal header h2 { margin: 0; font-size: 15px; }
+    .modal header .close {
+      margin-left: auto; font: inherit; font-size: 20px; line-height: 1; cursor: pointer;
+      border: none; background: none; color: var(--muted); padding: 2px 6px; border-radius: 6px;
+    }
+    .modal header .close:hover { background: #f1f3f7; color: var(--ink); }
+    .modal .body { padding: 18px 20px; overflow: auto; }
+    .modal footer {
+      display: flex; align-items: center; gap: 10px; padding: 14px 20px;
+      border-top: 1px solid var(--line); background: #fbfbfc;
+    }
+    .modal footer .spacer { flex: 1; }
+    .field { margin-bottom: 14px; }
+    .field:last-child { margin-bottom: 0; }
+    .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 600; }
+    .field .req { color: var(--danger); }
+    .field input, .field select, .field textarea {
+      width: 100%; font: inherit; font-size: 13.5px; color: var(--ink);
+      border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fff;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus {
+      outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px #eef2ff;
+    }
+    .field textarea { resize: vertical; min-height: 58px; }
+    .field .hint { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .section-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted);
+      font-weight: 700; margin: 18px 0 10px; padding-top: 14px; border-top: 1px solid var(--line);
+    }
+    .tag-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .tag-row button.remove {
+      font: inherit; cursor: pointer; border: 1px solid var(--line); background: #fff; color: var(--muted);
+      border-radius: 7px; padding: 8px 11px; line-height: 1;
+    }
+    .tag-row button.remove:hover { border-color: var(--danger); color: var(--danger); }
+    .add-tag {
+      font: inherit; font-size: 12px; cursor: pointer; color: var(--accent);
+      border: 1px dashed var(--line); background: #fff; border-radius: 7px; padding: 6px 11px;
+    }
+    .add-tag:hover { border-color: var(--accent); }
+    .form-error {
+      background: var(--danger-soft); border: 1px solid #f6c9c9; color: #a11a1a;
+      border-radius: 8px; padding: 9px 12px; font-size: 12.5px; margin-bottom: 14px;
+    }
+    .form-error[hidden] { display: none; }
+    button.primary[disabled] { opacity: .6; cursor: default; }
+
+    /* --- Toast --- */
+    #toast {
+      position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+      background: var(--ink); color: #fff; font-size: 13px; padding: 10px 16px;
+      border-radius: 9px; box-shadow: var(--shadow-lg); z-index: 60; max-width: 460px;
+    }
+    #toast[hidden] { display: none; }
+    #toast.err { background: #7f1d1d; }
+
     @media (max-width: 820px) { main { grid-template-columns: 1fr; } aside { border-left: none; border-top: 1px solid var(--line); } }
   </style>
 </head>
@@ -126,7 +240,7 @@
   <header>
     <h1>Atlas · Community</h1>
     <span class="sub">Landscape</span>
-    <span class="badge">Read-only</span>
+    <span class="badge" id="capBadge">Read-only</span>
   </header>
 
   <div class="toolbar" id="toolbar" hidden>
@@ -136,6 +250,7 @@
     <button class="chip" data-kind="server"><span class="dot" style="background:var(--kind-server)"></span>Servers</button>
     <button class="chip" data-kind="infrastructure"><span class="dot" style="background:var(--kind-infrastructure)"></span>Infrastructure</button>
     <span class="count" id="count"></span>
+    <button class="primary" id="newAsset" hidden title="Add a new asset to the catalogue"><span class="plus">+</span>New asset</button>
     <button class="action" id="refresh" title="Reload the landscape">Refresh</button>
     <button class="action" id="export" title="Download the landscape as a portable JSON document">Export JSON</button>
   </div>
@@ -148,6 +263,131 @@
     </aside>
   </main>
 
+  <!-- Asset create/edit form. A single dialog reused for both; kind-specific fields toggle on kind. -->
+  <div class="backdrop" id="assetBackdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="assetFormTitle">
+      <header>
+        <h2 id="assetFormTitle">New asset</h2>
+        <button class="close" data-close-asset aria-label="Close">×</button>
+      </header>
+      <div class="body">
+        <div class="form-error" id="assetError" hidden></div>
+        <form id="assetForm">
+          <div class="row2">
+            <div class="field">
+              <label for="fKind">Kind <span class="req">*</span></label>
+              <select id="fKind" name="kind" required>
+                <option value="system">System</option>
+                <option value="application">Application</option>
+                <option value="server">Server</option>
+                <option value="infrastructure">Infrastructure</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="fLifecycle">Lifecycle <span class="req">*</span></label>
+              <select id="fLifecycle" name="lifecycle" required>
+                <option value="draft">Draft</option>
+                <option value="active">Active</option>
+                <option value="retired">Retired</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="fName">Name <span class="req">*</span></label>
+            <input id="fName" name="name" type="text" required autocomplete="off" placeholder="e.g. Checkout Service" />
+          </div>
+          <div class="field">
+            <label for="fId">Identifier <span class="req">*</span></label>
+            <input id="fId" name="id" type="text" required autocomplete="off" placeholder="e.g. app-checkout" />
+            <div class="hint" id="idHint">A stable, unique id. Suggested from the name; edit if you like.</div>
+          </div>
+          <div class="field">
+            <label for="fDescription">Description</label>
+            <textarea id="fDescription" name="description" placeholder="Optional free-text notes about this asset."></textarea>
+          </div>
+
+          <!-- Kind-specific held facts. Only the block matching the chosen kind is shown. -->
+          <div id="detailsApplication" class="kind-details" hidden>
+            <div class="section-label">Application details</div>
+            <div class="row2">
+              <div class="field"><label for="fAppVersion">Version</label><input id="fAppVersion" type="text" autocomplete="off" /></div>
+              <div class="field"><label for="fAppVendor">Vendor</label><input id="fAppVendor" type="text" autocomplete="off" /></div>
+            </div>
+            <div class="field"><label for="fAppOwner">Business owner</label><input id="fAppOwner" type="text" autocomplete="off" /></div>
+          </div>
+          <div id="detailsServer" class="kind-details" hidden>
+            <div class="section-label">Server details</div>
+            <div class="row2">
+              <div class="field"><label for="fSrvHostname">Hostname</label><input id="fSrvHostname" type="text" autocomplete="off" /></div>
+              <div class="field"><label for="fSrvEnv">Environment</label><input id="fSrvEnv" type="text" autocomplete="off" placeholder="e.g. production" /></div>
+            </div>
+            <div class="field"><label for="fSrvOs">Operating system</label><input id="fSrvOs" type="text" autocomplete="off" placeholder="e.g. Ubuntu 22.04" /></div>
+          </div>
+          <div id="detailsInfrastructure" class="kind-details" hidden>
+            <div class="section-label">Infrastructure details</div>
+            <div class="row2">
+              <div class="field"><label for="fInfCategory">Category</label><input id="fInfCategory" type="text" autocomplete="off" placeholder="e.g. network" /></div>
+              <div class="field"><label for="fInfLocation">Location</label><input id="fInfLocation" type="text" autocomplete="off" placeholder="e.g. eu-west-1" /></div>
+            </div>
+          </div>
+
+          <div class="section-label">Tags</div>
+          <div id="tagRows"></div>
+          <button type="button" class="add-tag" id="addTag">+ Add tag</button>
+        </form>
+      </div>
+      <footer>
+        <span class="spacer"></span>
+        <button class="action" type="button" data-close-asset>Cancel</button>
+        <button class="primary" type="submit" form="assetForm" id="assetSubmit">Create asset</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Relationship create form. Opened from a selected asset; source is fixed to that asset. -->
+  <div class="backdrop" id="relBackdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="relFormTitle" style="max-width: 460px;">
+      <header>
+        <h2 id="relFormTitle">New relationship</h2>
+        <button class="close" data-close-rel aria-label="Close">×</button>
+      </header>
+      <div class="body">
+        <div class="form-error" id="relError" hidden></div>
+        <form id="relForm">
+          <div class="field">
+            <label for="rFrom">Source</label>
+            <input id="rFrom" type="text" readonly />
+          </div>
+          <div class="field">
+            <label for="rType">Type <span class="req">*</span></label>
+            <select id="rType" required>
+              <option value="runs-on">runs on</option>
+              <option value="hosts">hosts</option>
+              <option value="connects-to">connects to</option>
+              <option value="depends-on">depends on</option>
+              <option value="part-of">part of</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="rTo">Target <span class="req">*</span></label>
+            <select id="rTo" required></select>
+          </div>
+          <div class="field">
+            <label for="rNote">Note</label>
+            <input id="rNote" type="text" autocomplete="off" placeholder="Optional note on the link." />
+          </div>
+        </form>
+      </div>
+      <footer>
+        <span class="spacer"></span>
+        <button class="action" type="button" data-close-rel>Cancel</button>
+        <button class="primary" type="submit" form="relForm" id="relSubmit">Create link</button>
+      </footer>
+    </div>
+  </div>
+
+  <div id="toast" hidden></div>
+
   <script>
     const KINDS = ["system", "application", "server", "infrastructure"];
     const KIND_COLOR = {
@@ -156,14 +396,40 @@
       server: getComputedStyle(document.documentElement).getPropertyValue("--kind-server").trim(),
       infrastructure: getComputedStyle(document.documentElement).getPropertyValue("--kind-infrastructure").trim(),
     };
+    const REL_LABELS = {
+      "runs-on": "runs on", "hosts": "hosts", "connects-to": "connects to",
+      "depends-on": "depends on", "part-of": "part of",
+    };
     const SVGNS = "http://www.w3.org/2000/svg";
 
     let landscape = { assets: [], relationships: [] };
     let filter = "all";
     let selectedId = null;
+    let canAuthor = false;      // Set from GET /api/v1/capabilities — never assumed.
+    let editingId = null;       // Non-null while the asset form is editing an existing asset.
 
     const el = (id) => document.getElementById(id);
     const canvas = el("canvas");
+
+    // --- Capability probe: decides whether author affordances are shown at all (atlas#17). --------------
+    async function loadCapabilities() {
+      try {
+        const res = await fetch("/api/v1/capabilities", { headers: { "Accept": "application/json" } });
+        if (res.ok) {
+          const caps = await res.json();
+          canAuthor = !!caps.canAuthor;
+        }
+      } catch {
+        canAuthor = false; // Fail closed: no probe → treat as read-only, show no write controls.
+      }
+      const badge = el("capBadge");
+      badge.textContent = canAuthor ? "Author" : "Read-only";
+      badge.classList.toggle("author", canAuthor);
+      badge.title = canAuthor
+        ? "You can create, edit and delete catalogue entries."
+        : "You have read-only access to the catalogue.";
+      el("newAsset").hidden = !canAuthor;
+    }
 
     async function load() {
       canvas.innerHTML = '<div class="empty"><h3>Loading landscape…</h3></div>';
@@ -193,10 +459,15 @@
         total === 0 ? "" : `${assets.length} of ${total} asset${total === 1 ? "" : "s"} · ${landscape.relationships.length} relationship${landscape.relationships.length === 1 ? "" : "s"}`;
 
       if (total === 0) {
-        canvas.innerHTML =
-          '<div class="empty"><h3>Your landscape is empty</h3>' +
-          '<p>Nothing has been catalogued yet. Create assets via the API<br>' +
-          '(<code>POST /api/v1/assets</code>) and they will appear here.</p></div>';
+        // Empty state leads into authoring for an author-capable user; otherwise it points at the API.
+        const cta = canAuthor
+          ? '<p>Nothing has been catalogued yet — start by adding your first asset.</p>' +
+            '<div class="cta"><button class="primary" id="emptyCreate"><span class="plus">+</span>Create your first asset</button></div>'
+          : '<p>Nothing has been catalogued yet. Create assets via the API<br>' +
+            '(<code>POST /api/v1/assets</code>) and they will appear here.</p>';
+        canvas.innerHTML = '<div class="empty"><h3>Your landscape is empty</h3>' + cta + '</div>';
+        if (canAuthor) el("emptyCreate").addEventListener("click", () => openAssetForm());
+        el("detail").innerHTML = '<p class="placeholder">Select an asset in the map to inspect it.</p>';
         return;
       }
       drawGraph(assets);
@@ -336,46 +607,398 @@
       if (!a) return;
       const rels = landscape.relationships.filter(r => r.fromId === id || r.toId === id);
       const d = a.application || a.server || a.infrastructure || null;
+      const detail = el("detail");
+      detail.innerHTML = "";
 
-      let html = '<div class="detail">';
-      html += `<p class="dname">${escapeHtml(a.name || a.id)}</p>`;
-      html += `<p class="dkind">${escapeHtml(a.kind)} · ${escapeHtml(a.lifecycle || "—")}</p>`;
-      html += '<dl class="kv">';
-      html += `<dt>ID</dt><dd><code>${escapeHtml(a.id)}</code></dd>`;
-      if (a.description) html += `<dt>Notes</dt><dd>${escapeHtml(a.description)}</dd>`;
+      const wrap = document.createElement("div");
+      wrap.className = "detail";
+
+      const dname = document.createElement("p");
+      dname.className = "dname";
+      dname.textContent = a.name || a.id;
+      wrap.appendChild(dname);
+
+      const dkind = document.createElement("p");
+      dkind.className = "dkind";
+      dkind.textContent = `${a.kind} · ${a.lifecycle || "—"}`;
+      wrap.appendChild(dkind);
+
+      // Author actions — shown only to an author-capable principal (atlas#17).
+      if (canAuthor) {
+        const actions = document.createElement("div");
+        actions.className = "detail-actions";
+        const edit = document.createElement("button");
+        edit.className = "btn-sm"; edit.textContent = "Edit";
+        edit.addEventListener("click", () => openAssetForm(a));
+        const del = document.createElement("button");
+        del.className = "btn-sm danger"; del.textContent = "Delete";
+        del.addEventListener("click", () => deleteAsset(a));
+        actions.append(edit, del);
+        wrap.appendChild(actions);
+      }
+
+      const kv = document.createElement("dl");
+      kv.className = "kv";
+      const addKv = (k, v) => {
+        const dt = document.createElement("dt"); dt.textContent = k;
+        const dd = document.createElement("dd");
+        if (k === "ID") { const c = document.createElement("code"); c.textContent = v; dd.appendChild(c); }
+        else dd.textContent = v;
+        kv.append(dt, dd);
+      };
+      addKv("ID", a.id);
+      if (a.description) addKv("Notes", a.description);
       if (d) for (const [k, v] of Object.entries(d)) {
         if (v == null || v === "") continue;
-        html += `<dt>${escapeHtml(labelCase(k))}</dt><dd>${escapeHtml(String(v))}</dd>`;
+        addKv(labelCase(k), String(v));
       }
-      html += "</dl>";
+      wrap.appendChild(kv);
 
       if (a.tags && a.tags.length) {
-        html += '<div class="tags">' + a.tags.map(t =>
-          `<span class="tag">${escapeHtml(t.key)}${t.value ? ": " + escapeHtml(t.value) : ""}</span>`).join("") + "</div>";
+        const tags = document.createElement("div");
+        tags.className = "tags";
+        for (const t of a.tags) {
+          const span = document.createElement("span");
+          span.className = "tag";
+          span.textContent = t.key + (t.value ? ": " + t.value : "");
+          tags.appendChild(span);
+        }
+        wrap.appendChild(tags);
       }
 
-      html += `<h2>Relationships (${rels.length})</h2>`;
-      html += rels.length
-        ? '<ul class="rel-list">' + rels.map(r => {
-            const out = r.fromId === id;
-            return `<li>${out ? "" : label(r.fromId) + " "}<span class="rtype">${escapeHtml(r.type)}</span>${out ? " " + label(r.toId) : ""}</li>`;
-          }).join("") + "</ul>"
-        : '<p class="placeholder">No manual relationships.</p>';
-      html += "</div>";
-      el("detail").innerHTML = html;
+      const relHead = document.createElement("div");
+      relHead.className = "rel-head";
+      const h2 = document.createElement("h2");
+      h2.textContent = `Relationships (${rels.length})`;
+      relHead.appendChild(h2);
+      if (canAuthor) {
+        const add = document.createElement("button");
+        add.className = "add-rel"; add.textContent = "+ Add";
+        add.title = "Connect this asset to another";
+        add.addEventListener("click", () => openRelForm(a.id));
+        relHead.appendChild(add);
+      }
+      wrap.appendChild(relHead);
+
+      if (rels.length) {
+        const ul = document.createElement("ul");
+        ul.className = "rel-list";
+        for (const r of rels) {
+          const li = document.createElement("li");
+          const out = r.fromId === id;
+          const text = document.createElement("span");
+          text.className = "rtext";
+          const rtype = document.createElement("span");
+          rtype.className = "rtype";
+          rtype.textContent = REL_LABELS[r.type] || r.type;
+          if (out) { text.append(rtype, " ", label(r.toId)); }
+          else { text.append(label(r.fromId), " ", rtype); }
+          li.appendChild(text);
+          if (canAuthor) {
+            const del = document.createElement("button");
+            del.className = "rel-del"; del.textContent = "Remove";
+            del.title = "Remove this relationship";
+            del.addEventListener("click", () => deleteRelationship(r));
+            li.appendChild(del);
+          }
+          ul.appendChild(li);
+        }
+        wrap.appendChild(ul);
+      } else {
+        const p = document.createElement("p");
+        p.className = "placeholder";
+        p.textContent = "No manual relationships.";
+        wrap.appendChild(p);
+      }
+
+      detail.appendChild(wrap);
+    }
+
+    // --- Asset form (create / edit) ------------------------------------------------------------------
+    function openAssetForm(asset) {
+      editingId = asset ? asset.id : null;
+      el("assetError").hidden = true;
+      el("assetFormTitle").textContent = asset ? "Edit asset" : "New asset";
+      el("assetSubmit").textContent = asset ? "Save changes" : "Create asset";
+
+      const idField = el("fId");
+      // Id is the asset's stable key: settable on create, fixed on edit (PUT requires path/body match).
+      idField.readOnly = !!asset;
+      el("idHint").textContent = asset
+        ? "The identifier is fixed once an asset exists."
+        : "A stable, unique id. Suggested from the name; edit if you like.";
+
+      el("fKind").value = asset ? asset.kind : "system";
+      el("fLifecycle").value = asset ? asset.lifecycle : "draft";
+      el("fName").value = asset ? (asset.name || "") : "";
+      idField.value = asset ? asset.id : "";
+      el("fDescription").value = asset ? (asset.description || "") : "";
+      idField.dataset.touched = asset ? "1" : ""; // On create, keep auto-suggesting until the user edits id.
+
+      // Kind-specific held facts.
+      const app = (asset && asset.application) || {};
+      const srv = (asset && asset.server) || {};
+      const inf = (asset && asset.infrastructure) || {};
+      el("fAppVersion").value = app.version || "";
+      el("fAppVendor").value = app.vendor || "";
+      el("fAppOwner").value = app.businessOwner || "";
+      el("fSrvHostname").value = srv.hostname || "";
+      el("fSrvEnv").value = srv.environment || "";
+      el("fSrvOs").value = srv.operatingSystem || "";
+      el("fInfCategory").value = inf.category || "";
+      el("fInfLocation").value = inf.location || "";
+
+      renderTagRows(asset && asset.tags ? asset.tags : []);
+      syncKindDetails();
+
+      el("assetBackdrop").hidden = false;
+      el("fName").focus();
+    }
+
+    function closeAssetForm() { el("assetBackdrop").hidden = true; editingId = null; }
+
+    function syncKindDetails() {
+      const kind = el("fKind").value;
+      el("detailsApplication").hidden = kind !== "application";
+      el("detailsServer").hidden = kind !== "server";
+      el("detailsInfrastructure").hidden = kind !== "infrastructure";
+    }
+
+    function renderTagRows(tags) {
+      const host = el("tagRows");
+      host.innerHTML = "";
+      for (const t of tags) addTagRow(t.key, t.value);
+    }
+
+    function addTagRow(key = "", value = "") {
+      const host = el("tagRows");
+      const row = document.createElement("div");
+      row.className = "tag-row";
+      const k = document.createElement("input");
+      k.type = "text"; k.placeholder = "key"; k.value = key || ""; k.className = "tag-key";
+      const v = document.createElement("input");
+      v.type = "text"; v.placeholder = "value (optional)"; v.value = value || ""; v.className = "tag-value";
+      const rm = document.createElement("button");
+      rm.type = "button"; rm.className = "remove"; rm.textContent = "×"; rm.title = "Remove tag";
+      rm.addEventListener("click", () => row.remove());
+      row.append(k, v, rm);
+      host.appendChild(row);
+    }
+
+    function collectTags() {
+      const tags = [];
+      el("tagRows").querySelectorAll(".tag-row").forEach(row => {
+        const key = row.querySelector(".tag-key").value.trim();
+        const value = row.querySelector(".tag-value").value.trim();
+        if (key) tags.push(value ? { key, value } : { key });
+      });
+      return tags;
+    }
+
+    // Build a nullable held-detail object; return null if the user left every field blank.
+    function detailOrNull(map) {
+      const out = {};
+      let any = false;
+      for (const [k, v] of Object.entries(map)) {
+        const t = (v || "").trim();
+        if (t) { out[k] = t; any = true; }
+      }
+      return any ? out : null;
+    }
+
+    function buildAssetBody() {
+      const kind = el("fKind").value;
+      const body = {
+        id: el("fId").value.trim(),
+        kind,
+        name: el("fName").value.trim(),
+        lifecycle: el("fLifecycle").value,
+      };
+      const desc = el("fDescription").value.trim();
+      if (desc) body.description = desc;
+      const tags = collectTags();
+      if (tags.length) body.tags = tags;
+
+      if (kind === "application") {
+        const d = detailOrNull({ version: el("fAppVersion").value, vendor: el("fAppVendor").value, businessOwner: el("fAppOwner").value });
+        if (d) body.application = d;
+      } else if (kind === "server") {
+        const d = detailOrNull({ hostname: el("fSrvHostname").value, environment: el("fSrvEnv").value, operatingSystem: el("fSrvOs").value });
+        if (d) body.server = d;
+      } else if (kind === "infrastructure") {
+        const d = detailOrNull({ category: el("fInfCategory").value, location: el("fInfLocation").value });
+        if (d) body.infrastructure = d;
+      }
+      return body;
+    }
+
+    async function submitAsset(ev) {
+      ev.preventDefault();
+      const body = buildAssetBody();
+      if (!body.id) { showFormError("assetError", "An identifier is required."); return; }
+
+      const submit = el("assetSubmit");
+      submit.disabled = true;
+      try {
+        const editing = editingId !== null;
+        const url = editing ? `/api/v1/assets/${encodeURIComponent(editingId)}` : "/api/v1/assets";
+        const res = await fetch(url, {
+          method: editing ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) { showFormError("assetError", await apiError(res)); return; }
+        closeAssetForm();
+        selectedId = body.id;
+        await load();
+        if (landscape.assets.some(a => a.id === body.id)) select(body.id);
+        toast(editing ? "Asset updated." : "Asset created.");
+      } catch (err) {
+        showFormError("assetError", "Could not reach the API (" + err.message + ").");
+      } finally {
+        submit.disabled = false;
+      }
+    }
+
+    async function deleteAsset(a) {
+      if (!confirm(`Delete "${a.name || a.id}"? This also removes its relationships from the map.`)) return;
+      try {
+        const res = await fetch(`/api/v1/assets/${encodeURIComponent(a.id)}`, { method: "DELETE" });
+        if (!res.ok && res.status !== 404) { toast(await apiError(res), true); return; }
+        if (selectedId === a.id) selectedId = null;
+        await load();
+        el("detail").innerHTML = '<p class="placeholder">Select an asset in the map to inspect it.</p>';
+        toast("Asset deleted.");
+      } catch (err) {
+        toast("Could not reach the API (" + err.message + ").", true);
+      }
+    }
+
+    // --- Relationship form ---------------------------------------------------------------------------
+    function openRelForm(fromId) {
+      el("relError").hidden = true;
+      el("rFrom").value = label(fromId);
+      el("rFrom").dataset.fromId = fromId;
+      el("rType").value = "runs-on";
+      el("rNote").value = "";
+
+      const to = el("rTo");
+      to.innerHTML = "";
+      const others = landscape.assets.filter(a => a.id !== fromId);
+      if (others.length === 0) {
+        const opt = document.createElement("option");
+        opt.value = ""; opt.textContent = "No other assets to link to";
+        to.appendChild(opt);
+      } else {
+        for (const a of others) {
+          const opt = document.createElement("option");
+          opt.value = a.id; opt.textContent = `${a.name || a.id} (${a.kind})`;
+          to.appendChild(opt);
+        }
+      }
+      el("relBackdrop").hidden = false;
+    }
+
+    function closeRelForm() { el("relBackdrop").hidden = true; }
+
+    async function submitRelationship(ev) {
+      ev.preventDefault();
+      const fromId = el("rFrom").dataset.fromId;
+      const toId = el("rTo").value;
+      if (!toId) { showFormError("relError", "There is no other asset to link to yet."); return; }
+
+      const note = el("rNote").value.trim();
+      const body = {
+        // Client-supplied id, like the API's other create surfaces. Opaque and unique.
+        id: "rel-" + Math.random().toString(36).slice(2, 10),
+        fromId,
+        toId,
+        type: el("rType").value,
+      };
+      if (note) body.description = note;
+
+      const submit = el("relSubmit");
+      submit.disabled = true;
+      try {
+        const res = await fetch("/api/v1/relationships", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) { showFormError("relError", await apiError(res)); return; }
+        closeRelForm();
+        await load();
+        if (landscape.assets.some(a => a.id === fromId)) select(fromId);
+        toast("Relationship created.");
+      } catch (err) {
+        showFormError("relError", "Could not reach the API (" + err.message + ").");
+      } finally {
+        submit.disabled = false;
+      }
+    }
+
+    async function deleteRelationship(r) {
+      if (!confirm(`Remove the "${REL_LABELS[r.type] || r.type}" link between ${label(r.fromId)} and ${label(r.toId)}?`)) return;
+      try {
+        const res = await fetch(`/api/v1/relationships/${encodeURIComponent(r.id)}`, { method: "DELETE" });
+        if (!res.ok && res.status !== 404) { toast(await apiError(res), true); return; }
+        const keep = selectedId;
+        await load();
+        if (keep && landscape.assets.some(a => a.id === keep)) select(keep);
+        toast("Relationship removed.");
+      } catch (err) {
+        toast("Could not reach the API (" + err.message + ").", true);
+      }
+    }
+
+    // --- Shared helpers ------------------------------------------------------------------------------
+    // Turn an API error response into a calm, human message. Problems are RFC 7807 (detail + optional
+    // reasonCode); a 403 role_missing is surfaced as a permission message, never a raw crash.
+    async function apiError(res) {
+      let detail = "", reason = "";
+      try {
+        const p = await res.json();
+        detail = p.detail || p.title || "";
+        reason = p.reasonCode || "";
+      } catch { /* non-JSON body */ }
+      if (res.status === 403) {
+        return detail || "You do not have permission to make this change" +
+          (reason ? ` (${reason}).` : ".");
+      }
+      if (!detail) detail = "The API rejected the request (HTTP " + res.status + ").";
+      return detail;
+    }
+
+    function showFormError(id, message) {
+      const box = el(id);
+      box.textContent = message;
+      box.hidden = false;
+    }
+
+    let toastTimer = null;
+    function toast(message, isError = false) {
+      const t = el("toast");
+      t.textContent = message;
+      t.classList.toggle("err", isError);
+      t.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
     }
 
     function label(id) {
       const a = landscape.assets.find(x => x.id === id);
-      return escapeHtml(a ? (a.name || a.id) : id);
+      return a ? (a.name || a.id) : id;
     }
     function truncate(s, n) { return s.length > n ? s.slice(0, n - 1) + "…" : s; }
     function labelCase(s) { return s.replace(/([A-Z])/g, " $1").replace(/^./, c => c.toUpperCase()).trim(); }
+    function slugify(s) {
+      return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+    }
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     }
 
-    // Toolbar wiring.
+    // --- Wiring --------------------------------------------------------------------------------------
     document.querySelectorAll(".chip").forEach(chip => {
       chip.addEventListener("click", () => {
         filter = chip.dataset.kind;
@@ -384,6 +1007,7 @@
       });
     });
     el("refresh").addEventListener("click", load);
+    el("newAsset").addEventListener("click", () => openAssetForm());
     el("export").addEventListener("click", () => {
       const blob = new Blob([JSON.stringify(landscape, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -391,9 +1015,35 @@
       a.href = url; a.download = "atlas-landscape.json"; a.click();
       URL.revokeObjectURL(url);
     });
+
+    // Asset form wiring.
+    el("assetForm").addEventListener("submit", submitAsset);
+    el("fKind").addEventListener("change", syncKindDetails);
+    el("addTag").addEventListener("click", () => addTagRow());
+    el("fId").addEventListener("input", () => { el("fId").dataset.touched = "1"; });
+    el("fName").addEventListener("input", () => {
+      // Suggest an id from the name until the user edits the id field themselves (create only).
+      if (editingId === null && el("fId").dataset.touched !== "1") el("fId").value = slugify(el("fName").value);
+    });
+    document.querySelectorAll("[data-close-asset]").forEach(b => b.addEventListener("click", closeAssetForm));
+    el("assetBackdrop").addEventListener("click", e => { if (e.target === el("assetBackdrop")) closeAssetForm(); });
+
+    // Relationship form wiring.
+    el("relForm").addEventListener("submit", submitRelationship);
+    document.querySelectorAll("[data-close-rel]").forEach(b => b.addEventListener("click", closeRelForm));
+    el("relBackdrop").addEventListener("click", e => { if (e.target === el("relBackdrop")) closeRelForm(); });
+
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape") {
+        if (!el("assetBackdrop").hidden) closeAssetForm();
+        if (!el("relBackdrop").hidden) closeRelForm();
+      }
+    });
     window.addEventListener("resize", () => { if (landscape.assets.length) render(); });
 
-    load();
+    // Learn the principal's capability first, then draw — so the first paint already reflects author vs.
+    // read-only and never flashes controls a read-only user may not use.
+    (async () => { await loadCapabilities(); await load(); })();
   </script>
 </body>
 </html>
