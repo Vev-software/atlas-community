@@ -1,0 +1,34 @@
+# Atlas Community Edition — one-command self-host.
+#
+#   docker compose up --build       (or: podman compose up --build)
+#
+# The build context is the monorepo root (..), so the temporary sibling contracts feed
+# (.local-nuget) is available to the build — see Dockerfile. Once Vev.Atlas.Contracts is on
+# nuget.org (atlas#10), the context can narrow to this repo.
+name: atlas-community
+
+services:
+  atlas:
+    build:
+      context: ..
+      dockerfile: atlas-community/Dockerfile
+    image: atlas-community:local
+    ports:
+      - "8080:8080"
+    environment:
+      # The catalogue lives in SQLite on the mounted volume, so it survives container restarts.
+      ConnectionStrings__Atlas: "Data Source=/data/atlas.db"
+    volumes:
+      - atlas-data:/data
+    restart: unless-stopped
+    # Defined here as well as in the Dockerfile so health works regardless of image format —
+    # podman builds OCI images by default, which drop the Dockerfile HEALTHCHECK.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  atlas-data:
