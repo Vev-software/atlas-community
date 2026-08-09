@@ -82,7 +82,13 @@ public sealed class AssetService(
         return asset;
     }
 
-    /// <summary>Delete an asset. Requires write authorization; emits an audit event when something was removed.</summary>
+    /// <summary>
+    /// Delete an asset. Requires write authorization; emits an audit event when something was removed.
+    /// Cascades to the asset's manual relationships so the "both endpoints exist" invariant that
+    /// <see cref="CreateRelationshipAsync"/> enforces on create is not left broken on delete — otherwise a
+    /// relationship would dangle against a missing asset and leak into the portable landscape document. Each
+    /// removed relationship is audited in its own right.
+    /// </summary>
     public async Task<bool> DeleteAssetAsync(string id, CancellationToken ct = default)
     {
         var resource = AssetResource(id);
@@ -91,6 +97,12 @@ public sealed class AssetService(
         var removed = await repository.DeleteAssetAsync(context.Tenant, id, ct);
         if (removed)
         {
+            var orphaned = await repository.DeleteRelationshipsForAssetAsync(context.Tenant, id, ct);
+            foreach (var relationshipId in orphaned)
+            {
+                await EmitAsync("atlas.relationship.deleted", RelationshipResource(relationshipId), ct);
+            }
+
             await EmitAsync("atlas.asset.deleted", resource, ct);
         }
 

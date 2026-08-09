@@ -76,6 +76,31 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
     }
 
     [Fact]
+    public async Task Deleting_an_asset_removes_its_relationships()
+    {
+        var client = Client(tenant: "t-cascade");
+        await client.PostAsJsonAsync("/api/v1/assets", SampleApp("app"), Json);
+        await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("srv", AssetKind.Server, "srv-01", Lifecycle.Active), Json);
+        await client.PostAsJsonAsync("/api/v1/relationships",
+            new Relationship("r1", "app", "srv", RelationshipType.RunsOn), Json);
+
+        var deleted = await client.DeleteAsync("/api/v1/assets/srv");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+
+        var landscape = await client.GetFromJsonAsync<LandscapeDocument>("/api/v1/landscape", Json);
+        Assert.NotNull(landscape);
+        Assert.DoesNotContain(landscape!.Assets, a => a.Id == "srv");
+        Assert.Empty(landscape.Relationships);
+
+        var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
+        Assert.Contains(audit.Events, e =>
+            e.Action == "atlas.relationship.deleted" &&
+            e.TenantId == "t-cascade" &&
+            e.Resource == "atlas:relationship/r1");
+    }
+
+    [Fact]
     public async Task Assets_are_isolated_by_tenant()
     {
         await Client(tenant: "tenant-a").PostAsJsonAsync("/api/v1/assets", SampleApp("shared-id"), Json);

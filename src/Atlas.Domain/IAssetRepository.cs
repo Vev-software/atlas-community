@@ -37,4 +37,10 @@ public interface IAssetRepository
 
     /// <summary>Delete a relationship by id; returns false if it did not exist.</summary>
     Task<bool> DeleteRelationshipAsync(TenantContext tenant, string id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Delete every relationship that touches an asset (as source or target) and return the ids removed.
+    /// Used to keep the "both endpoints exist" invariant when an asset is deleted; the caller audits each id.
+    /// </summary>
+    Task<ImmutableArray<string>> DeleteRelationshipsForAssetAsync(TenantContext tenant, string assetId, CancellationToken ct = default);
 }
