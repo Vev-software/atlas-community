@@ -433,3 +433,4 @@ src/**/atlas.db
 *.db
 *.db-shm
 *.db-wal
+.gstack/

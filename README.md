@@ -11,8 +11,8 @@ The paid capabilities that *work with* that data live in **Atlas Enterprise**
 > **Status: early.** The Community runtime foundation is in place — a tenant-scoped asset
 > catalogue (CRUD, manual relationships, tags) over an API-first .NET stack, on the Fabric
 > contract shim, with architecture fitness tests that fail the build on a boundary violation.
-> Basic visualisation and self-hosted packaging are still landing; treat anything not yet in
-> the source tree as intended direction rather than a shipped feature.
+> Self-hosted packaging (Docker + Compose) is in the tree; basic visualisation is still landing.
+> Treat anything not yet in the source tree as intended direction rather than a shipped feature.
 
 ## What you get (free, self-hostable)
 
@@ -64,6 +64,19 @@ Compatibility and versioning expectations for exported documents are in
   AI through VEV's [Portic](https://github.com/Vev-software/portic-community) gateway is an
   optional integration, never a requirement.
 - **API and SDK first.** The UI orchestrates the API; it is never the only way in.
+
+## Run it (self-hosted)
+
+One command brings up the API and a persistent SQLite catalogue — with Docker or Podman:
+
+```bash
+docker compose up --build          # or: podman compose up --build
+curl http://localhost:8080/health  # {"status":"ok"}
+```
+
+Your catalogue persists on a named volume across restarts. Full instructions — including the
+temporary local contracts-feed step until `Vev.Atlas.Contracts` is on nuget.org — are in
+[`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md).
 
 ## Repository layout
 
