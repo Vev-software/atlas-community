@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Vev.Atlas.Contracts;
+using Vev.Atlas.Domain.Portability;
 using Vev.Atlas.Fabric;
 
 namespace Vev.Atlas.Domain;
@@ -132,7 +133,163 @@ public sealed class AssetService(
         return new LandscapeDocument(
             Assets: assets,
             Relationships: relationships,
-            ExportedAt: clock.GetUtcNow());
+            ExportedAt: clock.GetUtcNow(),
+            Generator: LandscapeProvenance.Generator);
+    }
+
+    /// <summary>
+    /// Apply a portable <see cref="ImportBundle"/> into the current tenant's catalogue — the import
+    /// half of customer-owned portability (issue #12, handbook 11 §2-3). This is the core apply seam:
+    /// it takes the <b>canonical contract form</b>, so any community format adapter that translates its
+    /// format to an <see cref="ImportBundle"/> composes without touching this logic.
+    ///
+    /// <para>Every imported asset is matched by a stable catalogue id — its explicit
+    /// <see cref="ImportAsset.Id"/> when given, otherwise its <see cref="ImportAsset.ExternalId"/> — so
+    /// re-importing the same bundle is idempotent (Merge upserts; Replace makes the tenant match the
+    /// bundle). Relationship endpoints must resolve to an asset in the bundle or already in the
+    /// catalogue; an unresolved reference is rejected before anything is written. Requires write
+    /// authorization; emits an audit event.</para>
+    /// </summary>
+    public async Task<ImportResult> ImportLandscapeAsync(ImportBundle bundle, CancellationToken ct = default)
+    {
+        // A bulk write across the whole tenant catalogue: one write authorization for the operation.
+        AuthorizeWrite(AssetResource("*"));
+        var tenant = context.Tenant;
+
+        // --- Resolve + validate first; do not mutate anything until the whole bundle is known good. ---
+
+        // Map every reference an asset carries (its id and/or externalId) to the stable catalogue id.
+        var referenceToId = new Dictionary<string, string>(StringComparer.Ordinal);
+        var resolvedAssets = new List<Asset>(bundle.Assets.Length);
+        foreach (var imported in bundle.Assets)
+        {
+            var id = imported.Id ?? imported.ExternalId
+                ?? throw new CatalogueValidationException(
+                    $"Imported asset '{imported.Name}' must carry an id or an externalId.");
+
+            if (imported.Id is not null) referenceToId[imported.Id] = id;
+            if (imported.ExternalId is not null) referenceToId[imported.ExternalId] = id;
+
+            resolvedAssets.Add(new Asset(
+                id, imported.Kind, imported.Name, imported.Lifecycle, imported.Description,
+                imported.Tags, imported.Application, imported.Server, imported.Infrastructure));
+        }
+
+        // Resolve relationship endpoints against the bundle first, then the existing catalogue. An
+        // endpoint that resolves to neither is a hard error — reject the whole bundle, write nothing.
+        var resolvedRelationships = new List<Relationship>(bundle.Relationships.Length);
+        foreach (var relationship in bundle.Relationships)
+        {
+            var from = await ResolveEndpointAsync(tenant, relationship.FromRef, referenceToId, ct);
+            var to = await ResolveEndpointAsync(tenant, relationship.ToRef, referenceToId, ct);
+
+            // Deterministic id when the bundle does not supply one, so re-import stays idempotent.
+            var id = relationship.Id ?? $"{from}~{relationship.Type}~{to}";
+            resolvedRelationships.Add(new Relationship(id, from, to, relationship.Type, relationship.Description));
+        }
+
+        // --- Apply. ---
+
+        var assetsDeleted = 0;
+        if (bundle.Mode == ImportMode.Replace)
+        {
+            assetsDeleted = await PruneToBundleAsync(tenant, resolvedAssets, resolvedRelationships, ct);
+        }
+
+        var (created, updated) = await UpsertAssetsAsync(tenant, resolvedAssets, ct);
+        await UpsertRelationshipsAsync(tenant, resolvedRelationships, ct);
+
+        await EmitAsync("atlas.landscape.imported", AssetResource("*"), ct);
+
+        return new ImportResult(bundle.Mode, created, updated, assetsDeleted, resolvedRelationships.Count);
+    }
+
+    private async Task<string> ResolveEndpointAsync(
+        TenantContext tenant, string reference, IReadOnlyDictionary<string, string> referenceToId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            throw new CatalogueValidationException("A relationship is missing a fromRef or toRef endpoint.");
+        }
+
+        if (referenceToId.TryGetValue(reference, out var mapped))
+        {
+            return mapped;
+        }
+
+        if (await repository.AssetExistsAsync(tenant, reference, ct))
+        {
+            return reference;
+        }
+
+        throw new CatalogueValidationException(
+            $"Relationship references unknown asset '{reference}' — not in the bundle or the catalogue.");
+    }
+
+    private async Task<(int Created, int Updated)> UpsertAssetsAsync(
+        TenantContext tenant, IReadOnlyList<Asset> assets, CancellationToken ct)
+    {
+        var created = 0;
+        var updated = 0;
+        foreach (var asset in assets)
+        {
+            if (await repository.AssetExistsAsync(tenant, asset.Id, ct))
+            {
+                await repository.UpdateAssetAsync(tenant, asset, ct);
+                updated++;
+            }
+            else
+            {
+                await repository.AddAssetAsync(tenant, asset, ct);
+                created++;
+            }
+        }
+
+        return (created, updated);
+    }
+
+    private async Task UpsertRelationshipsAsync(
+        TenantContext tenant, IReadOnlyList<Relationship> relationships, CancellationToken ct)
+    {
+        // The repository port carries no relationship update, so upsert is delete-then-add by id.
+        var existing = (await repository.ListRelationshipsAsync(tenant, ct))
+            .Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var relationship in relationships)
+        {
+            if (existing.Contains(relationship.Id))
+            {
+                await repository.DeleteRelationshipAsync(tenant, relationship.Id, ct);
+            }
+
+            await repository.AddRelationshipAsync(tenant, relationship, ct);
+        }
+    }
+
+    private async Task<int> PruneToBundleAsync(
+        TenantContext tenant, IReadOnlyList<Asset> assets, IReadOnlyList<Relationship> relationships, CancellationToken ct)
+    {
+        var keepAssets = assets.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+        var keepRelationships = relationships.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+
+        // Drop relationships not in the bundle first, then the assets they might have pointed at.
+        foreach (var relationship in await repository.ListRelationshipsAsync(tenant, ct))
+        {
+            if (!keepRelationships.Contains(relationship.Id))
+            {
+                await repository.DeleteRelationshipAsync(tenant, relationship.Id, ct);
+            }
+        }
+
+        var deleted = 0;
+        foreach (var asset in await repository.ListAssetsAsync(tenant, kind: null, ct))
+        {
+            if (!keepAssets.Contains(asset.Id) && await repository.DeleteAssetAsync(tenant, asset.Id, ct))
+            {
+                deleted++;
+            }
+        }
+
+        return deleted;
     }
 
     /// <summary>
