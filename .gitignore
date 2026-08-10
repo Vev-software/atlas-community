@@ -433,3 +433,6 @@ src/**/atlas.db
 *.db
 *.db-shm
 *.db-wal
+
+# Agent/session tooling artifacts (not source)
+.gstack/
