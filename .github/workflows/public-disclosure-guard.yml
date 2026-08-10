@@ -1,0 +1,87 @@
+name: public-disclosure-guard
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch origin "${{ github.base_ref }}" --depth=1
+
+      - name: Scan PR body and public docs
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import subprocess
+          import sys
+
+          patterns = [
+              r"\batlas-enterprise\b",
+              r"\bportic-enterprise\b",
+              r"\bfabric-enterprise\b",
+              r"\blicen[cs]e server\b",
+              r"\bsigned entitlement\b",
+              r"\bphone-home\b",
+              r"\bnode-lock(?:ing)?\b",
+              r"\benterprise trial\b",
+              r"\btrial tenant\b",
+              r"\bVEV-hosted\b",
+              r"\bgenuinely unhackable\b",
+              r"\bhardened, not unbreakable\b",
+          ]
+          combined = re.compile("|".join(patterns), re.IGNORECASE)
+
+          failures = []
+          pr_text = (os.getenv("PR_TITLE", "") + "\n" + os.getenv("PR_BODY", "")).strip()
+          if pr_text:
+              for line in pr_text.splitlines():
+                  if combined.search(line):
+                      failures.append(f"PR text: {line.strip()}")
+
+          diff_files = subprocess.check_output(
+              ["git", "diff", "--name-only", "FETCH_HEAD...HEAD"],
+              text=True,
+          ).splitlines()
+
+          public_files = [
+              path for path in diff_files
+              if path.endswith(".md")
+              or path == "AGENTS.md"
+              or path.startswith(".github/")
+          ]
+
+          if public_files:
+              patch = subprocess.check_output(
+                  ["git", "diff", "--unified=0", "FETCH_HEAD...HEAD", "--", *public_files],
+                  text=True,
+              )
+              for line in patch.splitlines():
+                  if line.startswith("+++") or not line.startswith("+"):
+                      continue
+                  if combined.search(line[1:]):
+                      failures.append(f"Added public text: {line[1:].strip()}")
+
+          if failures:
+              print("Public disclosure guard failed. Remove or generalise these references:")
+              for item in failures:
+                  print(f"- {item}")
+              sys.exit(1)
+
+          print("Public disclosure guard passed.")
+          PY

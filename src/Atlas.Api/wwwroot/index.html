@@ -30,6 +30,9 @@
       --kind-application: #0e9f6e;
       --kind-server: #d97706;
       --kind-infrastructure: #2563eb;
+      --kind-data-area: #b45309;
+      --kind-dataset: #0f766e;
+      --kind-column: #7c3aed;
       --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .10);
       --shadow-lg: 0 10px 25px rgba(16, 24, 40, .12), 0 4px 10px rgba(16, 24, 40, .08);
     }
@@ -249,6 +252,9 @@
     <button class="chip" data-kind="application"><span class="dot" style="background:var(--kind-application)"></span>Applications</button>
     <button class="chip" data-kind="server"><span class="dot" style="background:var(--kind-server)"></span>Servers</button>
     <button class="chip" data-kind="infrastructure"><span class="dot" style="background:var(--kind-infrastructure)"></span>Infrastructure</button>
+    <button class="chip" data-kind="data-area"><span class="dot" style="background:var(--kind-data-area)"></span>Data areas</button>
+    <button class="chip" data-kind="dataset"><span class="dot" style="background:var(--kind-dataset)"></span>Datasets</button>
+    <button class="chip" data-kind="column"><span class="dot" style="background:var(--kind-column)"></span>Columns</button>
     <span class="count" id="count"></span>
     <button class="primary" id="newAsset" hidden title="Add a new asset to the catalogue"><span class="plus">+</span>New asset</button>
     <button class="action" id="refresh" title="Reload the landscape">Refresh</button>
@@ -281,6 +287,9 @@
                 <option value="application">Application</option>
                 <option value="server">Server</option>
                 <option value="infrastructure">Infrastructure</option>
+                <option value="data-area">Data area</option>
+                <option value="dataset">Dataset</option>
+                <option value="column">Column</option>
               </select>
             </div>
             <div class="field">
@@ -330,6 +339,31 @@
               <div class="field"><label for="fInfLocation">Location</label><input id="fInfLocation" type="text" autocomplete="off" placeholder="e.g. eu-west-1" /></div>
             </div>
           </div>
+          <div id="detailsDataArea" class="kind-details" hidden>
+            <div class="section-label">Data area details</div>
+            <div class="field"><label for="fDaRealisation">Realisation</label><input id="fDaRealisation" type="text" autocomplete="off" placeholder="e.g. microservice" /></div>
+          </div>
+          <div id="detailsDataset" class="kind-details" hidden>
+            <div class="section-label">Dataset details</div>
+            <div class="row2">
+              <div class="field"><label for="fDsPhysicalName">Physical name</label><input id="fDsPhysicalName" type="text" autocomplete="off" placeholder="e.g. dbo.customers" /></div>
+              <div class="field"><label for="fDsOwner">Owner</label><input id="fDsOwner" type="text" autocomplete="off" placeholder="e.g. CRM team" /></div>
+            </div>
+          </div>
+          <div id="detailsColumn" class="kind-details" hidden>
+            <div class="section-label">Column details</div>
+            <div class="row2">
+              <div class="field"><label for="fColDataType">Data type</label><input id="fColDataType" type="text" autocomplete="off" placeholder="e.g. uuid" /></div>
+              <div class="field">
+                <label for="fColNullable">Nullable</label>
+                <select id="fColNullable">
+                  <option value="">Unknown</option>
+                  <option value="false">No</option>
+                  <option value="true">Yes</option>
+                </select>
+              </div>
+            </div>
+          </div>
 
           <div class="section-label">Tags</div>
           <div id="tagRows"></div>
@@ -366,6 +400,7 @@
               <option value="connects-to">connects to</option>
               <option value="depends-on">depends on</option>
               <option value="part-of">part of</option>
+              <option value="joins-on">joins on</option>
             </select>
           </div>
           <div class="field">
@@ -389,16 +424,19 @@
   <div id="toast" hidden></div>
 
   <script>
-    const KINDS = ["system", "application", "server", "infrastructure"];
+    const KINDS = ["system", "application", "server", "infrastructure", "data-area", "dataset", "column"];
     const KIND_COLOR = {
       system: getComputedStyle(document.documentElement).getPropertyValue("--kind-system").trim(),
       application: getComputedStyle(document.documentElement).getPropertyValue("--kind-application").trim(),
       server: getComputedStyle(document.documentElement).getPropertyValue("--kind-server").trim(),
       infrastructure: getComputedStyle(document.documentElement).getPropertyValue("--kind-infrastructure").trim(),
+      "data-area": getComputedStyle(document.documentElement).getPropertyValue("--kind-data-area").trim(),
+      dataset: getComputedStyle(document.documentElement).getPropertyValue("--kind-dataset").trim(),
+      column: getComputedStyle(document.documentElement).getPropertyValue("--kind-column").trim(),
     };
     const REL_LABELS = {
       "runs-on": "runs on", "hosts": "hosts", "connects-to": "connects to",
-      "depends-on": "depends on", "part-of": "part of",
+      "depends-on": "depends on", "part-of": "part of", "joins-on": "joins on",
     };
     const SVGNS = "http://www.w3.org/2000/svg";
 
@@ -606,7 +644,7 @@
       const a = landscape.assets.find(x => x.id === id);
       if (!a) return;
       const rels = landscape.relationships.filter(r => r.fromId === id || r.toId === id);
-      const d = a.application || a.server || a.infrastructure || null;
+      const d = a.application || a.server || a.infrastructure || a.dataArea || a.dataset || a.column || null;
       const detail = el("detail");
       detail.innerHTML = "";
 
@@ -739,6 +777,9 @@
       const app = (asset && asset.application) || {};
       const srv = (asset && asset.server) || {};
       const inf = (asset && asset.infrastructure) || {};
+      const da = (asset && asset.dataArea) || {};
+      const ds = (asset && asset.dataset) || {};
+      const col = (asset && asset.column) || {};
       el("fAppVersion").value = app.version || "";
       el("fAppVendor").value = app.vendor || "";
       el("fAppOwner").value = app.businessOwner || "";
@@ -747,6 +788,11 @@
       el("fSrvOs").value = srv.operatingSystem || "";
       el("fInfCategory").value = inf.category || "";
       el("fInfLocation").value = inf.location || "";
+      el("fDaRealisation").value = da.realisation || "";
+      el("fDsPhysicalName").value = ds.physicalName || "";
+      el("fDsOwner").value = ds.owner || "";
+      el("fColDataType").value = col.dataType || "";
+      el("fColNullable").value = col.nullable === true ? "true" : col.nullable === false ? "false" : "";
 
       renderTagRows(asset && asset.tags ? asset.tags : []);
       syncKindDetails();
@@ -762,6 +808,9 @@
       el("detailsApplication").hidden = kind !== "application";
       el("detailsServer").hidden = kind !== "server";
       el("detailsInfrastructure").hidden = kind !== "infrastructure";
+      el("detailsDataArea").hidden = kind !== "data-area";
+      el("detailsDataset").hidden = kind !== "dataset";
+      el("detailsColumn").hidden = kind !== "column";
     }
 
     function renderTagRows(tags) {
@@ -828,6 +877,20 @@
       } else if (kind === "infrastructure") {
         const d = detailOrNull({ category: el("fInfCategory").value, location: el("fInfLocation").value });
         if (d) body.infrastructure = d;
+      } else if (kind === "data-area") {
+        const d = detailOrNull({ realisation: el("fDaRealisation").value });
+        if (d) body.dataArea = d;
+      } else if (kind === "dataset") {
+        const d = detailOrNull({ physicalName: el("fDsPhysicalName").value, owner: el("fDsOwner").value });
+        if (d) body.dataset = d;
+      } else if (kind === "column") {
+        const d = {};
+        const dataType = el("fColDataType").value.trim();
+        const nullable = el("fColNullable").value;
+        if (dataType) d.dataType = dataType;
+        if (nullable === "true") d.nullable = true;
+        else if (nullable === "false") d.nullable = false;
+        if (Object.keys(d).length) body.column = d;
       }
       return body;
     }
@@ -879,23 +942,11 @@
       el("relError").hidden = true;
       el("rFrom").value = label(fromId);
       el("rFrom").dataset.fromId = fromId;
-      el("rType").value = "runs-on";
+      const source = landscape.assets.find(a => a.id === fromId);
+      el("rType").value = defaultRelationshipType(source);
       el("rNote").value = "";
 
-      const to = el("rTo");
-      to.innerHTML = "";
-      const others = landscape.assets.filter(a => a.id !== fromId);
-      if (others.length === 0) {
-        const opt = document.createElement("option");
-        opt.value = ""; opt.textContent = "No other assets to link to";
-        to.appendChild(opt);
-      } else {
-        for (const a of others) {
-          const opt = document.createElement("option");
-          opt.value = a.id; opt.textContent = `${a.name || a.id} (${a.kind})`;
-          to.appendChild(opt);
-        }
-      }
+      populateRelationshipTargets();
       el("relBackdrop").hidden = false;
     }
 
@@ -989,6 +1040,47 @@
       const a = landscape.assets.find(x => x.id === id);
       return a ? (a.name || a.id) : id;
     }
+    function defaultRelationshipType(source) {
+      if (!source) return "runs-on";
+      if (source.kind === "data-area" || source.kind === "dataset" || source.kind === "column") return "part-of";
+      return "runs-on";
+    }
+    function allowedRelationshipTargets(source, type) {
+      const others = landscape.assets.filter(a => a.id !== source.id);
+      if (type === "part-of") {
+        const parentKinds = {
+          application: ["system"],
+          dataset: ["data-area"],
+          column: ["dataset"],
+          "data-area": ["system"],
+        };
+        return parentKinds[source.kind] ? others.filter(a => parentKinds[source.kind].includes(a.kind)) : others;
+      }
+      if (type === "joins-on") {
+        if (source.kind === "column") return others.filter(a => a.kind === "column");
+        if (source.kind === "dataset") return others.filter(a => a.kind === "dataset");
+      }
+      return others;
+    }
+    function populateRelationshipTargets() {
+      const fromId = el("rFrom").dataset.fromId;
+      const source = landscape.assets.find(a => a.id === fromId);
+      const to = el("rTo");
+      to.innerHTML = "";
+      const others = source ? allowedRelationshipTargets(source, el("rType").value) : [];
+      if (others.length === 0) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "No compatible assets to link to";
+        to.appendChild(opt);
+        return;
+      }
+      for (const a of others) {
+        const opt = document.createElement("option");
+        opt.value = a.id; opt.textContent = `${a.name || a.id} (${a.kind})`;
+        to.appendChild(opt);
+      }
+    }
     function truncate(s, n) { return s.length > n ? s.slice(0, n - 1) + "…" : s; }
     function labelCase(s) { return s.replace(/([A-Z])/g, " $1").replace(/^./, c => c.toUpperCase()).trim(); }
     function slugify(s) {
@@ -1030,6 +1122,7 @@
 
     // Relationship form wiring.
     el("relForm").addEventListener("submit", submitRelationship);
+    el("rType").addEventListener("change", populateRelationshipTargets);
     document.querySelectorAll("[data-close-rel]").forEach(b => b.addEventListener("click", closeRelForm));
     el("relBackdrop").addEventListener("click", e => { if (e.target === el("relBackdrop")) closeRelForm(); });
 

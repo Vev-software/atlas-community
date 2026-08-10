@@ -59,6 +59,57 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
     }
 
     [Fact]
+    public async Task Data_layer_assets_and_join_keys_round_trip_through_the_stack()
+    {
+        var client = Client(tenant: "t-data-layer");
+
+        await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("sys-crm", AssetKind.System, "CRM platform", Lifecycle.Active), Json);
+        await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("da-customers", AssetKind.DataArea, "Customer master data", Lifecycle.Active,
+                DataArea: new DataAreaDetails(Realisation: "microservice")), Json);
+        await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("ds-customers", AssetKind.Dataset, "Customers", Lifecycle.Active,
+                Dataset: new DatasetDetails(PhysicalName: "dbo.customers", Owner: "CRM team")), Json);
+        await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("col-customer-id", AssetKind.Column, "customer_id", Lifecycle.Active,
+                Column: new ColumnDetails(DataType: "uuid", Nullable: false)), Json);
+        await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("ds-invoices", AssetKind.Dataset, "Invoices", Lifecycle.Active,
+                Dataset: new DatasetDetails(PhysicalName: "dbo.invoices", Owner: "Finance team")), Json);
+        await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("col-invoice-customer-id", AssetKind.Column, "customer_id", Lifecycle.Active,
+                Column: new ColumnDetails(DataType: "uuid", Nullable: false)), Json);
+
+        await client.PostAsJsonAsync("/api/v1/relationships",
+            new Relationship("r-da", "da-customers", "sys-crm", RelationshipType.PartOf), Json);
+        await client.PostAsJsonAsync("/api/v1/relationships",
+            new Relationship("r-ds", "ds-customers", "da-customers", RelationshipType.PartOf), Json);
+        await client.PostAsJsonAsync("/api/v1/relationships",
+            new Relationship("r-col", "col-customer-id", "ds-customers", RelationshipType.PartOf), Json);
+        await client.PostAsJsonAsync("/api/v1/relationships",
+            new Relationship("r-col-2", "col-invoice-customer-id", "ds-invoices", RelationshipType.PartOf), Json);
+
+        var join = await client.PostAsJsonAsync("/api/v1/relationships",
+            new Relationship("r-key", "col-invoice-customer-id", "col-customer-id", RelationshipType.JoinsOn,
+                "Invoice.customer_id joins Customer.customer_id"), Json);
+
+        Assert.Equal(HttpStatusCode.Created, join.StatusCode);
+
+        var datasets = await client.GetFromJsonAsync<List<Asset>>("/api/v1/assets?kind=dataset", Json);
+        Assert.NotNull(datasets);
+        Assert.Equal(2, datasets!.Count);
+        Assert.All(datasets, asset => Assert.Equal(AssetKind.Dataset, asset.Kind));
+
+        var landscape = await client.GetFromJsonAsync<LandscapeDocument>("/api/v1/landscape", Json);
+        Assert.NotNull(landscape);
+        Assert.Contains(landscape!.Assets, a => a.Id == "da-customers" && a.DataArea?.Realisation == "microservice");
+        Assert.Contains(landscape.Assets, a => a.Id == "ds-customers" && a.Dataset?.PhysicalName == "dbo.customers");
+        Assert.Contains(landscape.Assets, a => a.Id == "col-customer-id" && a.Column?.Nullable == false);
+        Assert.Contains(landscape.Relationships, r => r.Type == RelationshipType.JoinsOn && r.FromId == "col-invoice-customer-id" && r.ToId == "col-customer-id");
+    }
+
+    [Fact]
     public async Task Manual_relationship_requires_both_endpoints_to_exist()
     {
         var client = Client(tenant: "t-rel");
