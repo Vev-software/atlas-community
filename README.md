@@ -39,8 +39,16 @@ Your data is yours, and the map is meant to interoperate with the tools you alre
 
 - **[`atlas-contracts`](https://github.com/Vev-software/atlas-contracts)** — the public data
   model and import/export schemas (Apache-2.0).
+- **Customer-owned export & import** — `GET /api/v1/export` downloads your whole tenant
+  landscape as a portable atlas-contracts document; `POST /api/v1/import` loads a bundle back
+  in (merge or replace). Both run through an explicit **format-adapter seam**, so the core
+  portability boundary is the canonical contract form and nothing else.
 - **Community modules** — open format adapters such as ArchiMate import/export, BPMN import
-  and report exporters, built against the public contracts.
+  and report exporters, built against the public contracts. They compose onto the seam by
+  registering a format adapter — they never change the core boundary.
+
+Compatibility and versioning expectations for exported documents are in
+[`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md#portability-export--import).
 
 ## How Atlas is built
 

@@ -1,5 +1,6 @@
 using Vev.Atlas.Contracts;
 using Vev.Atlas.Domain;
+using Vev.Atlas.Domain.Portability;
 using Vev.Atlas.Fabric;
 
 namespace Vev.Atlas.Api;
@@ -81,6 +82,33 @@ public static class AssetEndpoints
             .WithTags("Landscape")
             .WithName("GetLandscape")
             .WithSummary("Read the whole tenant landscape (assets + relationships) as a portable LandscapeDocument.");
+
+        // Portability surface (issue #12): customer-owned export + import in the published contract form.
+        // Both endpoints route through the format-adapter seam (LandscapeFormatRegistry), so a future
+        // community adapter (ArchiMate/BPMN/report) is added by registering an ILandscapeExporter/Importer,
+        // never by touching the core boundary here.
+        var portability = app.MapGroup("/api/v1").WithTags("Portability");
+
+        portability.MapGet("/export", async (string? format, AssetService service, LandscapeFormatRegistry formats, CancellationToken ct) =>
+        {
+            var exporter = formats.ResolveExporter(format);
+            var landscape = await service.GetLandscapeAsync(ct);
+            var bytes = exporter.Render(landscape);
+            // Content-Disposition: attachment — the customer's landscape as a portable file they own.
+            return Results.File(bytes, exporter.ContentType, $"atlas-landscape.{exporter.FileExtension}");
+        })
+            .WithName("ExportLandscape")
+            .WithSummary("Export the tenant landscape as a downloadable atlas-contracts document (customer-owned export).");
+
+        portability.MapPost("/import", async (string? format, HttpRequest request, AssetService service, LandscapeFormatRegistry formats, CancellationToken ct) =>
+        {
+            var importer = formats.ResolveImporter(format);
+            var bundle = await importer.ReadAsync(request.Body, ct);
+            var result = await service.ImportLandscapeAsync(bundle, ct);
+            return Results.Ok(result);
+        })
+            .WithName("ImportLandscape")
+            .WithSummary("Import a portable atlas-contracts bundle (Merge upserts; Replace matches the target to the bundle).");
 
         var relationships = app.MapGroup("/api/v1/relationships").WithTags("Relationships");
 

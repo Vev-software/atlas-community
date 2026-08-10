@@ -60,6 +60,74 @@ curl http://localhost:5199/api/v1/assets -H "X-Tenant-Id: demo"
 curl http://localhost:5199/api/v1/does-not-exist -H "X-Tenant-Id: demo"
 ```
 
+## Portability: export & import
+
+Customer-owned portability is a product promise (`README`, handbook `11 §2`), so it lives in the
+runtime as a first-class surface, not an afterthought (issue #12). Everything speaks the published
+`atlas-contracts` form.
+
+```bash
+# Export the whole tenant landscape as a portable, downloadable document (customer-owned export)
+curl -OJ http://localhost:5199/api/v1/export -H "X-Tenant-Id: demo"   # → atlas-landscape.json
+
+# Import a bundle back in. mode "merge" upserts; mode "replace" makes the tenant match the bundle.
+curl -X POST http://localhost:5199/api/v1/import -H "Content-Type: application/json" \
+  -H "X-Tenant-Id: demo" \
+  -d '{
+        "kind": "import",
+        "mode": "merge",
+        "assets": [
+          { "externalId": "srv-01", "kind": "server", "name": "srv-01", "lifecycle": "active" }
+        ],
+        "relationships": []
+      }'
+```
+
+- **Export** (`GET /api/v1/export`) returns a `LandscapeDocument` (assets + manual relationships)
+  as a `Content-Disposition: attachment` download (`atlas-landscape.json`). It reuses the same read
+  model as `GET /api/v1/landscape`, and stamps `generator` provenance (`"Atlas Community"` + build).
+- **Import** (`POST /api/v1/import`) takes an `ImportBundle`, validates it, and applies it under write
+  authorization with an audit event (`atlas.landscape.imported`). Each asset is matched by a stable
+  catalogue id — its explicit `id` when given, otherwise its `externalId` — so **re-importing the same
+  bundle is idempotent**. Relationship endpoints must resolve to an asset in the bundle or already in
+  the catalogue; an unresolved reference rejects the whole bundle (400) before anything is written.
+  - `mode: merge` upserts the assets/relationships in the bundle; everything else is left alone.
+  - `mode: replace` makes the tenant match the bundle: assets not in the bundle are removed. Use a
+    self-contained bundle (a full export) for replace.
+
+### The format-adapter seam
+
+The **core portability boundary is the canonical contract form** — `LandscapeDocument` out,
+`ImportBundle` in. Format adapters only translate *between* some external format and that canonical
+form; the tenant-scoped, authorized, audited apply logic in `AssetService` never changes. This is the
+explicit seam future community adapters (ArchiMate, BPMN, report) compose onto:
+
+```
+Atlas.Domain/Portability/
+  ILandscapeFormat.cs          ILandscapeExporter / ILandscapeImporter (the seam) + format ids
+  AtlasJsonLandscapeFormat.cs  the canonical atlas-contracts JSON adapter (always registered)
+  LandscapeFormatRegistry.cs   resolves a `?format=` id to its adapter (unknown → 400)
+```
+
+To add a community format, implement `ILandscapeExporter` and/or `ILandscapeImporter` (translating
+your format to/from `LandscapeDocument` / `ImportBundle`), give it a lowercase, kebab-case `Format`
+id, and register it in `AtlasCommunityRegistration`. The `/export` and `/import` endpoints select it
+via `?format=…`. No core code changes.
+
+### Compatibility & versioning
+
+- Every exported `LandscapeDocument` (and every `ImportBundle`) carries a `contractVersion` — the
+  **major** version of the `atlas-contracts` schema it conforms to (currently `"1"`). This is the
+  compatibility contract: a consumer reads `contractVersion` to decide whether it understands the
+  document.
+- Within a major version, the schema only grows in backward-compatible ways (new optional fields), so
+  a newer Community can still import an older document and older readers ignore fields they don't know.
+- A breaking change is a new major version in `atlas-contracts` (gated by an ADR + migration there);
+  the runtime would then accept both during a transition. Wire vocabulary stays kebab-case
+  (`runs-on`, `part-of`, `depends-on`) with lowercase kinds — the contract owns those values.
+- Schema conformance is proven in the test suite by round-tripping exported bytes through the
+  published contract types with the canonical serializer, and by a full export → import round trip.
+
 ## Run with Docker
 
 Atlas Community ships a container image and a Compose file so a self-hoster gets the API, the
