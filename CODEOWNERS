@@ -1,0 +1,10 @@
+# CODEOWNERS — public docs and workflow guardrails
+
+*                                   @Vev-software/atlas-maintainers
+/README.md                          @Vev-software/atlas-maintainers @Vev-software/architecture
+/AGENTS.md                          @Vev-software/atlas-maintainers @Vev-software/architecture
+/docs/                              @Vev-software/atlas-maintainers @Vev-software/architecture
+/docs/adr/                          @Vev-software/architecture
+/.github/PULL_REQUEST_TEMPLATE.md   @Vev-software/atlas-maintainers @Vev-software/security
+/.github/ISSUE_TEMPLATE/            @Vev-software/atlas-maintainers @Vev-software/security
+/.github/workflows/                 @Vev-software/release-engineering

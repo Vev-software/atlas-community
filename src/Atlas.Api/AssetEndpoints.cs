@@ -17,7 +17,7 @@ public static class AssetEndpoints
         assets.MapGet("", async (string? kind, AssetService service, CancellationToken ct) =>
             Results.Ok(await service.ListAssetsAsync(ParseKind(kind), ct)))
             .WithName("ListAssets")
-            .WithSummary("List catalogued assets, optionally filtered by kind (system|application|server|infrastructure).");
+            .WithSummary("List catalogued assets, optionally filtered by kind (system|application|server|infrastructure|data-area|dataset|column).");
 
         assets.MapGet("/{id}", async (string id, AssetService service, CancellationToken ct) =>
             await service.GetAssetAsync(id, ct) is { } asset ? Results.Ok(asset) : Results.NotFound())

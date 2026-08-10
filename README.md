@@ -4,9 +4,9 @@
 
 Atlas is VEV's enterprise-architecture platform, run as open core. This repository is the
 free, self-hostable **Community Edition** (`atlas-community`, AGPL-3.0): it catalogues the
-systems, applications, servers and infrastructure you run and keeps that picture current.
+systems, applications, servers, infrastructure and data layer you run and keeps that picture current.
 The paid capabilities that *work with* that data live in **Atlas Enterprise**
-(`atlas-enterprise`, private) and compose onto this runtime through entitlements.
+(`atlas-enterprise`, private) and are developed separately from this public repository.
 
 > **Status: early.** The Community runtime foundation is in place — a tenant-scoped asset
 > catalogue (CRUD, manual relationships, tags) over an API-first .NET stack, on the Fabric
@@ -18,10 +18,10 @@ The paid capabilities that *work with* that data live in **Atlas Enterprise**
 
 Asset management — a genuinely useful place to hold your landscape, not crippled shareware:
 
-- An asset repository for systems, applications, servers and infrastructure — create, edit,
-  hold and browse.
+- An asset repository for systems, applications, servers, infrastructure, data areas,
+  datasets and columns — create, edit, hold and browse.
 - Basic visualisation of the landscape you hold.
-- Manual relationships and tags on assets.
+- Manual relationships, join keys and tags on assets.
 - Customer-owned data export — a portability guarantee, not an afterthought.
 
 ## Growing into Atlas Enterprise
@@ -30,9 +30,8 @@ The moment you want more than a catalogue — integration mapping, end-of-life i
 application-portfolio management, roadmapping, AI-assisted architecture review, plus
 discovery ingestion, enterprise connectors, governance and hosting — those are paid
 capabilities in **[`atlas-enterprise`](https://github.com/Vev-software/atlas-enterprise)**
-(private). They ship as private modules that compose onto this Community runtime and unlock
-through Fabric entitlements, so growing into them is **a switch, not a migration** — no
-second install, no data move.
+(private). Community and Enterprise share the public data model and contracts, so the public
+edition stays interoperable without documenting proprietary deployment details here.
 
 ## Interoperability & portability
 
@@ -94,7 +93,7 @@ This repository — the Atlas **Community Edition** — is licensed under the **
 General Public License v3.0** (AGPL-3.0); see [LICENSE](./LICENSE).
 
 Atlas is open core: the Community Edition here is free and open source, while the Enterprise
-capabilities (`atlas-enterprise`) are separately licensed and unlocked through entitlements.
+capabilities (`atlas-enterprise`) are separately licensed and developed outside this repository.
 The public data-model and import/export contracts are published separately under the Apache
 License 2.0.
 

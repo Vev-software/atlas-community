@@ -1,9 +1,9 @@
 # Atlas Community Edition — development
 
 Early scaffolding for the free, self-hostable **asset-management** edition (handbook `12 §Phase 0`,
-`11`). Catalogue your systems, applications, servers and infrastructure, plus manual relationships
-and tags. Analysis (integration mapping, EOL, APM, roadmap, AI review) is **paid Atlas core** and
-lives elsewhere; here those seams exist but are entitlement-denied.
+`11`). Catalogue your systems, applications, servers, infrastructure and data layer, plus manual
+relationships, join keys and tags. Analysis and other paid Atlas capabilities live outside this
+public repository.
 
 ## Layout
 
@@ -56,8 +56,8 @@ curl -X POST http://localhost:5199/api/v1/assets -H "Content-Type: application/j
 # List the catalogue
 curl http://localhost:5199/api/v1/assets -H "X-Tenant-Id: demo"
 
-# A paid capability is entitlement-denied in Community (402 + reason code)
-curl http://localhost:5199/api/v1/assets/app-1/integration-mapping -H "X-Tenant-Id: demo"
+# A missing route returns 404
+curl http://localhost:5199/api/v1/does-not-exist -H "X-Tenant-Id: demo"
 ```
 
 ## Run with Docker
