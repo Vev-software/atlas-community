@@ -91,6 +91,27 @@
     }
     .chip[aria-pressed="true"] { border-color: var(--accent); background: #eef2ff; color: var(--accent); }
     .chip .dot { width: 9px; height: 9px; border-radius: 50%; }
+    .searchbox {
+      min-width: min(320px, 100%);
+      flex: 1 1 320px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 10px;
+    }
+    .searchbox input {
+      width: 100%;
+      border: none;
+      outline: none;
+      font: inherit;
+      font-size: 13px;
+      color: var(--ink);
+      background: transparent;
+    }
+    .searchbox .hint { color: var(--muted); font-size: 12px; white-space: nowrap; }
     .toolbar .count { margin-left: auto; color: var(--muted); font-size: 12.5px; }
     .toolbar button.action {
       font: inherit; font-size: 12.5px; cursor: pointer;
@@ -159,6 +180,50 @@
     }
     .rel-list .rel-del:hover { color: var(--danger); background: var(--danger-soft); }
     .placeholder { color: var(--muted); font-size: 13px; }
+    .stack { display: grid; gap: 14px; }
+    .section { border-top: 1px solid var(--line); padding-top: 14px; }
+    .section:first-child { border-top: none; padding-top: 0; }
+    .section h3 {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+    }
+    .crumbs, .mini-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .crumb, .mini {
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 5px 10px;
+    }
+    .crumb:hover, .mini:hover { border-color: var(--accent); color: var(--accent); }
+    .mini-list { flex-direction: column; align-items: stretch; }
+    .mini {
+      border-radius: 10px;
+      text-align: left;
+      padding: 8px 10px;
+    }
+    .mini .meta { display: block; color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+    .search-results { display: grid; gap: 8px; }
+    .search-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: #fff;
+      cursor: pointer;
+      text-align: left;
+      font: inherit;
+      color: inherit;
+    }
+    .search-card:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+    .search-card strong { display: block; font-size: 13px; }
+    .search-card .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .search-card .path { color: #384150; font-size: 12px; margin-top: 6px; }
     .empty { display: grid; place-items: center; height: 100%; text-align: center; color: var(--muted); padding: 40px; }
     .empty h3 { color: var(--ink); margin: 0 0 6px; }
     .empty .cta { margin-top: 16px; }
@@ -255,6 +320,10 @@
     <button class="chip" data-kind="data-area"><span class="dot" style="background:var(--kind-data-area)"></span>Data areas</button>
     <button class="chip" data-kind="dataset"><span class="dot" style="background:var(--kind-dataset)"></span>Datasets</button>
     <button class="chip" data-kind="column"><span class="dot" style="background:var(--kind-column)"></span>Columns</button>
+    <label class="searchbox" for="search">
+      <input id="search" type="search" autocomplete="off" placeholder="Search columns or datasets" />
+      <span class="hint">Column-level search</span>
+    </label>
     <span class="count" id="count"></span>
     <button class="primary" id="newAsset" hidden title="Add a new asset to the catalogue"><span class="plus">+</span>New asset</button>
     <button class="action" id="refresh" title="Reload the landscape">Refresh</button>
@@ -265,7 +334,7 @@
     <div id="canvas"><div class="empty"><h3>Loading landscape…</h3></div></div>
     <aside>
       <h2>Details</h2>
-      <div id="detail"><p class="placeholder">Select an asset in the map to inspect it.</p></div>
+      <div id="detail" class="stack"><p class="placeholder">Select an asset in the map to inspect it.</p></div>
     </aside>
   </main>
 
@@ -443,6 +512,7 @@
     let landscape = { assets: [], relationships: [] };
     let filter = "all";
     let selectedId = null;
+    let searchQuery = "";
     let canAuthor = false;      // Set from GET /api/v1/capabilities — never assumed.
     let editingId = null;       // Non-null while the asset form is editing an existing asset.
 
@@ -479,11 +549,90 @@
         landscape.relationships ||= [];
         el("toolbar").hidden = false;
         render();
+        if (selectedId) showDetail(selectedId);
+        else if (searchQuery.trim()) {
+          const detail = el("detail");
+          detail.innerHTML = '<p class="placeholder">Select an asset in the map to inspect it.</p>';
+          renderSearchResults(detail);
+        }
       } catch (err) {
         canvas.innerHTML =
           '<div class="empty"><h3>Could not load the landscape</h3>' +
           '<p>The API responded with an error (' + escapeHtml(err.message) + ').</p></div>';
       }
+    }
+
+    function assetById(id) {
+      return landscape.assets.find(x => x.id === id) || null;
+    }
+
+    function relationshipsOfType(type) {
+      return landscape.relationships.filter(r => r.type === type);
+    }
+
+    function parentOf(asset, expectedKind) {
+      if (!asset) return null;
+      const rel = relationshipsOfType("part-of").find(r => r.fromId === asset.id);
+      if (!rel) return null;
+      const parent = assetById(rel.toId);
+      if (!parent) return null;
+      return expectedKind && parent.kind !== expectedKind ? null : parent;
+    }
+
+    function childrenOf(assetId, kind) {
+      return relationshipsOfType("part-of")
+        .filter(r => r.toId === assetId)
+        .map(r => assetById(r.fromId))
+        .filter(a => a && (!kind || a.kind === kind))
+        .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+    }
+
+    function contextFor(asset) {
+      if (!asset) return { system: null, dataArea: null, dataset: null, column: null };
+      if (asset.kind === "system") return { system: asset, dataArea: null, dataset: null, column: null };
+      if (asset.kind === "data-area") {
+        return { system: parentOf(asset, "system"), dataArea: asset, dataset: null, column: null };
+      }
+      if (asset.kind === "dataset") {
+        const dataArea = parentOf(asset, "data-area");
+        return { system: parentOf(dataArea, "system"), dataArea, dataset: asset, column: null };
+      }
+      if (asset.kind === "column") {
+        const dataset = parentOf(asset, "dataset");
+        const dataArea = parentOf(dataset, "data-area");
+        return { system: parentOf(dataArea, "system"), dataArea, dataset, column: asset };
+      }
+      return { system: null, dataArea: null, dataset: null, column: null };
+    }
+
+    function breadcrumbFor(asset) {
+      const ctx = contextFor(asset);
+      return [ctx.system, ctx.dataArea, ctx.dataset, ctx.column].filter(Boolean);
+    }
+
+    function searchableText(column, dataset) {
+      const terms = [
+        column.id, column.name, column.description,
+        column.column && column.column.dataType,
+        dataset && dataset.id, dataset && dataset.name, dataset && dataset.description,
+        dataset && dataset.dataset && dataset.dataset.physicalName,
+        dataset && dataset.dataset && dataset.dataset.owner,
+      ];
+      return terms.filter(Boolean).join(" ").toLowerCase();
+    }
+
+    function searchMatches() {
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return [];
+      return landscape.assets
+        .filter(a => a.kind === "column")
+        .map(column => {
+          const ctx = contextFor(column);
+          const haystack = searchableText(column, ctx.dataset);
+          return haystack.includes(q) ? { column, context: ctx } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => (a.column.name || a.column.id).localeCompare(b.column.name || b.column.id));
     }
 
     function visibleAssets() {
@@ -750,6 +899,137 @@
       }
 
       detail.appendChild(wrap);
+      renderHierarchy(a, detail);
+      renderSearchResults(detail);
+    }
+
+    function renderSearchResults(detail) {
+      const results = searchMatches();
+      if (!searchQuery.trim()) return;
+
+      const section = document.createElement("section");
+      section.className = "section";
+      const title = document.createElement("h3");
+      title.textContent = `Search results (${results.length})`;
+      section.appendChild(title);
+
+      if (!results.length) {
+        const p = document.createElement("p");
+        p.className = "placeholder";
+        p.textContent = "No matching columns or dataset-linked columns.";
+        section.appendChild(p);
+        detail.prepend(section);
+        return;
+      }
+
+      const list = document.createElement("div");
+      list.className = "search-results";
+      for (const result of results.slice(0, 12)) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "search-card";
+        btn.addEventListener("click", () => {
+          filter = "all";
+          document.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c.dataset.kind === "all")));
+          render();
+          select(result.column.id);
+        });
+
+        const name = document.createElement("strong");
+        name.textContent = result.column.name || result.column.id;
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = [
+          result.column.column && result.column.column.dataType,
+          result.context.dataset && result.context.dataset.dataset && result.context.dataset.dataset.owner
+            ? `Owner: ${result.context.dataset.dataset.owner}`
+            : null
+        ].filter(Boolean).join(" · ") || "Column";
+        const path = document.createElement("div");
+        path.className = "path";
+        path.textContent = breadcrumbFor(result.column).map(a => a.name || a.id).join(" / ");
+        btn.append(name, meta, path);
+        list.appendChild(btn);
+      }
+
+      section.appendChild(list);
+      detail.prepend(section);
+    }
+
+    function renderHierarchy(asset, host) {
+      const ctx = contextFor(asset);
+      const hierarchy = document.createElement("section");
+      hierarchy.className = "section";
+
+      const title = document.createElement("h3");
+      title.textContent = "Hierarchy";
+      hierarchy.appendChild(title);
+
+      const crumbs = document.createElement("div");
+      crumbs.className = "crumbs";
+      const path = breadcrumbFor(asset);
+      if (path.length) {
+        for (const node of path) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "crumb";
+          btn.textContent = `${node.name || node.id} (${node.kind})`;
+          btn.addEventListener("click", () => select(node.id));
+          crumbs.appendChild(btn);
+        }
+      } else {
+        const p = document.createElement("p");
+        p.className = "placeholder";
+        p.textContent = "This asset is not in the data-layer containment chain.";
+        hierarchy.appendChild(p);
+      }
+      if (path.length) hierarchy.appendChild(crumbs);
+      host.appendChild(hierarchy);
+
+      const childSection = document.createElement("section");
+      childSection.className = "section";
+      const childTitle = document.createElement("h3");
+      childTitle.textContent =
+        asset.kind === "system" ? "Data areas" :
+        asset.kind === "data-area" ? "Datasets" :
+        asset.kind === "dataset" ? "Columns" :
+        "Neighbours";
+      childSection.appendChild(childTitle);
+
+      let children = [];
+      if (asset.kind === "system") children = childrenOf(asset.id, "data-area");
+      else if (asset.kind === "data-area") children = childrenOf(asset.id, "dataset");
+      else if (asset.kind === "dataset") children = childrenOf(asset.id, "column");
+      else if (asset.kind === "column") {
+        const dataset = ctx.dataset;
+        children = dataset ? childrenOf(dataset.id, "column").filter(c => c.id !== asset.id) : [];
+      }
+
+      if (children.length) {
+        const list = document.createElement("div");
+        list.className = "mini-list";
+        for (const child of children) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "mini";
+          btn.addEventListener("click", () => select(child.id));
+          const meta = [];
+          if (child.kind === "dataset" && child.dataset && child.dataset.owner) meta.push(`Owner: ${child.dataset.owner}`);
+          if (child.kind === "column" && child.column && child.column.dataType) meta.push(child.column.dataType);
+          btn.innerHTML = `${escapeHtml(child.name || child.id)}<span class="meta">${escapeHtml(meta.join(" · ") || child.kind)}</span>`;
+          list.appendChild(btn);
+        }
+        childSection.appendChild(list);
+      } else {
+        const p = document.createElement("p");
+        p.className = "placeholder";
+        p.textContent = asset.kind === "column"
+          ? "No sibling columns in this dataset."
+          : "No lower-level assets linked here yet.";
+        childSection.appendChild(p);
+      }
+
+      host.appendChild(childSection);
     }
 
     // --- Asset form (create / edit) ------------------------------------------------------------------
@@ -1097,6 +1377,15 @@
         document.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c === chip)));
         render();
       });
+    });
+    el("search").addEventListener("input", e => {
+      searchQuery = e.target.value || "";
+      if (selectedId) showDetail(selectedId);
+      else {
+        const detail = el("detail");
+        detail.innerHTML = '<p class="placeholder">Select an asset in the map to inspect it.</p>';
+        renderSearchResults(detail);
+      }
     });
     el("refresh").addEventListener("click", load);
     el("newAsset").addEventListener("click", () => openAssetForm());
