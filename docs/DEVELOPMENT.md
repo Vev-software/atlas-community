@@ -189,3 +189,21 @@ on outside Development: the host refuses to start if you try.
 
 This is the swap point for real identity: when `Vev.Fabric.*` lands, `fabric-oidc` resolves the same
 tenant + principal context from OIDC and becomes the non-development default (handbook `11 §4`).
+Real identity/tenancy comes from Fabric (fabric#3). Until then the `X-Tenant-Id`, `X-Principal-Id`
+and `X-Principal-Roles` headers bind the ambient context, defaulting to a single dev tenant with the
+`AtlasArchitect` role. This is the swap point: when `Vev.Fabric.*` lands, replace `Atlas.Fabric.Dev`
+and the request-context middleware with the Fabric-provided authentication (handbook `11 §4`).
+
+## Tenant isolation
+
+The catalogue is reconnaissance-grade landscape data, so tenant isolation is enforced by the model,
+not by every query remembering a predicate. `AtlasDbContext` puts an **EF Core global query filter**
+on each tenant-scoped entity (`assets`, `relationships`), keyed on the ambient request tenant. A query
+that forgets an explicit `TenantId` predicate is still scoped to the caller's tenant by default — the
+filter never fails open.
+
+The only way past it is EF's explicit `IgnoreQueryFilters()` opt-out. That is reserved for the rare,
+legitimate cross-tenant read and must be annotated with a `cross-tenant:` marker; an architecture
+fitness test (`ForbiddenPatternTests.Bypassing_the_tenant_filter_requires_an_explicit_audited_opt_out`)
+fails the build on any un-annotated use, and `TenantIsolationTests` fails the build if the global
+filter itself is removed (atlas#35).
