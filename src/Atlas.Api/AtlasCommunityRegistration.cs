@@ -19,8 +19,11 @@ public static class AtlasCommunityRegistration
         services.AddSingleton<IRequestContextAccessor>(contextAccessor);
 
         // Atlas declares its own role→permission definitions on top of the Fabric authz mechanism (11 §4).
+        // A full-landscape export is an elevated action: read-only customers may browse but not bulk-export
+        // the whole map (atlas#36).
         var policies = new AuthorizationPolicyRegistry()
-            .Require(AtlasActions.AssetWrite, AtlasRoles.Architect);
+            .Require(AtlasActions.AssetWrite, AtlasRoles.Architect)
+            .Require(AtlasActions.LandscapeExport, AtlasRoles.Architect);
         services.AddSingleton(policies);
         services.AddSingleton<IAuthorizer, DevAuthorizer>();
 

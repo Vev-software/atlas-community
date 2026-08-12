@@ -1,3 +1,5 @@
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Vev.Atlas.Api;
 using Vev.Atlas.Persistence;
@@ -16,6 +18,30 @@ builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<AtlasExceptionHandler>();
 
+// Throttle the whole-landscape export so it cannot be pulled in a tight loop (atlas#36). Fixed window,
+// partitioned per tenant, and configurable so an operator can tune it.
+var exportPermitLimit = builder.Configuration.GetValue(ExportRateLimit.PermitLimitKey, ExportRateLimit.DefaultPermitLimit);
+var exportWindowSeconds = builder.Configuration.GetValue(ExportRateLimit.WindowSecondsKey, ExportRateLimit.DefaultWindowSeconds);
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(ExportRateLimit.PolicyName, http =>
+    {
+        var tenant = http.Request.Headers["X-Tenant-Id"].ToString();
+        if (string.IsNullOrWhiteSpace(tenant))
+        {
+            tenant = "global";
+        }
+
+        return RateLimitPartition.GetFixedWindowLimiter(tenant, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = exportPermitLimit,
+            Window = TimeSpan.FromSeconds(exportWindowSeconds),
+            QueueLimit = 0
+        });
+    });
+});
+
 var app = builder.Build();
 
 // Create the schema on first run so a self-hoster can `docker compose up` and go.
@@ -33,6 +59,8 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.UseMiddleware<RequestContextMiddleware>();
+
+app.UseRateLimiter();
 
 app.MapOpenApi();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).WithTags("Ops");

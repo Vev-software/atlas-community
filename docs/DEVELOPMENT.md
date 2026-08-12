@@ -86,6 +86,11 @@ curl -X POST http://localhost:5199/api/v1/import -H "Content-Type: application/j
 - **Export** (`GET /api/v1/export`) returns a `LandscapeDocument` (assets + manual relationships)
   as a `Content-Disposition: attachment` download (`atlas-landscape.json`). It reuses the same read
   model as `GET /api/v1/landscape`, and stamps `generator` provenance (`"Atlas Community"` + build).
+  A full-map export is the highest-value reconnaissance read, so it is **hardened** beyond a plain
+  browse (atlas#36): it requires the elevated `atlas.landscape.export` authorization — a read-only
+  `AtlasCustomer` is denied (403 + `role_missing`) — it emits exactly one `atlas.landscape.exported`
+  audit record (actor, tenant, time, scope, format), and it is **rate-limited** per tenant (a fixed
+  window, `429` when exceeded; tune with `Atlas:Export:PermitLimit` / `Atlas:Export:WindowSeconds`).
 - **Import** (`POST /api/v1/import`) takes an `ImportBundle`, validates it, and applies it under write
   authorization with an audit event (`atlas.landscape.imported`). Each asset is matched by a stable
   catalogue id — its explicit `id` when given, otherwise its `externalId` — so **re-importing the same

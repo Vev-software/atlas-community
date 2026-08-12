@@ -125,7 +125,28 @@ public sealed class AssetService(
     public async Task<LandscapeDocument> GetLandscapeAsync(CancellationToken ct = default)
     {
         AuthorizeRead(AssetResource("*"));
+        return await ComposeLandscapeAsync(ct);
+    }
 
+    /// <summary>
+    /// Export the whole tenant landscape as a portable document (customer-owned export, issue #12). A
+    /// full-map export is the single highest-value reconnaissance read, so it is a deliberate, elevated,
+    /// recorded action rather than a bulk read that leaves no trace (atlas#36): it requires the
+    /// <see cref="AtlasActions.LandscapeExport"/> authorization — a read-only customer is denied — and it
+    /// emits exactly one audit record capturing the actor, tenant, time, scope and format. Rendering to a
+    /// concrete byte format stays at the edge (the format-adapter seam); <paramref name="format"/> is the
+    /// resolved format id, recorded in the audit trail.
+    /// </summary>
+    public async Task<LandscapeDocument> ExportLandscapeAsync(string format, CancellationToken ct = default)
+    {
+        Authorize(AtlasActions.LandscapeExport, LandscapeResource);
+        var landscape = await ComposeLandscapeAsync(ct);
+        await EmitAsync("atlas.landscape.exported", ExportResource(format), ct);
+        return landscape;
+    }
+
+    private async Task<LandscapeDocument> ComposeLandscapeAsync(CancellationToken ct)
+    {
         var tenant = context.Tenant;
         var assets = await repository.ListAssetsAsync(tenant, kind: null, ct);
         var relationships = await repository.ListRelationshipsAsync(tenant, ct);
@@ -361,6 +382,11 @@ public sealed class AssetService(
     private static ResourceId AssetResource(string id) => new($"atlas:asset/{id}");
 
     private static ResourceId RelationshipResource(string id) => new($"atlas:relationship/{id}");
+
+    private static readonly ResourceId LandscapeResource = new("atlas:landscape");
+
+    // Encode the export scope + format into the audited resource id — metadata, not customer content (E4/E5).
+    private static ResourceId ExportResource(string format) => new($"atlas:landscape/export?format={format}&scope=full");
 }
 
 /// <summary>

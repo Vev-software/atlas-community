@@ -92,13 +92,17 @@ public static class AssetEndpoints
         portability.MapGet("/export", async (string? format, AssetService service, LandscapeFormatRegistry formats, CancellationToken ct) =>
         {
             var exporter = formats.ResolveExporter(format);
-            var landscape = await service.GetLandscapeAsync(ct);
+            // A full-map export is authorized (elevated role) and audited exactly once in the domain — a
+            // read-only customer is denied (403), and no export is a silent bulk read (atlas#36).
+            var landscape = await service.ExportLandscapeAsync(exporter.Format, ct);
             var bytes = exporter.Render(landscape);
             // Content-Disposition: attachment — the customer's landscape as a portable file they own.
             return Results.File(bytes, exporter.ContentType, $"atlas-landscape.{exporter.FileExtension}");
         })
             .WithName("ExportLandscape")
-            .WithSummary("Export the tenant landscape as a downloadable atlas-contracts document (customer-owned export).");
+            .WithSummary("Export the tenant landscape as a downloadable atlas-contracts document (customer-owned export).")
+            // Throttle so the whole landscape cannot be pulled in a tight loop (atlas#36).
+            .RequireRateLimiting(ExportRateLimit.PolicyName);
 
         portability.MapPost("/import", async (string? format, HttpRequest request, AssetService service, LandscapeFormatRegistry formats, CancellationToken ct) =>
         {
