@@ -227,6 +227,29 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
         Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("/api/v1/landscape", body);
+        Assert.Contains("Search columns or datasets", body);
+    }
+
+    [Fact]
+    public async Task A_read_only_customer_can_browse_the_landscape()
+    {
+        var author = Client(tenant: "t-read-browse");
+        await author.PostAsJsonAsync("/api/v1/assets",
+            new Asset("sys-crm", AssetKind.System, "CRM", Lifecycle.Active), Json);
+        await author.PostAsJsonAsync("/api/v1/assets",
+            new Asset("da-customer", AssetKind.DataArea, "Customer data", Lifecycle.Active,
+                DataArea: new DataAreaDetails("microservice")), Json);
+        await author.PostAsJsonAsync("/api/v1/relationships",
+            new Relationship("r-part-of", "da-customer", "sys-crm", RelationshipType.PartOf), Json);
+
+        var readOnly = Client(tenant: "t-read-browse", principal: "viewer", roles: "AtlasCustomer");
+        var response = await readOnly.GetAsync("/api/v1/landscape");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var landscape = await response.Content.ReadFromJsonAsync<LandscapeDocument>(Json);
+        Assert.NotNull(landscape);
+        Assert.Equal(2, landscape!.Assets.Length);
+        Assert.Single(landscape.Relationships);
     }
 
     [Fact]
