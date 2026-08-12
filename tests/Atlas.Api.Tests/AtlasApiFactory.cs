@@ -20,6 +20,9 @@ public sealed class AtlasApiFactory : WebApplicationFactory<Program>
     {
         _connection.Open(); // Keep the in-memory database alive for the lifetime of the factory.
 
+        // The dev header identity shim is Development-only (atlas#34); the integration tests exercise it.
+        builder.UseEnvironment("Development");
+
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<DbContextOptions<AtlasDbContext>>();
