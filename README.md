@@ -73,7 +73,9 @@ docker compose up --build          # or: podman compose up --build
 curl http://localhost:8080/health  # {"status":"ok"}
 ```
 
-Your catalogue persists on a named volume across restarts. Full instructions — including the
+Your catalogue persists on a named volume across restarts. It holds your whole landscape map, so
+encrypt it at rest — see
+[Encryption at rest](./docs/DEVELOPMENT.md#encryption-at-rest). Full instructions — including the
 temporary local contracts-feed step until `Vev.Atlas.Contracts` is on nuget.org — are in
 [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md).
 

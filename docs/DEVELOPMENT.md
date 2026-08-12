@@ -44,6 +44,8 @@ dotnet run --project src/Atlas.Api
 ```
 
 The API creates its SQLite schema on first run. OpenAPI is at `/openapi/v1.json`; health at `/health`.
+The catalogue file holds reconnaissance-grade landscape data — for any real deployment, encrypt it at
+rest ([Encryption at rest](#encryption-at-rest)).
 
 ### Try it
 
@@ -151,7 +153,8 @@ curl http://localhost:8080/api/v1/assets -H "X-Tenant-Id: demo"
 ```
 
 The catalogue is stored in SQLite on the `atlas-data` volume (`/data/atlas.db` in the container), so
-it survives `docker compose down` / restarts. Remove it with `docker compose down -v`.
+it survives `docker compose down` / restarts. Remove it with `docker compose down -v`. That file holds
+the whole landscape map — protect it at rest: see [Encryption at rest](#encryption-at-rest).
 
 To build or run the image directly (note the `..` context — the monorepo root):
 
@@ -170,3 +173,41 @@ Real identity/tenancy comes from Fabric (fabric#3). Until then the `X-Tenant-Id`
 and `X-Principal-Roles` headers bind the ambient context, defaulting to a single dev tenant with the
 `AtlasArchitect` role. This is the swap point: when `Vev.Fabric.*` lands, replace `Atlas.Fabric.Dev`
 and the request-context middleware with the Fabric-provided authentication (handbook `11 §4`).
+
+## Encryption at rest
+
+The catalogue is the tenant's whole landscape map — reconnaissance-grade data — and it lives in a
+SQLite database file on disk (`atlas.db`, or the `atlas-data` volume under Docker). **Atlas does not
+encrypt that file for you.** A self-hoster is responsible for protecting it at rest; the expectation
+for any deployment holding real landscape data is that the database file is encrypted at rest by one of
+the two approaches below. Do not leave the map in plaintext on a disk you do not fully control.
+
+**Baseline — encrypt the volume/disk (recommended default).** Put `atlas.db` on an encrypted
+filesystem or volume and let the platform do the work:
+
+- Linux host: LUKS/dm-crypt on the partition backing the Docker volume, or an encrypted ZFS/LVM dataset.
+- Cloud: an encrypted block volume (EBS encryption, GCP PD/CMEK, Azure disk encryption) mounted where
+  the `atlas-data` volume lives.
+- Point the database at that location with `ConnectionStrings__Atlas` (see [Run with Docker](#run-with-docker)).
+
+Trade-offs: transparent to Atlas (no build or config change, no schema change, full SQLite tooling
+still works), and it protects the whole volume — backups, WAL/journal files and temp files included.
+But it only protects data at rest against a stolen disk/volume: once the filesystem is mounted and the
+process is running, the file is readable by anything on the host, so it pairs with host hardening and
+access control rather than replacing them. This is the right default for most self-hosters.
+
+**Stronger — an encrypted database (SQLCipher).** For defence in depth where the host itself is not
+fully trusted, back SQLite with [SQLCipher](https://www.zetetic.net/sqlcipher/), which transparently
+encrypts the database file with a key the application supplies (via `PRAGMA key`) rather than relying on
+the surrounding volume.
+
+Trade-offs: the file is ciphertext even on a mounted, running host, so a copied `atlas.db` is useless
+without the key — but you must now manage that key (supply it from a secret store / KMS, never bake it
+into the image or Compose file), standard SQLite tools can no longer open the file, and there is a small
+crypto overhead per query. It also needs a SQLCipher-capable native SQLite build wired into
+`Atlas.Persistence` (e.g. a SQLCipher `SQLitePCLRaw` bundle plus the keyed connection string); that
+runtime option is not shipped yet — track it in the backlog if you need it. Choose this when volume
+encryption alone does not meet your threat model.
+
+Either way, the same expectation extends to **backups and exports**: an export (`/api/v1/export`) is a
+full plaintext copy of the map, so treat exported files with the same care as the database itself.
