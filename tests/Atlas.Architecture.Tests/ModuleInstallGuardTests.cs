@@ -18,11 +18,15 @@ public sealed class ModuleInstallGuardTests
         var reserved = AtlasCapabilities.ReservedPaid.Select(c => c.Value).OrderBy(v => v, StringComparer.Ordinal);
         string[] expected =
         [
+            "atlas.ai.review",
+            "atlas.data.introspection",
+            "atlas.data.overlap",
+            "atlas.data.quality",
             "atlas.eol.tracking",
+            "atlas.export.archimate",
             "atlas.integration.mapping",
             "atlas.portfolio.apm",
             "atlas.roadmap.generate",
-            "atlas.ai.review",
         ];
         Assert.Equal(expected.OrderBy(v => v, StringComparer.Ordinal), reserved);
     }
