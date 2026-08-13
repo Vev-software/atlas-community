@@ -14,4 +14,9 @@
     <ProjectReference Include="../Atlas.Domain/Atlas.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The architecture fitness tests inspect the tenant-scoped rows and the global query filter directly. -->
+    <InternalsVisibleTo Include="Atlas.Architecture.Tests" />
+  </ItemGroup>
+
 </Project>

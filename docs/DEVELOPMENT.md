@@ -148,9 +148,13 @@ Then:
 
 ```bash
 curl http://localhost:8080/health                        # {"status":"ok"}
-curl http://localhost:8080/api/v1/assets -H "X-Tenant-Id: demo"
+curl http://localhost:8080/api/v1/assets                 # single-tenant self-host; no identity header needed
 # The landscape UI: open http://localhost:8080/ in a browser.
 ```
+
+The container runs in **single-tenant** identity mode (`Atlas__Identity__Mode=single-tenant`, set in the
+`Dockerfile`): the whole catalogue is one fixed tenant and request identity comes from configuration,
+not from `X-*` headers — see [Identity & tenancy](#identity--tenancy).
 
 The catalogue is stored in SQLite on the `atlas-data` volume (`/data/atlas.db` in the container), so
 it survives `docker compose down` / restarts. Remove it with `docker compose down -v`. That file holds
@@ -167,12 +171,41 @@ The image runs as a non-root user, listens on port 8080, and carries a `HEALTHCH
 `/health`. Configuration is standard ASP.NET Core — override the database location with
 `ConnectionStrings__Atlas`, e.g. `-e ConnectionStrings__Atlas="Data Source=/data/atlas.db"`.
 
-## Dev request context (temporary)
+## Identity & tenancy
 
-Real identity/tenancy comes from Fabric (fabric#3). Until then the `X-Tenant-Id`, `X-Principal-Id`
-and `X-Principal-Roles` headers bind the ambient context, defaulting to a single dev tenant with the
-`AtlasArchitect` role. This is the swap point: when `Vev.Fabric.*` lands, replace `Atlas.Fabric.Dev`
-and the request-context middleware with the Fabric-provided authentication (handbook `11 §4`).
+Atlas holds reconnaissance-grade landscape data, so request identity must come from a trustworthy
+source, never be asserted by the caller. Full multi-tenant identity is Fabric OIDC (fabric#3); until it
+lands, `Atlas:Identity:Mode` (env: `Atlas__Identity__Mode`) selects one of three modes, and Atlas
+**fails closed** when no trustworthy source is available (atlas#34):
+
+| Mode | Identity source | Where it's allowed |
+|---|---|---|
+| `dev-headers` | `X-Tenant-Id` / `X-Principal-Id` / `X-Principal-Roles` request headers, defaulting to a single dev tenant with the `AtlasArchitect` role | **Development environment only** |
+| `single-tenant` | A fixed tenant + roles from config (`Atlas:Identity:Tenant`, default `community`; `Atlas:Identity:Principal`, default `self-host`; `Atlas:Identity:Roles`, default `AtlasArchitect`). `X-*` headers are ignored, so no caller can name another tenant or escalate roles. | Any environment — this is the self-host default |
+| `fabric-oidc` | A verified Fabric OIDC token (fabric#3) | Any environment once the provider is wired |
+
+When the mode is unset it defaults from the environment: **Development → `dev-headers`**; any other
+environment → **`fabric-oidc`**, which — since that provider is not wired yet — makes the host **refuse
+to start** rather than silently trust request headers. The self-hosted container therefore sets
+`single-tenant` explicitly (see the `Dockerfile`). The header shim (`dev-headers`) can never be forced
+on outside Development: the host refuses to start if you try.
+
+This is the swap point for real identity: when `Vev.Fabric.*` lands, `fabric-oidc` resolves the same
+tenant + principal context from OIDC and becomes the non-development default (handbook `11 §4`).
+
+## Tenant isolation
+
+The catalogue is reconnaissance-grade landscape data, so tenant isolation is enforced by the model,
+not by every query remembering a predicate. `AtlasDbContext` puts an **EF Core global query filter**
+on each tenant-scoped entity (`assets`, `relationships`), keyed on the ambient request tenant. A query
+that forgets an explicit `TenantId` predicate is still scoped to the caller's tenant by default — the
+filter never fails open.
+
+The only way past it is EF's explicit `IgnoreQueryFilters()` opt-out. That is reserved for the rare,
+legitimate cross-tenant read and must be annotated with a `cross-tenant:` marker; an architecture
+fitness test (`ForbiddenPatternTests.Bypassing_the_tenant_filter_requires_an_explicit_audited_opt_out`)
+fails the build on any un-annotated use, and `TenantIsolationTests` fails the build if the global
+filter itself is removed (atlas#35).
 
 ## Encryption at rest
 
