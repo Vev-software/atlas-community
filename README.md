@@ -83,6 +83,13 @@ Tagged releases publish a signed image to `ghcr.io/vev-software/atlas-community`
 provenance you can verify with [cosign](https://docs.sigstore.dev/) before you run it — see
 [Supply chain: SBOM & signed provenance](./docs/DEVELOPMENT.md#supply-chain-sbom--signed-provenance).
 
+## Security
+
+Report vulnerabilities privately — see [`SECURITY.md`](./SECURITY.md), never a public issue. The
+Community runtime's threat model, the controls that defend the landscape map, and the supported
+runtime/compatibility posture are in
+[`docs/threat-model.md`](./docs/threat-model.md).
+
 ## Repository layout
 
 ```

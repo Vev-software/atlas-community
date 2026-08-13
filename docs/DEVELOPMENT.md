@@ -5,6 +5,10 @@ Early scaffolding for the free, self-hostable **asset-management** edition (hand
 relationships, join keys and tags. Analysis and other paid Atlas capabilities live outside this
 public repository.
 
+> **Security posture.** The sections below cover individual controls (identity, tenant isolation,
+> encryption at rest, supply chain). For the consolidated threat-model note and compatibility statement,
+> see [`threat-model.md`](./threat-model.md).
+
 ## Layout
 
 ```
