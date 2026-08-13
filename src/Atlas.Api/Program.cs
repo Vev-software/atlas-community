@@ -9,6 +9,10 @@ var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Atlas") ?? "Data Source=atlas.db";
 builder.Services.AddAtlasCommunity(connectionString);
 
+// Register the authentication the identity mode needs (JWT bearer for fabric-oidc); the matching request
+// pipeline is wired below by UseAtlasRequestIdentity (fabric#3, atlas#34).
+builder.AddAtlasRequestIdentity();
+
 // Speak the same wire shape the contract publishes: omit null properties.
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.DefaultIgnoreCondition =
@@ -66,7 +70,9 @@ app.UseAtlasRequestIdentity();
 app.UseRateLimiter();
 
 app.MapOpenApi();
-app.MapGet("/health", () => Results.Ok(new { status = "ok" })).WithTags("Ops");
+// Health carries no identity: it must answer the container/orchestrator probe without a token, so it is
+// exempt from the OIDC identity gate (see OidcRequestContextMiddleware).
+app.MapGet("/health", () => Results.Ok(new { status = "ok" })).WithTags("Ops").AllowAnonymous();
 app.MapAtlasCommunityEndpoints();
 
 await app.RunAsync();

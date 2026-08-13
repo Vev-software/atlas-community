@@ -183,24 +183,76 @@ The image runs as a non-root user, listens on port 8080, and carries a `HEALTHCH
 ## Identity & tenancy
 
 Atlas holds reconnaissance-grade landscape data, so request identity must come from a trustworthy
-source, never be asserted by the caller. Full multi-tenant identity is Fabric OIDC (fabric#3); until it
-lands, `Atlas:Identity:Mode` (env: `Atlas__Identity__Mode`) selects one of three modes, and Atlas
-**fails closed** when no trustworthy source is available (atlas#34):
+source, never be asserted by the caller. `Atlas:Identity:Mode` (env: `Atlas__Identity__Mode`) selects one
+of three modes, and Atlas **fails closed** when no trustworthy source is available (atlas#34):
 
 | Mode | Identity source | Where it's allowed |
 |---|---|---|
 | `dev-headers` | `X-Tenant-Id` / `X-Principal-Id` / `X-Principal-Roles` request headers, defaulting to a single dev tenant with the `AtlasArchitect` role | **Development environment only** |
 | `single-tenant` | A fixed tenant + roles from config (`Atlas:Identity:Tenant`, default `community`; `Atlas:Identity:Principal`, default `self-host`; `Atlas:Identity:Roles`, default `AtlasArchitect`). `X-*` headers are ignored, so no caller can name another tenant or escalate roles. | Any environment — this is the self-host default |
-| `fabric-oidc` | A verified Fabric OIDC token (fabric#3) | Any environment once the provider is wired |
+| `fabric-oidc` | A verified OIDC bearer token: the token is validated against the configured provider and its claims are mapped to the tenant + principal. The real multi-tenant identity source (fabric#3). | Any environment once a provider (`Atlas:Identity:Oidc:Authority`) is configured |
 
 When the mode is unset it defaults from the environment: **Development → `dev-headers`**; any other
-environment → **`fabric-oidc`**, which — since that provider is not wired yet — makes the host **refuse
+environment → **`fabric-oidc`**. Outside Development with no OIDC provider configured, the host **refuses
 to start** rather than silently trust request headers. The self-hosted container therefore sets
 `single-tenant` explicitly (see the `Dockerfile`). The header shim (`dev-headers`) can never be forced
 on outside Development: the host refuses to start if you try.
 
-This is the swap point for real identity: when `Vev.Fabric.*` lands, `fabric-oidc` resolves the same
-tenant + principal context from OIDC and becomes the non-development default (handbook `11 §4`).
+### Fabric OIDC (`fabric-oidc`)
+
+Real multi-tenant identity. Atlas validates a signed OIDC JWT bearer token against a provider you bring
+(handbook `05 §6` — VEV ships no identity server of its own; adopt an OIDC/SCIM provider), then reads the
+tenant, principal and roles from the token's claims. A request without a valid, tenant-bound token is
+refused (`401`); only `/health` is exempt. Configuration keys (env form doubles each `:` as `__`):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `Atlas:Identity:Oidc:Authority` | — (required) | OIDC issuer/authority URL. Without it, the host fails closed. |
+| `Atlas:Identity:Oidc:Audience` | — | Expected token audience (client id). When unset, audience is not validated. |
+| `Atlas:Identity:Oidc:TenantClaim` | `tenant` | Claim carrying the tenant id. |
+| `Atlas:Identity:Oidc:PrincipalClaim` | `sub` | Claim carrying the stable principal id. |
+| `Atlas:Identity:Oidc:NameClaim` | `name` | Claim carrying the display name. |
+| `Atlas:Identity:Oidc:RolesClaim` | `roles` | Claim carrying role names (may repeat); values are Atlas roles such as `AtlasArchitect`. |
+| `Atlas:Identity:Oidc:RequireHttpsMetadata` | `true` | Require HTTPS for provider metadata. Set `false` only for a local HTTP dev provider. |
+
+Your provider must emit a **flat `roles` claim** (an array of Atlas role names) and a **`tenant` claim**.
+For Keycloak that means a *realm role* mapper writing to `roles` and a *user attribute* mapper writing to
+`tenant` — exactly what the bundled dev realm below sets up.
+
+### Log in with the dev Keycloak
+
+For local end-to-end login, a bundled Keycloak (dev only — **do not ship it to production**) layers on top
+of the base compose and switches Atlas to `fabric-oidc`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.oidc.yml up --build
+#   podman: podman compose -f docker-compose.yml -f docker-compose.oidc.yml up --build
+```
+
+This imports the [`keycloak/atlas-realm.json`](../keycloak/atlas-realm.json) realm: a public client
+`atlas-api`, a seeded user `architect` / `architect` with role `AtlasArchitect` and tenant `community`, and
+the `roles` + `tenant` mappers. Get a token (direct grant) and call the API with it:
+
+```bash
+# Fetch an access token for the seeded user (the issuer inside the token is http://keycloak:8080/realms/atlas,
+# which is what Atlas validates against inside the compose network).
+TOKEN=$(curl -s http://localhost:8081/realms/atlas/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=atlas-api \
+  -d username=architect -d password=architect | python -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+
+# Create an asset as the token's tenant (community); no X-* headers are consulted.
+curl -X POST http://localhost:8080/api/v1/assets -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"id":"app-1","kind":"application","name":"Checkout","lifecycle":"active"}'
+
+# Without a token, the same call is refused.
+curl -i http://localhost:8080/api/v1/assets            # → 401
+curl http://localhost:8080/health                       # → {"status":"ok"} (health needs no token)
+```
+
+The Keycloak admin console is at `http://localhost:8081` (admin / admin). This is the swap point for
+real identity: point `Atlas:Identity:Oidc:Authority` at your own OIDC provider in production and drop the
+overlay (handbook `11 §4`).
 
 ## Tenant isolation
 

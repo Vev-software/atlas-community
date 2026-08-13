@@ -1,0 +1,66 @@
+{
+  "realm": "atlas",
+  "enabled": true,
+  "sslRequired": "none",
+  "roles": {
+    "realm": [
+      { "name": "AtlasArchitect", "description": "May edit the Atlas catalogue." },
+      { "name": "AtlasCustomer", "description": "Read-only access to the Atlas catalogue." }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "atlas-api",
+      "name": "Atlas Community API (dev)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["*"],
+      "webOrigins": ["*"],
+      "protocolMappers": [
+        {
+          "name": "tenant",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "tenant",
+            "claim.name": "tenant",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "architect",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Ada",
+      "lastName": "Architect",
+      "email": "architect@atlas.local",
+      "attributes": { "tenant": ["community"] },
+      "credentials": [
+        { "type": "password", "value": "architect", "temporary": false }
+      ],
+      "realmRoles": ["AtlasArchitect"]
+    }
+  ]
+}

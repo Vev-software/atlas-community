@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <ProjectReference Include="../Atlas.Domain/Atlas.Domain.csproj" />
     <ProjectReference Include="../Atlas.Persistence/Atlas.Persistence.csproj" />
     <ProjectReference Include="../Atlas.Fabric.Dev/Atlas.Fabric.Dev.csproj" />
