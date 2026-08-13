@@ -58,7 +58,10 @@ app.UseExceptionHandler();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.UseMiddleware<RequestContextMiddleware>();
+// Establish request identity for this environment, failing closed when no trustworthy source exists.
+// Development gets the header shim; any other environment refuses to start until Fabric OIDC (fabric#3)
+// is wired, rather than trusting caller-supplied identity headers (atlas#34).
+app.UseAtlasRequestIdentity();
 
 app.UseRateLimiter();
 

@@ -51,8 +51,12 @@ WORKDIR /app
 COPY --from=build --chown=app:app /app ./
 
 # Listen on 8080 (the .NET non-root default) and keep the database on the mounted volume.
+# Self-host runs as a single tenant: identity is a fixed tenant from config, not request headers, so a
+# caller cannot name another tenant or escalate roles (atlas#34). Override the tenant/roles if you like;
+# multi-tenant identity is Fabric OIDC (fabric#3).
 ENV ASPNETCORE_URLS=http://+:8080 \
-    ConnectionStrings__Atlas="Data Source=/data/atlas.db"
+    ConnectionStrings__Atlas="Data Source=/data/atlas.db" \
+    Atlas__Identity__Mode=single-tenant
 EXPOSE 8080
 VOLUME ["/data"]
 

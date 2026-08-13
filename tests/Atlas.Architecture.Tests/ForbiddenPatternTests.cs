@@ -22,6 +22,14 @@ public sealed class ForbiddenPatternTests
         @"api\.openai\.com|using\s+OpenAI|new\s+(OpenAI|AzureOpenAI|Anthropic)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // Bypassing the tenant global query filter — allowed only as an explicit, audited opt-out (atlas#35).
+    private static readonly Regex IgnoreQueryFilters = new(
+        @"IgnoreQueryFilters\s*\(",
+        RegexOptions.Compiled);
+
+    // The marker that makes a cross-tenant read a deliberate, greppable decision rather than a silent one.
+    private const string CrossTenantOptOutMarker = "cross-tenant:";
+
     [Fact]
     public void No_plan_equality_checks_anywhere_in_the_source()
     {
@@ -38,17 +46,51 @@ public sealed class ForbiddenPatternTests
             "AI must go through the Fabric AI contract, never a provider SDK directly:\n" + string.Join('\n', offenders));
     }
 
+    [Fact]
+    public void Bypassing_the_tenant_filter_requires_an_explicit_audited_opt_out()
+    {
+        // The global query filter (atlas#35) is the default. EF's only escape hatch is
+        // IgnoreQueryFilters(); every use in the product source must be annotated with the
+        // `cross-tenant:` marker so a reviewer can see — and grep — each deliberate cross-tenant read.
+        var offenders = new List<string>();
+        foreach (var file in SourceFiles())
+        {
+            var lines = File.ReadAllLines(file);
+            var inBlockComment = false;
+            for (var i = 0; i < lines.Length; i++)
+            {
+                var code = StripCommentsPreservingStrings(lines[i], ref inBlockComment);
+                if (!IgnoreQueryFilters.IsMatch(code))
+                {
+                    continue;
+                }
+
+                var audited = lines[i].Contains(CrossTenantOptOutMarker, StringComparison.OrdinalIgnoreCase)
+                    || (i > 0 && lines[i - 1].Contains(CrossTenantOptOutMarker, StringComparison.OrdinalIgnoreCase));
+                if (!audited)
+                {
+                    offenders.Add($"{Path.GetFileName(file)}:{i + 1}: {lines[i].Trim()}");
+                }
+            }
+        }
+
+        Assert.True(offenders.Count == 0,
+            "Cross-tenant reads must be a deliberate, audited opt-out — annotate each IgnoreQueryFilters() " +
+            $"with a `{CrossTenantOptOutMarker}` marker on the same or preceding line:\n" + string.Join('\n', offenders));
+    }
+
+    /// <summary>Every product source file under <c>src/</c>, skipping build output.</summary>
+    private static IEnumerable<string> SourceFiles() =>
+        Directory.EnumerateFiles(SrcRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(file =>
+                !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") &&
+                !file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"));
+
     private static List<string> ScanFor(Regex pattern)
     {
         var offenders = new List<string>();
-        foreach (var file in Directory.EnumerateFiles(SrcRoot, "*.cs", SearchOption.AllDirectories))
+        foreach (var file in SourceFiles())
         {
-            if (file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") ||
-                file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
-            {
-                continue;
-            }
-
             var lines = File.ReadAllLines(file);
             var inBlockComment = false;
             for (var i = 0; i < lines.Length; i++)
