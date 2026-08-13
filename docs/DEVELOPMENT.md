@@ -249,3 +249,47 @@ encryption alone does not meet your threat model.
 
 Either way, the same expectation extends to **backups and exports**: an export (`/api/v1/export`) is a
 full plaintext copy of the map, so treat exported files with the same care as the database itself.
+
+## Supply chain: SBOM & signed provenance
+
+Atlas is a container image you run next to your landscape map, so you should be able to verify *what*
+you are running and *where it came from* — increasingly a regulatory expectation (EU Cyber Resilience
+Act). Every tagged release (`v*.*.*`) publishes the image to the GitHub Container Registry with a full
+supply-chain trail (atlas#38), built by [`.github/workflows/release.yml`](../.github/workflows/release.yml):
+
+- **Published image:** `ghcr.io/vev-software/atlas-community:<version>`.
+- **Signature:** a keyless [cosign](https://docs.sigstore.dev/) signature over the image digest, tied to
+  the release workflow's GitHub OIDC identity and recorded in the public Rekor transparency log.
+- **Provenance:** a max-mode SLSA build-provenance attestation attached to the image.
+- **SBOM:** a CycloneDX SBOM attached to the image as a signed cosign attestation *and* uploaded as an
+  asset on the GitHub Release.
+
+### Verify before you run
+
+Verify the signature (the OIDC identity is the release workflow on a version tag):
+
+```bash
+IMAGE=ghcr.io/vev-software/atlas-community:<version>
+cosign verify "$IMAGE" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github.com/Vev-software/atlas-community/\.github/workflows/release\.yml@refs/tags/v'
+```
+
+Verify — and print — the CycloneDX SBOM attestation:
+
+```bash
+cosign verify-attestation --type cyclonedx "$IMAGE" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github.com/Vev-software/atlas-community/\.github/workflows/release\.yml@refs/tags/v'
+```
+
+Inspect the SLSA provenance (or fetch the SBOM from the release page):
+
+```bash
+cosign download attestation "$IMAGE" | jq .   # provenance + sbom predicates
+```
+
+An **unsigned image, a tampered image, or one built by anything other than this release workflow** has
+no matching signature in the transparency log for that identity, so `cosign verify` fails — do not run
+it. Pin deployments to an immutable digest (`ghcr.io/vev-software/atlas-community@sha256:…`), not just a
+moving tag, once you have verified it.

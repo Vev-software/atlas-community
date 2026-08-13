@@ -79,6 +79,10 @@ encrypt it at rest — see
 temporary local contracts-feed step until `Vev.Atlas.Contracts` is on nuget.org — are in
 [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md).
 
+Tagged releases publish a signed image to `ghcr.io/vev-software/atlas-community` with an SBOM and
+provenance you can verify with [cosign](https://docs.sigstore.dev/) before you run it — see
+[Supply chain: SBOM & signed provenance](./docs/DEVELOPMENT.md#supply-chain-sbom--signed-provenance).
+
 ## Repository layout
 
 ```

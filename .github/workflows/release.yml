@@ -1,0 +1,120 @@
+name: release
+
+# Publish a signed, SBOM-carrying container image for a tagged release (atlas#38).
+# Supply-chain baseline: every published image is pushed to GHCR with a keyless cosign
+# signature, an attached SLSA provenance attestation and a CycloneDX SBOM (attested to the
+# image and attached to the GitHub Release). Runs ONLY on version tags, never on a PR.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write   # create/update the GitHub Release and upload the SBOM asset
+  packages: write   # push the image to GHCR
+  id-token: write   # keyless cosign signing via GitHub OIDC
+
+jobs:
+  image:
+    name: build · push · sbom · sign
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout atlas-community
+        uses: actions/checkout@v4
+        with:
+          path: atlas-community
+
+      # Until Vev.Atlas.Contracts is on nuget.org (#10), reconstruct the local feed the Dockerfile
+      # restore expects (../.local-nuget) from the PUBLIC atlas-contracts repo — the same public-feed
+      # reconstruction CI does, so the image build stays public-feed-clean (AGENTS.md §1.9).
+      - name: Checkout atlas-contracts (public)
+        uses: actions/checkout@v4
+        with:
+          repository: Vev-software/atlas-contracts
+          path: atlas-contracts
+
+      - name: Setup .NET (pinned by global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: atlas-community/global.json
+
+      - name: Pack public contracts into the local feed
+        run: >-
+          dotnet pack atlas-contracts/sdk/dotnet/Vev.Atlas.Contracts/Vev.Atlas.Contracts.csproj
+          -c Release -o "$GITHUB_WORKSPACE/.local-nuget"
+
+      # GHCR image names must be lowercase; the org slug is mixed-case, so normalise once.
+      - name: Resolve image name
+        id: img
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.img.outputs.name }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+          # 'latest' only for a real release tag, never a prerelease (e.g. v1.2.3-rc.1).
+          flavor: |
+            latest=auto
+
+      # Build in the monorepo-root layout the Dockerfile expects: the workspace root holds
+      # .local-nuget + the atlas-community checkout. Attach a build-time SBOM and max SLSA
+      # provenance so every published image carries in-registry attestations (atlas#38).
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: atlas-community/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          sbom: true
+          provenance: mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      # Keyless signature over the immutable image digest, tied to this workflow's OIDC identity and
+      # recorded in the public Rekor transparency log. An unsigned or tampered image (any other digest)
+      # fails `cosign verify` against this identity.
+      - name: Sign the image
+        env:
+          IMAGE: ${{ steps.img.outputs.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+
+      # A standalone CycloneDX SBOM for the pushed image, for the GitHub Release (human-fetchable) and
+      # as a signed cosign attestation (machine-verifiable).
+      - name: Generate SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.img.outputs.name }}@${{ steps.build.outputs.digest }}
+          format: cyclonedx-json
+          output-file: atlas-community-sbom.cdx.json
+          artifact-name: atlas-community-sbom.cdx.json
+
+      - name: Attest the SBOM to the image
+        env:
+          IMAGE: ${{ steps.img.outputs.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign attest --yes --type cyclonedx --predicate atlas-community-sbom.cdx.json "${IMAGE}@${DIGEST}"
+
+      - name: Attach SBOM to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: atlas-community-sbom.cdx.json

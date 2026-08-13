@@ -20,6 +20,14 @@ Include:
 VEV coordinates fixes and disclosure case by case. Please avoid public disclosure
 until a fix, mitigation or advisory path has been agreed.
 
+## Supply chain
+
+Tagged releases publish a signed container image to
+`ghcr.io/vev-software/atlas-community` with an SBOM (CycloneDX) and SLSA build
+provenance. Verify the signature, provenance and SBOM with cosign before running
+the image — the steps are in
+[`docs/DEVELOPMENT.md` § Supply chain](./docs/DEVELOPMENT.md#supply-chain-sbom--signed-provenance).
+
 ## Scope
 
 This policy is provisional bootstrap documentation for this repository and should
