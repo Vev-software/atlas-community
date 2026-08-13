@@ -1,0 +1,39 @@
+# Atlas Community — dev OIDC overlay (fabric#3).
+#
+# Layers a bundled Keycloak (dev only, handbook 05 §6) on top of the base compose and switches Atlas from
+# single-tenant to fabric-oidc, so you can log in with a real token end-to-end on your machine. Bring your
+# own OIDC provider in production — do NOT ship this Keycloak there.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.oidc.yml up --build
+#   (podman: podman compose -f docker-compose.yml -f docker-compose.oidc.yml up --build)
+#
+# Then (see docs/DEVELOPMENT.md § "Log in with the dev Keycloak") get a token for the seeded user and call
+# the API with `Authorization: Bearer <token>`. Keycloak admin console: http://localhost:8081 (admin/admin).
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # A fixed hostname so the token issuer is the same URL Atlas validates against, from inside the
+      # compose network (http://keycloak:8080) and for tokens fetched from the host via the mapped port.
+      KC_HOSTNAME: http://keycloak:8080
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+
+  atlas:
+    environment:
+      # Switch off single-tenant: validate real OIDC tokens from the bundled Keycloak realm.
+      Atlas__Identity__Mode: "fabric-oidc"
+      Atlas__Identity__Oidc__Authority: "http://keycloak:8080/realms/atlas"
+      # The dev Keycloak speaks plain HTTP, so don't require HTTPS for its metadata.
+      Atlas__Identity__Oidc__RequireHttpsMetadata: "false"
+    depends_on:
+      - keycloak

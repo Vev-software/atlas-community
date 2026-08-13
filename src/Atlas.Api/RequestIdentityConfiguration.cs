@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Vev.Atlas.Domain;
 using Vev.Atlas.Fabric;
 
@@ -17,9 +18,10 @@ namespace Vev.Atlas.Api;
 ///   <item><b>single-tenant</b> — a fixed tenant + principal from configuration
 ///     (<see cref="SingleTenantContextMiddleware"/>), headers ignored. The identity source for the
 ///     single-tenant self-hosted Community edition.</item>
-///   <item><b>fabric-oidc</b> — real identity from a verified Fabric OIDC token (fabric#3), not yet
-///     wired. Selecting it (or defaulting to it outside Development) fails closed: the host refuses to
-///     start rather than trust headers.</item>
+///   <item><b>fabric-oidc</b> — real identity from a verified OIDC bearer token (fabric#3). The token is
+///     validated against a configured provider (<see cref="OidcAuthorityKey"/>) and its claims are mapped
+///     to the tenant + principal (<see cref="OidcRequestContextMiddleware"/>). Selecting it without a
+///     provider configured fails closed: the host refuses to start rather than trust headers.</item>
 /// </list>
 /// <para>
 /// When the mode is unset it defaults from the environment: Development → <b>dev-headers</b>; any other
@@ -41,6 +43,33 @@ public static class RequestIdentityConfiguration
     /// <summary>Comma-separated fixed roles for <see cref="SingleTenant"/> mode. Defaults to the Architect role.</summary>
     public const string RolesKey = "Atlas:Identity:Roles";
 
+    /// <summary>
+    /// OIDC provider authority (issuer) for <see cref="FabricOidc"/> mode. Required to run that mode;
+    /// when unset, the host fails closed rather than accept unverified identity.
+    /// </summary>
+    public const string OidcAuthorityKey = "Atlas:Identity:Oidc:Authority";
+
+    /// <summary>Expected token audience (the client id) for <see cref="FabricOidc"/> mode. Optional.</summary>
+    public const string OidcAudienceKey = "Atlas:Identity:Oidc:Audience";
+
+    /// <summary>Token claim carrying the tenant id. Defaults to <c>tenant</c>.</summary>
+    public const string OidcTenantClaimKey = "Atlas:Identity:Oidc:TenantClaim";
+
+    /// <summary>Token claim carrying the stable principal id. Defaults to the OIDC <c>sub</c> claim.</summary>
+    public const string OidcPrincipalClaimKey = "Atlas:Identity:Oidc:PrincipalClaim";
+
+    /// <summary>Token claim carrying the human-readable name. Defaults to <c>name</c>.</summary>
+    public const string OidcNameClaimKey = "Atlas:Identity:Oidc:NameClaim";
+
+    /// <summary>Token claim carrying role names (may repeat). Defaults to <c>roles</c>.</summary>
+    public const string OidcRolesClaimKey = "Atlas:Identity:Oidc:RolesClaim";
+
+    /// <summary>
+    /// Whether provider metadata must be fetched over HTTPS. Defaults to <c>true</c>; a local dev
+    /// Keycloak over plain HTTP sets it to <c>false</c>.
+    /// </summary>
+    public const string OidcRequireHttpsMetadataKey = "Atlas:Identity:Oidc:RequireHttpsMetadata";
+
     /// <summary>Development-only header shim.</summary>
     public const string DevHeaders = "dev-headers";
 
@@ -51,16 +80,65 @@ public static class RequestIdentityConfiguration
     public const string FabricOidc = "fabric-oidc";
 
     /// <summary>
+    /// Register the authentication services the resolved identity mode needs, before the host is built.
+    /// For <see cref="FabricOidc"/> with a configured <see cref="OidcAuthorityKey"/> this wires JWT bearer
+    /// validation against the provider; the other modes need no service registration here. Pair with
+    /// <see cref="UseAtlasRequestIdentity"/>, which wires the matching request pipeline.
+    /// </summary>
+    public static WebApplicationBuilder AddAtlasRequestIdentity(this WebApplicationBuilder builder)
+    {
+        var mode = ResolveMode(builder.Environment, builder.Configuration);
+        if (mode != FabricOidc)
+        {
+            return builder;
+        }
+
+        var authority = builder.Configuration[OidcAuthorityKey];
+        if (string.IsNullOrWhiteSpace(authority))
+        {
+            // No provider yet: UseAtlasRequestIdentity will fail closed. Nothing to register.
+            return builder;
+        }
+
+        var options = OidcIdentityOptions.FromConfiguration(builder.Configuration);
+        var audience = builder.Configuration[OidcAudienceKey];
+        var requireHttpsMetadata = builder.Configuration.GetValue(OidcRequireHttpsMetadataKey, true);
+
+        builder.Services
+            .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(jwt =>
+            {
+                jwt.Authority = authority;
+                jwt.RequireHttpsMetadata = requireHttpsMetadata;
+
+                // Keep JWT claim types verbatim (sub, tenant, roles, name) rather than remapping them to
+                // the legacy long ClaimTypes.* URIs, so the middleware reads exactly the configured claims.
+                jwt.MapInboundClaims = false;
+                jwt.TokenValidationParameters.NameClaimType = options.NameClaim;
+                jwt.TokenValidationParameters.RoleClaimType = options.RolesClaim;
+
+                if (string.IsNullOrWhiteSpace(audience))
+                {
+                    jwt.TokenValidationParameters.ValidateAudience = false;
+                }
+                else
+                {
+                    jwt.Audience = audience;
+                }
+            });
+        builder.Services.AddAuthorization();
+
+        return builder;
+    }
+
+    /// <summary>
     /// Wire the request-identity source for the current environment, failing closed when no trustworthy
     /// provider is available. Call in place of registering the header middleware directly.
     /// </summary>
     public static WebApplication UseAtlasRequestIdentity(this WebApplication app)
     {
         var env = app.Environment;
-        var configured = app.Configuration[ModeKey];
-        var mode = string.IsNullOrWhiteSpace(configured)
-            ? (env.IsDevelopment() ? DevHeaders : FabricOidc)
-            : configured.Trim();
+        var mode = ResolveMode(env, app.Configuration);
 
         switch (mode)
         {
@@ -71,7 +149,7 @@ public static class RequestIdentityConfiguration
                     throw new InvalidOperationException(
                         $"Refusing to start: the development header identity shim ('{ModeKey}={DevHeaders}') is only " +
                         $"permitted in the Development environment, not '{env.EnvironmentName}'. Use '{ModeKey}={SingleTenant}' " +
-                        "for a self-hosted single-tenant deployment, or configure Fabric OIDC identity (fabric#3) (atlas#34).");
+                        $"for a self-hosted single-tenant deployment, or configure Fabric OIDC identity ('{OidcAuthorityKey}', fabric#3) (atlas#34).");
                 }
 
                 app.UseMiddleware<RequestContextMiddleware>();
@@ -90,13 +168,24 @@ public static class RequestIdentityConfiguration
                 return app;
 
             case FabricOidc:
-                // The real path resolves tenant/principal from a verified Fabric OIDC token (fabric#3).
-                // That provider is not wired yet, so rather than fall back to header-asserted identity,
-                // Atlas fails closed and refuses to start.
-                throw new InvalidOperationException(
-                    $"Refusing to start: no identity provider is configured for environment '{env.EnvironmentName}'. " +
-                    $"Atlas does not fall back to header-asserted identity outside Development. Use '{ModeKey}={SingleTenant}' " +
-                    "for a self-hosted single-tenant deployment, or configure Fabric OIDC identity (fabric#3) (atlas#34).");
+                // The real path resolves tenant/principal from a verified OIDC token (fabric#3). Without a
+                // configured provider Atlas fails closed rather than fall back to header-asserted identity.
+                var authority = app.Configuration[OidcAuthorityKey];
+                if (string.IsNullOrWhiteSpace(authority))
+                {
+                    throw new InvalidOperationException(
+                        $"Refusing to start: no identity provider is configured for environment '{env.EnvironmentName}'. " +
+                        $"Atlas does not fall back to header-asserted identity outside Development. Set '{OidcAuthorityKey}' to a " +
+                        $"verified OIDC provider for multi-tenant Fabric identity (fabric#3), or use '{ModeKey}={SingleTenant}' " +
+                        "for a self-hosted single-tenant deployment (atlas#34).");
+                }
+
+                // Authentication validates the bearer token; the middleware maps its claims onto the ambient
+                // tenant + principal and fails closed on an unauthenticated or tenant-less request.
+                app.UseAuthentication();
+                app.UseAuthorization();
+                app.UseMiddleware<OidcRequestContextMiddleware>(OidcIdentityOptions.FromConfiguration(app.Configuration));
+                return app;
 
             default:
                 throw new InvalidOperationException(
@@ -104,9 +193,50 @@ public static class RequestIdentityConfiguration
         }
     }
 
+    /// <summary>
+    /// Resolve the effective identity mode: an explicit <see cref="ModeKey"/> override, otherwise the
+    /// environment default (Development → dev-headers; anything else → fabric-oidc, i.e. fail closed).
+    /// </summary>
+    private static string ResolveMode(IHostEnvironment env, IConfiguration config)
+    {
+        var configured = config[ModeKey];
+        return string.IsNullOrWhiteSpace(configured)
+            ? (env.IsDevelopment() ? DevHeaders : FabricOidc)
+            : configured.Trim();
+    }
+
     private static string Value(WebApplication app, string key, string fallback)
     {
         var configured = app.Configuration[key];
+        return string.IsNullOrWhiteSpace(configured) ? fallback : configured.Trim();
+    }
+}
+
+/// <summary>
+/// The token claims <see cref="OidcRequestContextMiddleware"/> reads to build the tenant + principal.
+/// Claim names are configurable so Atlas stays provider-neutral (handbook 05 §6): the operator points
+/// each field at whatever claim their OIDC provider emits.
+/// </summary>
+/// <param name="TenantClaim">Claim carrying the tenant id (default <c>tenant</c>).</param>
+/// <param name="PrincipalClaim">Claim carrying the stable principal id (default <c>sub</c>).</param>
+/// <param name="NameClaim">Claim carrying the display name (default <c>name</c>).</param>
+/// <param name="RolesClaim">Claim carrying role names, possibly repeated (default <c>roles</c>).</param>
+public sealed record OidcIdentityOptions(
+    string TenantClaim,
+    string PrincipalClaim,
+    string NameClaim,
+    string RolesClaim)
+{
+    /// <summary>Read the claim names from configuration, applying the OIDC-conventional defaults.</summary>
+    public static OidcIdentityOptions FromConfiguration(IConfiguration config) => new(
+        Value(config, RequestIdentityConfiguration.OidcTenantClaimKey, "tenant"),
+        Value(config, RequestIdentityConfiguration.OidcPrincipalClaimKey, "sub"),
+        Value(config, RequestIdentityConfiguration.OidcNameClaimKey, "name"),
+        Value(config, RequestIdentityConfiguration.OidcRolesClaimKey, "roles"));
+
+    private static string Value(IConfiguration config, string key, string fallback)
+    {
+        var configured = config[key];
         return string.IsNullOrWhiteSpace(configured) ? fallback : configured.Trim();
     }
 }
