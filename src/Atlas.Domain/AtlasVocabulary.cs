@@ -23,6 +23,13 @@ public static class AtlasActions
 
     /// <summary>Create, edit or delete catalogue entries.</summary>
     public const string AssetWrite = "atlas.asset.write";
+
+    /// <summary>
+    /// Export the whole tenant landscape as one downloadable document. A full-map export is the
+    /// highest-value reconnaissance read, so it is a distinct, elevated action — not plain read
+    /// (atlas#36).
+    /// </summary>
+    public const string LandscapeExport = "atlas.landscape.export";
 }
 
 /// <summary>
