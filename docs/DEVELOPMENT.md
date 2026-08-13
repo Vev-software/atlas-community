@@ -125,6 +125,22 @@ your format to/from `LandscapeDocument` / `ImportBundle`), give it a lowercase, 
 id, and register it in `AtlasCommunityRegistration`. The `/export` and `/import` endpoints select it
 via `?format=…`. No core code changes.
 
+### The open-core line for modules
+
+Community modules add value **at the edges** — importers/exporters, connectors, UI panels — through the
+capabilities and permissions they declare. What a module may **never** do is declare or satisfy a
+**reserved paid capability** (`atlas.integration.mapping`, `atlas.eol.tracking`, `atlas.portfolio.apm`,
+`atlas.roadmap.generate`, `atlas.ai.review`). The free/paid line is **entitlement-only**: a paid feature
+stays behind `PaidCapabilityGate` → the Fabric entitlement decision, and no module can flip it to
+allowed (atlas#22, engineering#3).
+
+Any module install path runs the module's manifest through `ModuleInstallGuard.EnsureInstallableAsync`
+first (`Atlas.Domain/ModuleInstallGuard.cs`). A manifest that claims a reserved paid capability is
+**refused** — a `ModuleRejectedException` with the `reserved_capability` reason code, and an
+`atlas.module.rejected` audit record. The reserved set (`AtlasCapabilities.ReservedPaid`) is pinned by a
+fitness test, so it cannot silently lose an id. The generic manifest schema and extension model live in
+the platform Module Author Guide (handbook §16) and the Fabric extension model (fabric#10).
+
 ### Compatibility & versioning
 
 - Every exported `LandscapeDocument` (and every `ImportBundle`) carries a `contractVersion` — the

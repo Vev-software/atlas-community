@@ -42,6 +42,9 @@ public static class AtlasCommunityRegistration
         // --- Domain ---
         services.AddScoped<AssetService>();
         services.AddScoped<PaidCapabilityGate>();
+        // The open-core install boundary: any module install path runs its manifest through this guard,
+        // which refuses a module declaring or satisfying a reserved paid capability (atlas#22).
+        services.AddScoped<ModuleInstallGuard>();
 
         // --- Portability format-adapter seam (issue #12) ---
         // The canonical atlas-contracts JSON adapter is always present. Community format modules
