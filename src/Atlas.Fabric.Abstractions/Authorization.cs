@@ -45,6 +45,9 @@ public static class ReasonCodes
 
     /// <summary>No current entitlement snapshot; fail-static denies rather than grants (E6).</summary>
     public const string EntitlementUnavailable = "entitlement_unavailable";
+
+    /// <summary>A module may not declare or satisfy a reserved paid capability (the open-core guard).</summary>
+    public const string ReservedCapability = "reserved_capability";
 }
 
 /// <summary>

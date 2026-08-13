@@ -56,4 +56,22 @@ public static class AtlasCapabilities
 
     /// <summary>AI architecture review (paid Atlas core, via the Fabric AI contract).</summary>
     public static readonly CapabilityId AiReview = new("atlas.ai.review");
+
+    /// <summary>
+    /// The reserved paid capabilities, as one authoritative set. The free/paid line is entitlement-only:
+    /// a Community-installed module may add value at the edges (importers/exporters, connectors, panels)
+    /// but may never declare or satisfy one of these — that would be a back-door around the entitlement
+    /// gate. The module install guard rejects any module that claims one (atlas#22, engineering#3).
+    /// </summary>
+    public static readonly IReadOnlySet<CapabilityId> ReservedPaid = new HashSet<CapabilityId>
+    {
+        IntegrationMapping,
+        EndOfLifeTracking,
+        PortfolioManagement,
+        RoadmapGeneration,
+        AiReview,
+    };
+
+    /// <summary>Whether <paramref name="capability"/> is a reserved paid capability no module may claim.</summary>
+    public static bool IsReservedPaid(CapabilityId capability) => ReservedPaid.Contains(capability);
 }
