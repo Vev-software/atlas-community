@@ -29,6 +29,7 @@ public static class AtlasCommunityRegistration
 
         // Community Edition: no paid capabilities granted → the entitlement seam denies them all (atlas#8).
         services.AddSingleton<IEntitlementService>(CommunityEntitlementService.Community);
+        services.AddSingleton<IAiAssistService>(CommunityAiAssistService.Unconfigured);
 
         services.AddSingleton<InMemoryAuditSink>();
         services.AddSingleton<IAuditSink>(sp => sp.GetRequiredService<InMemoryAuditSink>());
@@ -42,6 +43,7 @@ public static class AtlasCommunityRegistration
         // --- Domain ---
         services.AddScoped<AssetService>();
         services.AddScoped<PaidCapabilityGate>();
+        services.AddScoped<SetupCopilotService>();
         // The open-core install boundary: any module install path runs its manifest through this guard,
         // which refuses a module declaring or satisfying a reserved paid capability (atlas#22).
         services.AddScoped<ModuleInstallGuard>();

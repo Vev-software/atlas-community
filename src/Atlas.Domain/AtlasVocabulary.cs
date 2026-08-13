@@ -57,6 +57,9 @@ public static class AtlasCapabilities
     /// <summary>AI architecture review (paid Atlas core, via the Fabric AI contract).</summary>
     public static readonly CapabilityId AiReview = new("atlas.ai.review");
 
+    /// <summary>Grounded setup copilot for first-run onboarding and feature explanation (via the Fabric AI contract).</summary>
+    public static readonly CapabilityId SetupAssist = new("atlas.ai.assist.setup");
+
     /// <summary>
     /// The reserved paid capabilities, as one authoritative set. The free/paid line is entitlement-only:
     /// a Community-installed module may add value at the edges (importers/exporters, connectors, panels)

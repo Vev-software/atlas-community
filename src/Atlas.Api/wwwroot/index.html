@@ -326,6 +326,7 @@
     </label>
     <span class="count" id="count"></span>
     <button class="primary" id="newAsset" hidden title="Add a new asset to the catalogue"><span class="plus">+</span>New asset</button>
+    <button class="action" id="setupCopilot" title="Grounded suggestions for where to start">Setup copilot</button>
     <button class="action" id="refresh" title="Reload the landscape">Refresh</button>
     <button class="action" id="export" title="Download the landscape as a portable JSON document">Export JSON</button>
   </div>
@@ -515,6 +516,7 @@
     let searchQuery = "";
     let canAuthor = false;      // Set from GET /api/v1/capabilities — never assumed.
     let editingId = null;       // Non-null while the asset form is editing an existing asset.
+    let setupGuide = null;      // Grounded onboarding guide for the current tenant.
 
     const el = (id) => document.getElementById(id);
     const canvas = el("canvas");
@@ -548,12 +550,16 @@
         landscape.assets ||= [];
         landscape.relationships ||= [];
         el("toolbar").hidden = false;
+        await loadSetupCopilot();
         render();
         if (selectedId) showDetail(selectedId);
         else if (searchQuery.trim()) {
           const detail = el("detail");
           detail.innerHTML = '<p class="placeholder">Select an asset in the map to inspect it.</p>';
           renderSearchResults(detail);
+        }
+        else if (setupGuide) {
+          renderSetupCopilot();
         }
       } catch (err) {
         canvas.innerHTML =
@@ -787,6 +793,106 @@
       if (!svg) return;
       svg.querySelectorAll(".node").forEach(n => n.classList.remove("dim"));
       svg.querySelectorAll(".edge").forEach(e => e.classList.remove("hot", "dim"));
+    }
+
+    async function loadSetupCopilot() {
+      try {
+        const res = await fetch("/api/v1/setup-copilot", { headers: { "Accept": "application/json" } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        setupGuide = await res.json();
+      } catch {
+        setupGuide = null;
+      }
+    }
+
+    function renderSetupCopilot() {
+      if (!setupGuide) return;
+      selectedId = null;
+      clearSelection();
+
+      const detail = el("detail");
+      detail.innerHTML = "";
+
+      const wrap = document.createElement("div");
+      wrap.className = "detail";
+      wrap.innerHTML =
+        `<p class="dname">Setup copilot</p>` +
+        `<p class="dkind">${escapeHtml(setupGuide.mode === "ai" ? "Grounded AI assist" : "Grounded static onboarding")}</p>`;
+
+      const intro = document.createElement("p");
+      intro.textContent = setupGuide.summary;
+      wrap.appendChild(intro);
+
+      if (setupGuide.assistantMessage) {
+        const section = document.createElement("section");
+        section.className = "section";
+        section.innerHTML = `<h3>Assistant note</h3><p>${escapeHtml(setupGuide.assistantMessage)}</p>`;
+        wrap.appendChild(section);
+      }
+
+      const snapshot = document.createElement("section");
+      snapshot.className = "section";
+      snapshot.innerHTML = `<h3>Current tenant</h3>`;
+      const kv = document.createElement("dl");
+      kv.className = "kv";
+      addSetupKv(kv, "Assets", String(setupGuide.snapshot.assetCount));
+      addSetupKv(kv, "Links", String(setupGuide.snapshot.relationshipCount));
+      addSetupKv(kv, "Mode", setupGuide.canAuthor ? "Author can act on suggestions" : "Read-only browse");
+      wrap.appendChild(snapshot);
+      snapshot.appendChild(kv);
+
+      wrap.appendChild(renderSetupSection("Next steps", setupGuide.suggestions));
+      wrap.appendChild(renderSetupSection("What each surface does", setupGuide.features));
+      detail.appendChild(wrap);
+    }
+
+    function renderSetupSection(title, items) {
+      const section = document.createElement("section");
+      section.className = "section";
+      section.innerHTML = `<h3>${escapeHtml(title)}</h3>`;
+      const list = document.createElement("div");
+      list.className = "mini-list";
+      for (const item of items || []) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "mini";
+        btn.innerHTML = `${escapeHtml(item.title)}<span class="meta">${escapeHtml(item.detail)}</span>`;
+        btn.addEventListener("click", () => runSetupAction(item.action));
+        list.appendChild(btn);
+      }
+      section.appendChild(list);
+      return section;
+    }
+
+    function addSetupKv(host, key, value) {
+      const dt = document.createElement("dt");
+      dt.textContent = key;
+      const dd = document.createElement("dd");
+      dd.textContent = value;
+      host.append(dt, dd);
+    }
+
+    function runSetupAction(action) {
+      if (action === "new-asset" && canAuthor) {
+        openAssetForm();
+        return;
+      }
+
+      if (action === "export-json") {
+        el("export").click();
+        return;
+      }
+
+      if (action === "select-search") {
+        el("search").focus();
+        return;
+      }
+
+      if (action === "select-relationships" || action === "select-detail") {
+        if (landscape.assets.length) {
+          select(landscape.assets[0].id);
+        }
+      }
     }
 
     function showDetail(id) {
@@ -1389,6 +1495,7 @@
     });
     el("refresh").addEventListener("click", load);
     el("newAsset").addEventListener("click", () => openAssetForm());
+    el("setupCopilot").addEventListener("click", renderSetupCopilot);
     el("export").addEventListener("click", () => {
       const blob = new Blob([JSON.stringify(landscape, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
