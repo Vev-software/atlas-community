@@ -57,6 +57,18 @@ public static class AtlasCapabilities
     /// <summary>AI architecture review (paid Atlas core, via the Fabric AI contract).</summary>
     public static readonly CapabilityId AiReview = new("atlas.ai.review");
 
+    /// <summary>Data introspection seam for schema auto-scan into the catalogue (paid Atlas Enterprise).</summary>
+    public static readonly CapabilityId DataIntrospection = new("atlas.data.introspection");
+
+    /// <summary>Data overlap analysis seam for domain/dublet and consumer-map analysis (paid Atlas Enterprise).</summary>
+    public static readonly CapabilityId DataOverlap = new("atlas.data.overlap");
+
+    /// <summary>Data quality seam for classification, provenance and quality reporting (paid Atlas Enterprise).</summary>
+    public static readonly CapabilityId DataQuality = new("atlas.data.quality");
+
+    /// <summary>ArchiMate export seam for data-layer round-trip interoperability (paid Atlas Enterprise).</summary>
+    public static readonly CapabilityId ArchimateExport = new("atlas.export.archimate");
+
     /// <summary>
     /// The reserved paid capabilities, as one authoritative set. The free/paid line is entitlement-only:
     /// a Community-installed module may add value at the edges (importers/exporters, connectors, panels)
@@ -70,6 +82,10 @@ public static class AtlasCapabilities
         PortfolioManagement,
         RoadmapGeneration,
         AiReview,
+        DataIntrospection,
+        DataOverlap,
+        DataQuality,
+        ArchimateExport,
     };
 
     /// <summary>Whether <paramref name="capability"/> is a reserved paid capability no module may claim.</summary>
