@@ -303,6 +303,8 @@
 
     @media (max-width: 820px) { main { grid-template-columns: 1fr; } aside { border-left: none; border-top: 1px solid var(--line); } }
   </style>
+  <!-- Runtime deployment config (atlas#19): sets window.__ATLAS__ (API base incl. path base). -->
+  <script src="app-config.js"></script>
 </head>
 <body>
   <header>
@@ -508,6 +510,11 @@
       "depends-on": "depends on", "part-of": "part of", "joins-on": "joins on",
     };
     const SVGNS = "http://www.w3.org/2000/svg";
+    // Runtime deployment config (atlas#19): the API base (path base included) comes from
+    // app-config.js, so the UI is not hard-coded to "/api" and works under a reverse-proxy
+    // sub-path. The fallback keeps the one-host default working if the config script is absent.
+    const ATLAS = window.__ATLAS__ || { apiBase: "/api", loginPath: "/login" };
+    const api = (path) => ATLAS.apiBase + path;
 
     let landscape = { assets: [], relationships: [] };
     let filter = "all";
@@ -522,7 +529,7 @@
     // --- Capability probe: decides whether author affordances are shown at all (atlas#17). --------------
     async function loadCapabilities() {
       try {
-        const res = await fetch("/api/v1/capabilities", { headers: { "Accept": "application/json" } });
+        const res = await fetch(api("/v1/capabilities"), { headers: { "Accept": "application/json" } });
         if (res.ok) {
           const caps = await res.json();
           canAuthor = !!caps.canAuthor;
@@ -542,7 +549,7 @@
     async function load() {
       canvas.innerHTML = '<div class="empty"><h3>Loading landscape…</h3></div>';
       try {
-        const res = await fetch("/api/v1/landscape", { headers: { "Accept": "application/json" } });
+        const res = await fetch(api("/v1/landscape"), { headers: { "Accept": "application/json" } });
         if (!res.ok) throw new Error("HTTP " + res.status);
         landscape = await res.json();
         landscape.assets ||= [];
@@ -1184,7 +1191,7 @@
       submit.disabled = true;
       try {
         const editing = editingId !== null;
-        const url = editing ? `/api/v1/assets/${encodeURIComponent(editingId)}` : "/api/v1/assets";
+        const url = editing ? api(`/v1/assets/${encodeURIComponent(editingId)}`) : api("/v1/assets");
         const res = await fetch(url, {
           method: editing ? "PUT" : "POST",
           headers: { "Content-Type": "application/json", "Accept": "application/json" },
@@ -1206,7 +1213,7 @@
     async function deleteAsset(a) {
       if (!confirm(`Delete "${a.name || a.id}"? This also removes its relationships from the map.`)) return;
       try {
-        const res = await fetch(`/api/v1/assets/${encodeURIComponent(a.id)}`, { method: "DELETE" });
+        const res = await fetch(api(`/v1/assets/${encodeURIComponent(a.id)}`), { method: "DELETE" });
         if (!res.ok && res.status !== 404) { toast(await apiError(res), true); return; }
         if (selectedId === a.id) selectedId = null;
         await load();
@@ -1251,7 +1258,7 @@
       const submit = el("relSubmit");
       submit.disabled = true;
       try {
-        const res = await fetch("/api/v1/relationships", {
+        const res = await fetch(api("/v1/relationships"), {
           method: "POST",
           headers: { "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify(body),
@@ -1271,7 +1278,7 @@
     async function deleteRelationship(r) {
       if (!confirm(`Remove the "${REL_LABELS[r.type] || r.type}" link between ${label(r.fromId)} and ${label(r.toId)}?`)) return;
       try {
-        const res = await fetch(`/api/v1/relationships/${encodeURIComponent(r.id)}`, { method: "DELETE" });
+        const res = await fetch(api(`/v1/relationships/${encodeURIComponent(r.id)}`), { method: "DELETE" });
         if (!res.ok && res.status !== 404) { toast(await apiError(res), true); return; }
         const keep = selectedId;
         await load();

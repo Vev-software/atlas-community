@@ -196,6 +196,48 @@ The image runs as a non-root user, listens on port 8080, and carries a `HEALTHCH
 `/health`. Configuration is standard ASP.NET Core — override the database location with
 `ConnectionStrings__Atlas`, e.g. `-e ConnectionStrings__Atlas="Data Source=/data/atlas.db"`.
 
+## URLs & hosting
+
+Hostnames and paths are **deployment configuration, never a hard-coded VEV identity** (handbook `04`,
+ADR `0002`): Atlas assumes no `vev.software` hostname, and the default is a **flat single-host shape** —
+public UI, sign-in and the API all on one host at the root. A self-hoster changes nothing. Configure it
+under `Atlas:Urls` (env vars use `Atlas__Urls__*`):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `PublicBaseUrl` | *(empty)* | Absolute external base for links built without a request (e.g. `https://atlas.example.com`). Empty → derived from the incoming request. |
+| `PathBase` | *(empty)* | Sub-path the app is hosted under behind a reverse proxy (e.g. `/atlas`). Empty → host root. |
+| `LoginPath` | `/login` | Where sign-in lives (under `PathBase`). |
+| `ApiBasePath` | `/api` | Where the product API is mounted (under `PathBase`); `v1` hangs off it. |
+
+The static UI reads its API base from `GET /app-config.js` (`window.__ATLAS__.apiBase`), so it is never
+hard-coded to `/api` and follows `PathBase`/`ApiBasePath` automatically.
+
+**Single-host (default).** Nothing to set: UI at `/`, API at `/api/v1/…`, sign-in at `/login`.
+
+**White-label host.** Serve under the customer's own hostname; only set `PublicBaseUrl` if you generate
+absolute links (e.g. emails). Requests still resolve their own host, so no config is needed just to change
+the hostname:
+
+```jsonc
+// appsettings.Production.json
+{ "Atlas": { "Urls": { "PublicBaseUrl": "https://atlas.acme.example" } } }
+```
+
+**Reverse-proxy sub-path.** Host Atlas under a path segment (proxy forwards `/atlas/*`):
+
+```bash
+# env-var form
+Atlas__Urls__PathBase=/atlas
+# → UI at /atlas/, API at /atlas/api/v1/…, health at /atlas/health, app-config reports apiBase "/atlas/api"
+```
+
+**Custom API mount.** Point the API somewhere other than `/api` (e.g. behind an API gateway prefix):
+
+```bash
+Atlas__Urls__ApiBasePath=/gateway   # API now at /gateway/v1/…, and the UI follows via app-config.js
+```
+
 ## Identity & tenancy
 
 Atlas holds reconnaissance-grade landscape data, so request identity must come from a trustworthy

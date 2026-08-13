@@ -11,9 +11,14 @@ namespace Vev.Atlas.Api;
 /// </summary>
 public static class AssetEndpoints
 {
-    public static IEndpointRouteBuilder MapAtlasCommunityEndpoints(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapAtlasCommunityEndpoints(this IEndpointRouteBuilder app, string apiBasePath = "/api")
     {
-        var assets = app.MapGroup("/api/v1/assets").WithTags("Assets");
+        // The API mount path is deployment configuration (atlas#19); v1 hangs off it. Default "/api" keeps
+        // the canonical "/api/v1/…" routes. Any path base (reverse-proxy sub-path) is applied separately by
+        // UsePathBase, so it composes on top of these routes without being baked in here.
+        var v1 = $"/{apiBasePath.Trim('/')}/v1";
+
+        var assets = app.MapGroup($"{v1}/assets").WithTags("Assets");
 
         assets.MapGet("", async (string? kind, AssetService service, CancellationToken ct) =>
             Results.Ok(await service.ListAssetsAsync(ParseKind(kind), ct)))
@@ -28,7 +33,7 @@ public static class AssetEndpoints
         assets.MapPost("", async (Asset asset, AssetService service, CancellationToken ct) =>
         {
             var created = await service.CreateAssetAsync(asset, ct);
-            return Results.Created($"/api/v1/assets/{created.Id}", created);
+            return Results.Created($"{v1}/assets/{created.Id}", created);
         })
             .WithName("CreateAsset")
             .WithSummary("Create a new asset (hold it in the catalogue).");
@@ -68,7 +73,7 @@ public static class AssetEndpoints
         // Session capability probe (atlas#17): tells a pure API client (the landscape UI) whether the
         // current principal may author, so it can show create/edit/delete affordances only to author-capable
         // users and keep its badge honest. The authz decision comes from Fabric, never from the UI.
-        app.MapGet("/api/v1/capabilities", (AssetService service) =>
+        app.MapGet($"{v1}/capabilities", (AssetService service) =>
             Results.Ok(service.DescribeCapabilities()))
             .WithTags("Session")
             .WithName("GetCapabilities")
@@ -77,7 +82,7 @@ public static class AssetEndpoints
         // Read-only landscape surface (atlas#6): the whole tenant map — assets + manual relationships —
         // resolved into one atlas-contracts LandscapeDocument. Backs the browse/visualise UI, which is a
         // pure client of this API (API/SDK-first — the UI is never the only way in, handbook 15 §2).
-        app.MapGet("/api/v1/landscape", async (AssetService service, CancellationToken ct) =>
+        app.MapGet($"{v1}/landscape", async (AssetService service, CancellationToken ct) =>
             Results.Ok(await service.GetLandscapeAsync(ct)))
             .WithTags("Landscape")
             .WithName("GetLandscape")
@@ -87,7 +92,7 @@ public static class AssetEndpoints
         // Both endpoints route through the format-adapter seam (LandscapeFormatRegistry), so a future
         // community adapter (ArchiMate/BPMN/report) is added by registering an ILandscapeExporter/Importer,
         // never by touching the core boundary here.
-        var portability = app.MapGroup("/api/v1").WithTags("Portability");
+        var portability = app.MapGroup(v1).WithTags("Portability");
 
         portability.MapGet("/export", async (string? format, AssetService service, LandscapeFormatRegistry formats, CancellationToken ct) =>
         {
@@ -114,7 +119,7 @@ public static class AssetEndpoints
             .WithName("ImportLandscape")
             .WithSummary("Import a portable atlas-contracts bundle (Merge upserts; Replace matches the target to the bundle).");
 
-        var relationships = app.MapGroup("/api/v1/relationships").WithTags("Relationships");
+        var relationships = app.MapGroup($"{v1}/relationships").WithTags("Relationships");
 
         relationships.MapGet("", async (AssetService service, CancellationToken ct) =>
             Results.Ok(await service.ListRelationshipsAsync(ct)))
@@ -124,7 +129,7 @@ public static class AssetEndpoints
         relationships.MapPost("", async (Relationship relationship, AssetService service, CancellationToken ct) =>
         {
             var created = await service.CreateRelationshipAsync(relationship, ct);
-            return Results.Created($"/api/v1/relationships/{created.Id}", created);
+            return Results.Created($"{v1}/relationships/{created.Id}", created);
         })
             .WithName("CreateRelationship")
             .WithSummary("Create a manual relationship between two existing assets.");
