@@ -2,6 +2,8 @@
 
 **A living map of your architecture, always current.**
 
+![The Atlas Community landscape UI: colour-coded lanes for systems, applications, servers, infrastructure and the data layer, linked by manual relationships.](./docs/images/atlas-landscape.png)
+
 Atlas is VEV's enterprise-architecture platform, run as open core. This repository is the
 free, self-hostable **Community Edition** (`atlas-community`, AGPL-3.0): it catalogues the
 systems, applications, servers, infrastructure and data layer you run and keeps that picture current.
@@ -13,6 +15,36 @@ separately-licensed commercial edition developed outside this public repository.
 > contract shim, with architecture fitness tests that fail the build on a boundary violation.
 > Self-hosted packaging (Docker + Compose) is in the tree; basic visualisation is still landing.
 > Treat anything not yet in the source tree as intended direction rather than a shipped feature.
+
+## Quick start (local dev)
+
+Get it in your hands and see it run — the landscape UI above is what you'll be looking at.
+
+**Prerequisites:** the [.NET 10 SDK](https://dotnet.microsoft.com/download). Until `Vev.Atlas.Contracts`
+is on nuget.org, you also need the sibling [`atlas-contracts`](https://github.com/Vev-software/atlas-contracts)
+repo checked out next to this one — it's packed into a local feed for you (see
+[docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md#prerequisites)).
+
+**Windows (PowerShell):**
+
+```powershell
+./start.ps1 -RefreshContracts   # first run: also builds the local contracts feed
+./start.ps1                     # thereafter
+```
+
+**Any platform:**
+
+```bash
+ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/Atlas.Api
+```
+
+Then open **http://localhost:5199/** — you get the landscape UI, an OpenAPI document at
+`/openapi/v1.json`, and a health probe at `/health`. In local dev, identity runs in header-shim mode,
+so you can act as any tenant with the `X-Tenant-Id` / `X-Principal-Id` / `X-Principal-Roles` headers.
+
+Prefer a container, or want it running outside your editor? See
+[Run it (self-hosted)](#run-it-self-hosted) for the one-command Docker/Podman path (`./deploy.ps1` on
+Windows), which starts in single-tenant mode on port 8080.
 
 ## What you get (free, self-hostable)
 
@@ -72,6 +104,9 @@ One command brings up the API and a persistent SQLite catalogue — with Docker 
 docker compose up --build          # or: podman compose up --build
 curl http://localhost:8080/health  # {"status":"ok"}
 ```
+
+On Windows, `./deploy.ps1` wraps this: it picks Podman or Docker, builds the image and runs it on
+port 8080 (`./deploy.ps1 -Down` tears it back down).
 
 Your catalogue persists on a named volume across restarts. It holds your whole landscape map, so
 encrypt it at rest — see
