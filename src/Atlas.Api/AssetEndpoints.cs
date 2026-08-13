@@ -74,6 +74,12 @@ public static class AssetEndpoints
             .WithName("GetCapabilities")
             .WithSummary("Describe what the current principal may do in the catalogue (drives the UI's author affordances).");
 
+        app.MapGet("/api/v1/setup-copilot", async (SetupCopilotService service, CancellationToken ct) =>
+            Results.Ok(await service.GetGuideAsync(ct)))
+            .WithTags("Session")
+            .WithName("GetSetupCopilot")
+            .WithSummary("Get grounded onboarding suggestions and feature explanations for the current tenant.");
+
         // Read-only landscape surface (atlas#6): the whole tenant map — assets + manual relationships —
         // resolved into one atlas-contracts LandscapeDocument. Backs the browse/visualise UI, which is a
         // pure client of this API (API/SDK-first — the UI is never the only way in, handbook 15 §2).
