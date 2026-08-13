@@ -79,6 +79,13 @@ encrypt it at rest — see
 temporary local contracts-feed step until `Vev.Atlas.Contracts` is on nuget.org — are in
 [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md).
 
+## Security
+
+Report vulnerabilities privately — see [`SECURITY.md`](./SECURITY.md), never a public issue. The
+Community runtime's threat model, the controls that defend the landscape map, and the supported
+runtime/compatibility posture are in
+[`docs/threat-model.md`](./docs/threat-model.md).
+
 ## Repository layout
 
 ```

@@ -20,6 +20,13 @@ Include:
 VEV coordinates fixes and disclosure case by case. Please avoid public disclosure
 until a fix, mitigation or advisory path has been agreed.
 
+## Security posture
+
+The Community runtime's threat-model note (trust boundaries, the controls that
+defend the landscape map, and residual risks) and its compatibility statement
+(supported runtime and deployment posture, contract-version expectations) are in
+[`docs/threat-model.md`](./docs/threat-model.md).
+
 ## Scope
 
 This policy is provisional bootstrap documentation for this repository and should
