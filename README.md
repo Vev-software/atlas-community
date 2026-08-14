@@ -108,6 +108,10 @@ curl http://localhost:8080/health  # {"status":"ok"}
 On Windows, `./deploy.ps1` wraps this: it picks Podman or Docker, builds the image and runs it on
 port 8080 (`./deploy.ps1 -Down` tears it back down).
 
+Hostnames and paths are deployment configuration — the default is a flat single-host shape with no
+`vev.software` assumption. For a white-label host or a reverse-proxy sub-path, see
+[URLs & hosting](./docs/DEVELOPMENT.md#urls--hosting).
+
 Your catalogue persists on a named volume across restarts. It holds your whole landscape map, so
 encrypt it at rest — see
 [Encryption at rest](./docs/DEVELOPMENT.md#encryption-at-rest). Full instructions — including the
