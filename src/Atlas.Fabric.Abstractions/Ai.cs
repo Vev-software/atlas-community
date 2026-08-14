@@ -10,6 +10,7 @@ namespace Vev.Atlas.Fabric;
 /// <param name="Capability">The metered <c>atlas.ai.*</c> capability in use.</param>
 /// <param name="Purpose">Short purpose label for the assist.</param>
 /// <param name="Grounding">Grounded, product-supplied facts the assistant may speak from.</param>
+/// <param name="Attachments">Optional multimodal attachments supplied by the product, e.g. an uploaded image.</param>
 /// <param name="Resource">Optional resource or scope the assist applies to.</param>
 public readonly record struct AiAssistRequest(
     TenantContext Tenant,
@@ -17,7 +18,20 @@ public readonly record struct AiAssistRequest(
     CapabilityId Capability,
     string Purpose,
     string Grounding,
+    IReadOnlyList<AiAssistAttachment>? Attachments = null,
     ResourceId? Resource = null);
+
+/// <summary>
+/// Optional multimodal attachment routed through the Fabric AI contract. The product provides stable
+/// metadata plus opaque base64 content; Fabric decides whether a configured provider can use it.
+/// </summary>
+/// <param name="Name">Caller-supplied attachment name, e.g. a filename.</param>
+/// <param name="ContentType">Media type, e.g. <c>image/png</c>.</param>
+/// <param name="ContentBase64">Opaque base64 payload. Products must not log or audit it by default.</param>
+public readonly record struct AiAssistAttachment(
+    string Name,
+    string ContentType,
+    string ContentBase64);
 
 /// <summary>
 /// The result of a Fabric AI-assist call. Community may legitimately run with no provider configured, in

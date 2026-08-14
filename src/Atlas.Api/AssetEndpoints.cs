@@ -130,6 +130,30 @@ public static class AssetEndpoints
             .WithName("ExportContextPack")
             .WithSummary("Export a bounded landscape slice as a grounded context pack for external AI or human hand-off.");
 
+        portability.MapPost("/structure/draft", async (
+            StructureDraftRequest request,
+            StructureDraftService service,
+            PaidCapabilityGate gate,
+            CancellationToken ct) =>
+        {
+            var decision = gate.Evaluate(AtlasCapabilities.AiStructure, new ResourceId("atlas:structure-draft"));
+
+            if (!decision.Allowed)
+            {
+                return Results.Json(new
+                {
+                    capability = AtlasCapabilities.AiStructure.Value,
+                    reasonCode = decision.ReasonCode,
+                    source = decision.Source,
+                    upgrade = "AI-assisted landscape structuring is an Atlas AI capability. Contact VEV to enable it."
+                }, statusCode: StatusCodes.Status402PaymentRequired);
+            }
+
+            return Results.Ok(await service.GenerateAsync(request, ct));
+        })
+            .WithName("GenerateStructureDraft")
+            .WithSummary("Turn pasted text or uploaded images into a draft atlas-contracts import proposal for review.");
+
         portability.MapPost("/deliverables/draft", async (
             DeliverableDraftRequest request,
             DeliverableDraftService service,

@@ -43,6 +43,7 @@ public static class AtlasCommunityRegistration
         // --- Domain ---
         services.AddScoped<AssetService>();
         services.AddScoped<ContextPackService>();
+        services.AddScoped<StructureDraftService>();
         services.AddScoped<DeliverableDraftService>();
         services.AddScoped<McpReadService>();
         services.AddScoped<PaidCapabilityGate>();
