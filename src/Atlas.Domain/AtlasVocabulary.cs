@@ -66,6 +66,9 @@ public static class AtlasCapabilities
     /// <summary>Deterministic export of a selected landscape slice as a portable context pack.</summary>
     public static readonly CapabilityId ContextExport = new("atlas.context.export");
 
+    /// <summary>Read-only MCP access to the tenant catalogue for the customer's own AI agent.</summary>
+    public static readonly CapabilityId McpRead = new("atlas.mcp.read");
+
     /// <summary>Data introspection seam for schema auto-scan into the catalogue (paid Atlas Enterprise).</summary>
     public static readonly CapabilityId DataIntrospection = new("atlas.data.introspection");
 
