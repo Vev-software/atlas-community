@@ -77,6 +77,31 @@ public sealed class OidcIdentityTests
     }
 
     [Fact]
+    public async Task Header_asserted_identity_has_no_effect_in_fabric_oidc_mode()
+    {
+        using var host = new OidcTestHost();
+        var client = host.CreateClient();
+        client.DefaultRequestHeaders.Authorization = Bearer(
+            host.CreateToken(tenant: "t-token", roles: AtlasRoles.Architect));
+        client.DefaultRequestHeaders.Add("X-Tenant-Id", "attacker-tenant");
+        client.DefaultRequestHeaders.Add("X-Principal-Id", "attacker-user");
+        client.DefaultRequestHeaders.Add("X-Principal-Roles", "AtlasCustomer");
+
+        var created = await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("a-oidc-headers", AssetKind.Application, "A", Lifecycle.Active), Json);
+
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+
+        var audit = host.Services.GetRequiredService<InMemoryAuditSink>();
+        Assert.Contains(audit.Events, e =>
+            e.Action == "atlas.asset.created" &&
+            e.TenantId == "t-token" &&
+            e.ActorPrincipalId == "u-oidc");
+        Assert.DoesNotContain(audit.Events, e => e.TenantId == "attacker-tenant");
+        Assert.DoesNotContain(audit.Events, e => e.ActorPrincipalId == "attacker-user");
+    }
+
+    [Fact]
     public async Task Health_is_reachable_without_a_token()
     {
         using var host = new OidcTestHost();
