@@ -25,3 +25,14 @@ public interface IAuditSink
     /// <summary>Record an audit event. Implementations must be append-only.</summary>
     ValueTask WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken = default);
 }
+
+/// <summary>Read-only access to audit events for usage counting and similar bounded product mechanics.</summary>
+public interface IAuditQueryService
+{
+    /// <summary>Return the matching events in the given time window.</summary>
+    IReadOnlyCollection<AuditEvent> Query(
+        string tenantId,
+        string action,
+        DateTimeOffset fromInclusive,
+        DateTimeOffset toExclusive);
+}

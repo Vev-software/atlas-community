@@ -33,6 +33,7 @@ public static class AtlasCommunityRegistration
 
         services.AddSingleton<InMemoryAuditSink>();
         services.AddSingleton<IAuditSink>(sp => sp.GetRequiredService<InMemoryAuditSink>());
+        services.AddSingleton<IAuditQueryService>(sp => sp.GetRequiredService<InMemoryAuditSink>());
 
         services.AddSingleton(TimeProvider.System);
 
@@ -45,6 +46,7 @@ public static class AtlasCommunityRegistration
         services.AddScoped<ContextPackService>();
         services.AddScoped<StructureDraftService>();
         services.AddScoped<DeliverableDraftService>();
+        services.AddScoped<AiAllowanceService>();
         services.AddScoped<McpReadService>();
         services.AddScoped<PaidCapabilityGate>();
         services.AddScoped<SetupCopilotService>();

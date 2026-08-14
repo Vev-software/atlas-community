@@ -86,6 +86,20 @@ public static class AssetEndpoints
             .WithName("GetSetupCopilot")
             .WithSummary("Get grounded onboarding suggestions and feature explanations for the current tenant.");
 
+        app.MapGet("/api/v1/ai/allowances", (AiAllowanceService service) =>
+            Results.Ok(new
+            {
+                capabilities = new[]
+                {
+                    ToAiAllowancePayload(
+                        service.Describe(AtlasCapabilities.AiStructure, new ResourceId("atlas:structure-draft")),
+                        "Paste supplied notes or images into a draft landscape import bundle for review.")
+                }
+            }))
+            .WithTags("Session")
+            .WithName("GetAiAllowances")
+            .WithSummary("Describe the current tenant's visible AI-hook allowances and upgrade states.");
+
         // Read-only landscape surface (atlas#6): the whole tenant map — assets + manual relationships —
         // resolved into one atlas-contracts LandscapeDocument. Backs the browse/visualise UI, which is a
         // pure client of this API (API/SDK-first — the UI is never the only way in, handbook 15 §2).
@@ -133,20 +147,17 @@ public static class AssetEndpoints
         portability.MapPost("/structure/draft", async (
             StructureDraftRequest request,
             StructureDraftService service,
-            PaidCapabilityGate gate,
+            AiAllowanceService allowances,
             CancellationToken ct) =>
         {
-            var decision = gate.Evaluate(AtlasCapabilities.AiStructure, new ResourceId("atlas:structure-draft"));
-
-            if (!decision.Allowed)
+            var allowance = allowances.Describe(AtlasCapabilities.AiStructure, new ResourceId("atlas:structure-draft"));
+            if (!allowance.Allowed)
             {
-                return Results.Json(new
-                {
-                    capability = AtlasCapabilities.AiStructure.Value,
-                    reasonCode = decision.ReasonCode,
-                    source = decision.Source,
-                    upgrade = "AI-assisted landscape structuring is an Atlas AI capability. Contact VEV to enable it."
-                }, statusCode: StatusCodes.Status402PaymentRequired);
+                return Results.Json(
+                    ToAiAllowancePayload(
+                        allowance,
+                        "Paste supplied notes or images into a draft landscape import bundle for review."),
+                    statusCode: StatusCodes.Status402PaymentRequired);
             }
 
             return Results.Ok(await service.GenerateAsync(request, ct));
@@ -243,4 +254,32 @@ public static class AssetEndpoints
             throw new CatalogueValidationException($"Unknown asset kind '{kind}'.");
         }
     }
+
+    private static object ToAiAllowancePayload(AiAllowanceSnapshot allowance, string hook) => new
+    {
+        capability = allowance.Capability,
+        status = allowance.Status,
+        reasonCode = allowance.ReasonCode,
+        source = allowance.Source,
+        limit = allowance.Limit,
+        used = allowance.Used,
+        remaining = allowance.Remaining,
+        window = allowance.Window,
+        unlimited = allowance.Unlimited,
+        hook,
+        upgrade = BuildAllowanceUpgradeMessage(allowance)
+    };
+
+    private static string BuildAllowanceUpgradeMessage(AiAllowanceSnapshot allowance) =>
+        allowance.Status switch
+        {
+            AiAllowanceStatus.Exhausted when allowance.Limit is { } limit =>
+                $"You have used {allowance.Used} of {limit} free AI structurings today. Upgrade to Atlas Enterprise for a higher or unlimited allowance.",
+            AiAllowanceStatus.Limited when allowance.Limit is { } limit =>
+                $"You have used {allowance.Used} of {limit} free AI structurings today.",
+            AiAllowanceStatus.Unlimited =>
+                "This tenant has an entitled AI allowance for landscape structuring.",
+            _ =>
+                "AI-assisted landscape structuring is not enabled for this tenant."
+        };
 }

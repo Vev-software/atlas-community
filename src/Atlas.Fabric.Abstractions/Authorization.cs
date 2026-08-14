@@ -43,6 +43,9 @@ public static class ReasonCodes
     /// <summary>The tenant has not been granted the capability.</summary>
     public const string EntitlementDenied = "entitlement_denied";
 
+    /// <summary>The tenant's entitled allowance for the capability has been exhausted.</summary>
+    public const string EntitlementLimitExhausted = "entitlement_limit_exhausted";
+
     /// <summary>No current entitlement snapshot; fail-static denies rather than grants (E6).</summary>
     public const string EntitlementUnavailable = "entitlement_unavailable";
 
