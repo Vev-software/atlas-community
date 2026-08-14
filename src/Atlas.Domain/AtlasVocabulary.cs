@@ -57,6 +57,9 @@ public static class AtlasCapabilities
     /// <summary>AI architecture review (paid Atlas core, via the Fabric AI contract).</summary>
     public static readonly CapabilityId AiReview = new("atlas.ai.review");
 
+    /// <summary>AI-generated draft deliverables over a selected landscape slice (paid Atlas Enterprise).</summary>
+    public static readonly CapabilityId AiGenerate = new("atlas.ai.generate");
+
     /// <summary>Grounded setup copilot for first-run onboarding and feature explanation (via the Fabric AI contract).</summary>
     public static readonly CapabilityId SetupAssist = new("atlas.ai.assist.setup");
 
@@ -97,6 +100,7 @@ public static class AtlasCapabilities
         PortfolioManagement,
         RoadmapGeneration,
         AiReview,
+        AiGenerate,
         DataIntrospection,
         DataOverlap,
         DataQuality,

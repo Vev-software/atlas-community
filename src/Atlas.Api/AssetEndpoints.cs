@@ -137,6 +137,7 @@ public static class AssetEndpoints
             CancellationToken ct) =>
         {
             var decision = gate.Evaluate(AtlasCapabilities.AiStructure, new ResourceId("atlas:structure-draft"));
+
             if (!decision.Allowed)
             {
                 return Results.Json(new
@@ -152,6 +153,29 @@ public static class AssetEndpoints
         })
             .WithName("GenerateStructureDraft")
             .WithSummary("Turn pasted text or uploaded images into a draft atlas-contracts import proposal for review.");
+
+        portability.MapPost("/deliverables/draft", async (
+            DeliverableDraftRequest request,
+            DeliverableDraftService service,
+            PaidCapabilityGate gate,
+            CancellationToken ct) =>
+        {
+            var decision = gate.Evaluate(AtlasCapabilities.AiGenerate, new ResourceId("atlas:deliverable-draft"));
+            if (!decision.Allowed)
+            {
+                return Results.Json(new
+                {
+                    capability = AtlasCapabilities.AiGenerate.Value,
+                    reasonCode = decision.ReasonCode,
+                    source = decision.Source,
+                    upgrade = "AI-generated deliverables are a paid Atlas capability. Contact VEV to enable them."
+                }, statusCode: StatusCodes.Status402PaymentRequired);
+            }
+
+            return Results.Ok(await service.GenerateAsync(request, ct));
+        })
+            .WithName("GenerateDeliverableDraft")
+            .WithSummary("Generate a grounded draft deliverable for review from a selected landscape slice.");
 
         portability.MapGet("/export", async (string? format, AssetService service, LandscapeFormatRegistry formats, CancellationToken ct) =>
         {
