@@ -13,6 +13,8 @@
 
     <!-- API surface / OpenAPI (API-first, E1). -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+    <PackageVersion Include="ModelContextProtocol" Version="2.2.0" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
 
     <!-- Identity: validate real OIDC JWT bearer tokens for the fabric-oidc mode (fabric#3). The
          provider is external (OIDC/SCIM, handbook 05 §6); Atlas only validates tokens + reads claims. -->

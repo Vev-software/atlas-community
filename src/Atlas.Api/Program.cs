@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using ModelContextProtocol.Server;
 using Vev.Atlas.Api;
 using Vev.Atlas.Persistence;
 
@@ -9,6 +10,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = builder.Configuration.GetConnectionString("Atlas") ?? "Data Source=atlas.db";
 builder.Services.AddAtlasCommunity(connectionString);
+builder.Services.AddMcpServer()
+    .WithHttpTransport(options => options.Stateless = true)
+    .WithTools<AtlasMcpTools>();
 
 // Canonical URL/path configuration (atlas#19): hostnames and paths are deployment config, never a baked-in
 // VEV identity. Defaults are a flat single-host shape, so a self-hoster sets nothing.
@@ -85,6 +89,7 @@ app.UseAtlasRequestIdentity();
 app.UseRateLimiter();
 
 app.MapOpenApi();
+app.MapMcp("/mcp");
 // Health carries no identity: it must answer the container/orchestrator probe without a token, so it is
 // exempt from the OIDC identity gate (see OidcRequestContextMiddleware).
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).WithTags("Ops").AllowAnonymous();
