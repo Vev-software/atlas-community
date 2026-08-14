@@ -42,6 +42,7 @@ public static class AtlasCommunityRegistration
 
         // --- Domain ---
         services.AddScoped<AssetService>();
+        services.AddScoped<ContextPackService>();
         services.AddScoped<PaidCapabilityGate>();
         services.AddScoped<SetupCopilotService>();
         // The open-core install boundary: any module install path runs its manifest through this guard,

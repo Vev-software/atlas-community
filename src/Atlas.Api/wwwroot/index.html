@@ -118,6 +118,7 @@
       border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 5px 12px;
     }
     .toolbar button.action:hover { border-color: var(--accent); color: var(--accent); }
+    .toolbar button.action[disabled] { opacity: .55; cursor: default; }
     /* Primary author affordance — the "New asset" call to action. */
     button.primary {
       font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
@@ -180,6 +181,26 @@
     }
     .rel-list .rel-del:hover { color: var(--danger); background: var(--danger-soft); }
     .placeholder { color: var(--muted); font-size: 13px; }
+    .pack-box {
+      font-size: 12.5px;
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 320px;
+      overflow: auto;
+    }
+    .pack-actions { display: flex; gap: 8px; margin: 0 0 12px; flex-wrap: wrap; }
+    .note {
+      font-size: 12px;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #fbfbfc;
+    }
     .stack { display: grid; gap: 14px; }
     .section { border-top: 1px solid var(--line); padding-top: 14px; }
     .section:first-child { border-top: none; padding-top: 0; }
@@ -328,6 +349,7 @@
     </label>
     <span class="count" id="count"></span>
     <button class="primary" id="newAsset" hidden title="Add a new asset to the catalogue"><span class="plus">+</span>New asset</button>
+    <button class="action" id="contextPack" title="Export a grounded brief for the selected slice" disabled>Context pack</button>
     <button class="action" id="setupCopilot" title="Grounded suggestions for where to start">Setup copilot</button>
     <button class="action" id="refresh" title="Reload the landscape">Refresh</button>
     <button class="action" id="export" title="Download the landscape as a portable JSON document">Export JSON</button>
@@ -524,6 +546,7 @@
     let canAuthor = false;      // Set from GET /api/v1/capabilities — never assumed.
     let editingId = null;       // Non-null while the asset form is editing an existing asset.
     let setupGuide = null;      // Grounded onboarding guide for the current tenant.
+    let contextPackAssetIds = new Set();
 
     const el = (id) => document.getElementById(id);
     const canvas = el("canvas");
@@ -902,6 +925,122 @@
       }
     }
 
+    function updateContextPackButton() {
+      const button = el("contextPack");
+      const count = contextPackAssetIds.size;
+      button.disabled = count === 0;
+      button.textContent = count === 0 ? "Context pack" : `Context pack (${count})`;
+    }
+
+    function toggleContextPackAsset(assetId) {
+      if (contextPackAssetIds.has(assetId)) contextPackAssetIds.delete(assetId);
+      else contextPackAssetIds.add(assetId);
+      updateContextPackButton();
+      if (selectedId === assetId) showDetail(assetId);
+    }
+
+    async function renderContextPack(mode = "deterministic") {
+      if (contextPackAssetIds.size === 0) return;
+      const params = new URLSearchParams();
+      for (const assetId of contextPackAssetIds) params.append("assetId", assetId);
+      if (mode !== "deterministic") params.set("mode", mode);
+
+      const detail = el("detail");
+      detail.innerHTML = '<p class="placeholder">Building context pack…</p>';
+
+      try {
+        const res = await fetch(`/api/v1/context-pack?${params.toString()}`, { headers: { "Accept": "application/json" } });
+        if (res.status === 402) {
+          const problem = await res.json();
+          renderContextPackMessage(
+            "Narrative brief unavailable",
+            `${problem.upgrade} (${problem.reasonCode})`);
+          return;
+        }
+        if (!res.ok) throw new Error(await apiError(res));
+        const pack = await res.json();
+        drawContextPack(pack);
+      } catch (err) {
+        renderContextPackMessage("Could not build the context pack", err.message);
+      }
+    }
+
+    function drawContextPack(pack) {
+      const detail = el("detail");
+      detail.innerHTML = "";
+
+      const wrap = document.createElement("div");
+      wrap.className = "detail";
+      wrap.innerHTML =
+        `<p class="dname">Context pack</p>` +
+        `<p class="dkind">${escapeHtml(pack.mode)} · ${escapeHtml(pack.summary)}</p>`;
+
+      const actions = document.createElement("div");
+      actions.className = "pack-actions";
+
+      const copy = document.createElement("button");
+      copy.className = "btn-sm";
+      copy.textContent = "Copy markdown";
+      copy.addEventListener("click", async () => {
+        await navigator.clipboard.writeText(pack.markdown);
+        toast("Context pack copied.");
+      });
+
+      const refresh = document.createElement("button");
+      refresh.className = "btn-sm";
+      refresh.textContent = "Refresh pack";
+      refresh.addEventListener("click", () => renderContextPack(pack.mode));
+
+      const narrative = document.createElement("button");
+      narrative.className = "btn-sm";
+      narrative.textContent = "Narrative brief";
+      narrative.addEventListener("click", () => renderContextPack("narrative"));
+
+      actions.append(copy, refresh, narrative);
+      wrap.appendChild(actions);
+
+      if (pack.narrativeStatus) {
+        const note = document.createElement("div");
+        note.className = "note";
+        note.textContent = pack.narrativeStatus === "available"
+          ? (pack.narrative || "")
+          : "AI is not configured for narrative brief generation in this environment.";
+        wrap.appendChild(note);
+      }
+
+      const selected = document.createElement("section");
+      selected.className = "section";
+      selected.innerHTML = "<h3>Selected assets</h3>";
+      const picks = document.createElement("div");
+      picks.className = "crumbs";
+      for (const assetId of pack.selection.assetIds || []) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "crumb";
+        btn.textContent = label(assetId);
+        btn.addEventListener("click", () => select(assetId));
+        picks.appendChild(btn);
+      }
+      selected.appendChild(picks);
+      wrap.appendChild(selected);
+
+      const box = document.createElement("pre");
+      box.className = "pack-box";
+      box.textContent = pack.markdown;
+      wrap.appendChild(box);
+
+      detail.appendChild(wrap);
+    }
+
+    function renderContextPackMessage(title, message) {
+      const detail = el("detail");
+      detail.innerHTML = "";
+      const wrap = document.createElement("div");
+      wrap.className = "detail";
+      wrap.innerHTML = `<p class="dname">${escapeHtml(title)}</p><p class="placeholder">${escapeHtml(message)}</p>`;
+      detail.appendChild(wrap);
+    }
+
     function showDetail(id) {
       const a = landscape.assets.find(x => x.id === id);
       if (!a) return;
@@ -923,10 +1062,16 @@
       dkind.textContent = `${a.kind} · ${a.lifecycle || "—"}`;
       wrap.appendChild(dkind);
 
+      const actions = document.createElement("div");
+      actions.className = "detail-actions";
+      const pack = document.createElement("button");
+      pack.className = "btn-sm";
+      pack.textContent = contextPackAssetIds.has(a.id) ? "Remove from pack" : "Add to pack";
+      pack.addEventListener("click", () => toggleContextPackAsset(a.id));
+      actions.appendChild(pack);
+
       // Author actions — shown only to an author-capable principal (atlas#17).
       if (canAuthor) {
-        const actions = document.createElement("div");
-        actions.className = "detail-actions";
         const edit = document.createElement("button");
         edit.className = "btn-sm"; edit.textContent = "Edit";
         edit.addEventListener("click", () => openAssetForm(a));
@@ -934,8 +1079,8 @@
         del.className = "btn-sm danger"; del.textContent = "Delete";
         del.addEventListener("click", () => deleteAsset(a));
         actions.append(edit, del);
-        wrap.appendChild(actions);
       }
+      wrap.appendChild(actions);
 
       const kv = document.createElement("dl");
       kv.className = "kv";
@@ -1502,6 +1647,7 @@
     });
     el("refresh").addEventListener("click", load);
     el("newAsset").addEventListener("click", () => openAssetForm());
+    el("contextPack").addEventListener("click", () => renderContextPack());
     el("setupCopilot").addEventListener("click", renderSetupCopilot);
     el("export").addEventListener("click", () => {
       const blob = new Blob([JSON.stringify(landscape, null, 2)], { type: "application/json" });
@@ -1510,6 +1656,7 @@
       a.href = url; a.download = "atlas-landscape.json"; a.click();
       URL.revokeObjectURL(url);
     });
+    updateContextPackButton();
 
     // Asset form wiring.
     el("assetForm").addEventListener("submit", submitAsset);

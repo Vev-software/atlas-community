@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using Vev.Atlas.Contracts;
 using Vev.Atlas.Domain;
 using Vev.Atlas.Domain.Portability;
@@ -99,6 +100,35 @@ public static class AssetEndpoints
         // community adapter (ArchiMate/BPMN/report) is added by registering an ILandscapeExporter/Importer,
         // never by touching the core boundary here.
         var portability = app.MapGroup(v1).WithTags("Portability");
+
+        portability.MapGet("/context-pack", async (
+            [FromQuery(Name = "assetId")] string[] assetIds,
+            [FromQuery(Name = "relationshipId")] string[] relationshipIds,
+            string? mode,
+            ContextPackService service,
+            PaidCapabilityGate gate,
+            CancellationToken ct) =>
+        {
+            var requestedMode = string.IsNullOrWhiteSpace(mode) ? ContextPackMode.Deterministic : mode;
+            if (string.Equals(requestedMode, ContextPackMode.Narrative, StringComparison.OrdinalIgnoreCase))
+            {
+                var decision = gate.Evaluate(AtlasCapabilities.AiBrief, new ResourceId("atlas:context-pack"));
+                if (!decision.Allowed)
+                {
+                    return Results.Json(new
+                    {
+                        capability = AtlasCapabilities.AiBrief.Value,
+                        reasonCode = decision.ReasonCode,
+                        source = decision.Source,
+                        upgrade = "Narrative context briefs are a paid Atlas capability. Contact VEV to enable them."
+                    }, statusCode: StatusCodes.Status402PaymentRequired);
+                }
+            }
+
+            return Results.Ok(await service.ExportAsync(assetIds, relationshipIds, requestedMode, ct));
+        })
+            .WithName("ExportContextPack")
+            .WithSummary("Export a bounded landscape slice as a grounded context pack for external AI or human hand-off.");
 
         portability.MapGet("/export", async (string? format, AssetService service, LandscapeFormatRegistry formats, CancellationToken ct) =>
         {

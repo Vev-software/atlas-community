@@ -60,6 +60,12 @@ public static class AtlasCapabilities
     /// <summary>Grounded setup copilot for first-run onboarding and feature explanation (via the Fabric AI contract).</summary>
     public static readonly CapabilityId SetupAssist = new("atlas.ai.assist.setup");
 
+    /// <summary>Narrative plain-language brief for a selected landscape slice (via the Fabric AI contract).</summary>
+    public static readonly CapabilityId AiBrief = new("atlas.ai.brief");
+
+    /// <summary>Deterministic export of a selected landscape slice as a portable context pack.</summary>
+    public static readonly CapabilityId ContextExport = new("atlas.context.export");
+
     /// <summary>Data introspection seam for schema auto-scan into the catalogue (paid Atlas Enterprise).</summary>
     public static readonly CapabilityId DataIntrospection = new("atlas.data.introspection");
 
