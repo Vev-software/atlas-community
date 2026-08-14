@@ -63,6 +63,9 @@ public static class AtlasCapabilities
     /// <summary>Narrative plain-language brief for a selected landscape slice (via the Fabric AI contract).</summary>
     public static readonly CapabilityId AiBrief = new("atlas.ai.brief");
 
+    /// <summary>AI-assisted draft structuring of pasted or uploaded customer content into Atlas assets and relationships.</summary>
+    public static readonly CapabilityId AiStructure = new("atlas.ai.structure");
+
     /// <summary>Deterministic export of a selected landscape slice as a portable context pack.</summary>
     public static readonly CapabilityId ContextExport = new("atlas.context.export");
 
