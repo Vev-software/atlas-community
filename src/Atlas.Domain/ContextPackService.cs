@@ -31,6 +31,63 @@ public sealed class ContextPackService(
         CancellationToken ct = default)
     {
         AuthorizeRead();
+        var pack = await BuildDeterministicAsync(assetIds, relationshipIds, ct);
+
+        string? narrative = null;
+        string? narrativeStatus = null;
+        var source = "context-pack:deterministic";
+        var action = AtlasCapabilities.ContextExport.Value;
+
+        if (string.Equals(mode, ContextPackMode.Narrative, StringComparison.OrdinalIgnoreCase))
+        {
+            action = AtlasCapabilities.AiBrief.Value;
+            var assist = aiAssist.Assist(new AiAssistRequest(
+                context.Tenant,
+                context.Principal,
+                AtlasCapabilities.AiBrief,
+                Purpose: "context-pack-brief",
+                Grounding: pack.Markdown,
+                Resource: ContextPackResource));
+
+            source = assist.Source;
+            if (assist.Configured)
+            {
+                narrative = assist.Message;
+                narrativeStatus = "available";
+            }
+            else
+            {
+                narrativeStatus = "ai_not_configured";
+            }
+        }
+
+        await audit.WriteAsync(new AuditEvent(
+            TenantId: context.Tenant.TenantId,
+            ActorPrincipalId: context.Principal.PrincipalId,
+            Action: action,
+            Resource: ContextPackAuditResource(mode, pack.Selection, pack.Assets.Count, pack.Relationships.Count).Value,
+            OccurredAt: clock.GetUtcNow(),
+            CorrelationId: Guid.NewGuid().ToString("N")), ct);
+
+        return pack with
+        {
+            Mode = NormalizeMode(mode),
+            Source = source,
+            Narrative = narrative,
+            NarrativeStatus = narrativeStatus
+        };
+    }
+
+    /// <summary>
+    /// Build the deterministic grounded slice without emitting usage/audit, so other read-only AI
+    /// experiences can reuse the same bounded grounding logic without double-counting a context-pack export.
+    /// </summary>
+    public async Task<ContextPackDocument> BuildDeterministicAsync(
+        IReadOnlyCollection<string> assetIds,
+        IReadOnlyCollection<string> relationshipIds,
+        CancellationToken ct = default)
+    {
+        AuthorizeRead();
 
         var normalizedAssetIds = assetIds
             .Where(id => !string.IsNullOrWhiteSpace(id))
@@ -113,52 +170,14 @@ public sealed class ContextPackService(
         var summary = BuildSummary(selection, includedAssets, includedRelationships);
         var markdown = RenderMarkdown(selection, summary, includedAssets, includedRelationships);
 
-        string? narrative = null;
-        string? narrativeStatus = null;
-        var source = "context-pack:deterministic";
-        var action = AtlasCapabilities.ContextExport.Value;
-
-        if (string.Equals(mode, ContextPackMode.Narrative, StringComparison.OrdinalIgnoreCase))
-        {
-            action = AtlasCapabilities.AiBrief.Value;
-            var assist = aiAssist.Assist(new AiAssistRequest(
-                tenant,
-                context.Principal,
-                AtlasCapabilities.AiBrief,
-                Purpose: "context-pack-brief",
-                Grounding: markdown,
-                Resource: ContextPackResource));
-
-            source = assist.Source;
-            if (assist.Configured)
-            {
-                narrative = assist.Message;
-                narrativeStatus = "available";
-            }
-            else
-            {
-                narrativeStatus = "ai_not_configured";
-            }
-        }
-
-        await audit.WriteAsync(new AuditEvent(
-            TenantId: tenant.TenantId,
-            ActorPrincipalId: context.Principal.PrincipalId,
-            Action: action,
-            Resource: ContextPackAuditResource(mode, selection, includedAssets.Length, includedRelationships.Length).Value,
-            OccurredAt: clock.GetUtcNow(),
-            CorrelationId: Guid.NewGuid().ToString("N")), ct);
-
         return new ContextPackDocument(
-            Mode: NormalizeMode(mode),
-            Source: source,
+            Mode: ContextPackMode.Deterministic,
+            Source: "context-pack:deterministic",
             Selection: selection,
             Summary: summary,
             Assets: includedAssets,
             Relationships: includedRelationships,
-            Markdown: markdown,
-            Narrative: narrative,
-            NarrativeStatus: narrativeStatus);
+            Markdown: markdown);
     }
 
     private void AuthorizeRead()
