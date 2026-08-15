@@ -29,16 +29,7 @@ tests/
 ## Prerequisites
 
 - .NET 10 SDK
-- The public `Vev.Atlas.Contracts` package. Until it is published to nuget.org, build it from the
-  sibling `atlas-contracts` repo into the shared local feed:
-
-  ```bash
-  dotnet pack ../atlas-contracts/sdk/dotnet/Vev.Atlas.Contracts/Vev.Atlas.Contracts.csproj \
-    -c Release -o ../.local-nuget
-  ```
-
-  `nuget.config` maps only `Vev.Atlas.*` to that folder; everything else comes from nuget.org, so the
-  public-build rule (`AGENTS.md §1.9`) still holds.
+- Access to nuget.org to restore the public `Vev.Atlas.Contracts` package.
 
 ## Build, test, run
 
@@ -158,11 +149,9 @@ the platform Module Author Guide (handbook §16) and the Fabric extension model 
 ## Run with Docker
 
 Atlas Community ships a container image and a Compose file so a self-hoster gets the API, the
-read-only landscape UI and a persistent SQLite database with one command. Compose builds with the
-**monorepo root as the build context** so the temporary sibling contracts feed (`.local-nuget`) is
-available to the build — the same reconstruction CI does. Once `Vev.Atlas.Contracts` is on nuget.org
-(`atlas#10`), the context can narrow to this repo and the `.local-nuget` copy in the `Dockerfile`
-drops out.
+read-only landscape UI and a persistent SQLite database with one command. Compose builds directly
+from this repository; the Dockerfile restores `Vev.Atlas.Contracts` from nuget.org like the local
+CLI build does.
 
 ```bash
 # From the atlas-community repo root. Works with Docker or Podman.
@@ -185,10 +174,10 @@ The catalogue is stored in SQLite on the `atlas-data` volume (`/data/atlas.db` i
 it survives `docker compose down` / restarts. Remove it with `docker compose down -v`. That file holds
 the whole landscape map — protect it at rest: see [Encryption at rest](#encryption-at-rest).
 
-To build or run the image directly (note the `..` context — the monorepo root):
+To build or run the image directly:
 
 ```bash
-docker build -f Dockerfile -t atlas-community:local ..
+docker build -t atlas-community:local .
 docker run --rm -p 8080:8080 -v atlas-data:/data atlas-community:local
 ```
 

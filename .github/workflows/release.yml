@@ -19,29 +19,13 @@ jobs:
     name: build · push · sbom · sign
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout atlas-community
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          path: atlas-community
-
-      # Until Vev.Atlas.Contracts is on nuget.org (#10), reconstruct the local feed the Dockerfile
-      # restore expects (../.local-nuget) from the PUBLIC atlas-contracts repo — the same public-feed
-      # reconstruction CI does, so the image build stays public-feed-clean (AGENTS.md §1.9).
-      - name: Checkout atlas-contracts (public)
-        uses: actions/checkout@v4
-        with:
-          repository: Vev-software/atlas-contracts
-          path: atlas-contracts
 
       - name: Setup .NET (pinned by global.json)
         uses: actions/setup-dotnet@v4
         with:
-          global-json-file: atlas-community/global.json
-
-      - name: Pack public contracts into the local feed
-        run: >-
-          dotnet pack atlas-contracts/sdk/dotnet/Vev.Atlas.Contracts/Vev.Atlas.Contracts.csproj
-          -c Release -o "$GITHUB_WORKSPACE/.local-nuget"
+          global-json-file: global.json
 
       # GHCR image names must be lowercase; the org slug is mixed-case, so normalise once.
       - name: Resolve image name
@@ -71,15 +55,14 @@ jobs:
           flavor: |
             latest=auto
 
-      # Build in the monorepo-root layout the Dockerfile expects: the workspace root holds
-      # .local-nuget + the atlas-community checkout. Attach a build-time SBOM and max SLSA
-      # provenance so every published image carries in-registry attestations (atlas#38).
+      # Build from the repository root. Attach a build-time SBOM and max SLSA provenance so
+      # every published image carries in-registry attestations (atlas#38).
       - name: Build and push
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: atlas-community/Dockerfile
+          file: Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

@@ -20,16 +20,15 @@ separately-licensed commercial edition developed outside this public repository.
 
 Get it in your hands and see it run — the landscape UI above is what you'll be looking at.
 
-**Prerequisites:** the [.NET 10 SDK](https://dotnet.microsoft.com/download). Until `Vev.Atlas.Contracts`
-is on nuget.org, you also need the sibling [`atlas-contracts`](https://github.com/Vev-software/atlas-contracts)
-repo checked out next to this one — it's packed into a local feed for you (see
+**Prerequisites:** the [.NET 10 SDK](https://dotnet.microsoft.com/download). The public
+[`Vev.Atlas.Contracts`](https://www.nuget.org/packages/Vev.Atlas.Contracts) package restores from
+nuget.org, so a plain checkout of this repo is enough (see
 [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md#prerequisites)).
 
 **Windows (PowerShell):**
 
 ```powershell
-./start.ps1 -RefreshContracts   # first run: also builds the local contracts feed
-./start.ps1                     # thereafter
+./start.ps1
 ```
 
 **Any platform:**
@@ -115,9 +114,7 @@ than re-implement the schema.
 
 **Why NuGet?** Because the .NET runtimes consume the same contract on the backend. `atlas-community`
 references `Vev.Atlas.Contracts` from NuGet, so its API, export/import seam and tests all speak the
-published Atlas contract. Right now, before that package is fully published, local development packs the
-sibling `atlas-contracts` repo into `../.local-nuget`; once published, that temporary step drops away
-and the dependency comes from nuget.org like any other public package.
+published Atlas contract from nuget.org like any other public package.
 
 The same split exists around Portic: the runtime lives in
 [`portic-community`](https://github.com/Vev-software/portic-community), while the reusable SDK/SPI
@@ -143,8 +140,7 @@ Hostnames and paths are deployment configuration — the default is a flat singl
 
 Your catalogue persists on a named volume across restarts. It holds your whole landscape map, so
 encrypt it at rest — see
-[Encryption at rest](./docs/DEVELOPMENT.md#encryption-at-rest). Full instructions — including the
-temporary local contracts-feed step until `Vev.Atlas.Contracts` is on nuget.org — are in
+[Encryption at rest](./docs/DEVELOPMENT.md#encryption-at-rest). Full instructions are in
 [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md).
 
 Tagged releases publish a signed image to `ghcr.io/vev-software/atlas-community` with an SBOM and
@@ -172,9 +168,7 @@ tests/
   Atlas.Api.Tests            Full-stack integration tests
 ```
 
-Build, test and run instructions — including the temporary local-feed step for
-`Vev.Atlas.Contracts` until it is on nuget.org — are in
-[`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md).
+Build, test and run instructions are in [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md).
 
 ## License
 
