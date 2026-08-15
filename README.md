@@ -96,6 +96,35 @@ Compatibility and versioning expectations for exported documents are in
   optional integration, never a requirement.
 - **API and SDK first.** The UI orchestrates the API; it is never the only way in.
 
+## Repository architecture
+
+![Repository architecture for Atlas Community: fabric and atlas-contracts form the shared contract layer; atlas-community and atlas-enterprise consume those contracts; npm and NuGet publish the same contract surface to TypeScript and .NET consumers.](./docs/images/atlas-repo-architecture.svg)
+
+`atlas-community` is the running product: the AGPL runtime, API, UI and persistence. It does **not**
+own the public wire format. That boundary lives in
+[`atlas-contracts`](https://github.com/Vev-software/atlas-contracts), which holds the versioned Atlas
+data model, import/export schemas, conformance kit and the generated SDKs. That is why
+`Atlas.Domain` consumes `Vev.Atlas.Contracts` as a package instead of embedding those types directly in
+the runtime: Community, Enterprise and third-party tooling all need the same canonical contract without
+depending on each other's internals.
+
+**Why npm packages?** Because the same contract has TypeScript consumers as well as .NET consumers:
+browser-side tooling, CLIs, import/export adapters, validation utilities and any ecosystem code that
+needs to read or emit Atlas documents should consume `@vev-software/atlas-contracts` from npm rather
+than re-implement the schema.
+
+**Why NuGet?** Because the .NET runtimes consume the same contract on the backend. `atlas-community`
+references `Vev.Atlas.Contracts` from NuGet, so its API, export/import seam and tests all speak the
+published Atlas contract. Right now, before that package is fully published, local development packs the
+sibling `atlas-contracts` repo into `../.local-nuget`; once published, that temporary step drops away
+and the dependency comes from nuget.org like any other public package.
+
+The same split exists around Portic: the runtime lives in
+[`portic-community`](https://github.com/Vev-software/portic-community), while the reusable SDK/SPI
+boundary belongs in [`portic-sdk`](https://github.com/Vev-software/portic-sdk). Across both products,
+[`fabric`](https://github.com/Vev-software/fabric) stays underneath as the shared substrate contract
+layer for identity, tenancy, entitlements, audit and other cross-cutting concerns.
+
 ## Run it (self-hosted)
 
 One command brings up the API and a persistent SQLite catalogue — with Docker or Podman:
