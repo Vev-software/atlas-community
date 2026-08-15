@@ -4,23 +4,15 @@
     Run Atlas Community locally (no container), outside Visual Studio.
 
 .DESCRIPTION
-    Restores against the temporary local Vev.Atlas.Contracts feed (../.local-nuget) and starts
-    the API with `dotnet run`. The API creates its SQLite schema on first run, serves the
-    read-only landscape UI from wwwroot, and exposes OpenAPI + /health.
+    Restores packages from nuget.org and starts the API with `dotnet run`. The API creates its
+    SQLite schema on first run, serves the read-only landscape UI from wwwroot, and exposes
+    OpenAPI + /health.
 
     In Development (the default here) identity runs in `dev-headers` mode, so the DEVELOPMENT.md
     "Try it" curl examples work verbatim: pass X-Tenant-Id / X-Principal-Id / X-Principal-Roles.
 
-    Temporary contracts feed: until Vev.Atlas.Contracts is on nuget.org (atlas#10), the package
-    is consumed from the sibling ../.local-nuget folder. Pass -RefreshContracts to re-pack it from
-    the atlas-contracts source (needed after the contracts source changes; see docs/DEVELOPMENT.md).
-
 .PARAMETER Port
     HTTP port to listen on. Default 5199 (matches the docs examples).
-
-.PARAMETER RefreshContracts
-    Re-pack Vev.Atlas.Contracts from ../atlas-contracts into ../.local-nuget before running, and
-    clear the host NuGet cache for it so the same-version (0.1.0) rebuild is actually picked up.
 
 .PARAMETER SingleTenant
     Run in single-tenant identity mode (fixed tenant "community" from config; X-* headers ignored)
@@ -31,13 +23,10 @@
 .EXAMPLE
     ./start.ps1
 
-.EXAMPLE
-    ./start.ps1 -Port 8080 -RefreshContracts
 #>
 [CmdletBinding()]
 param(
     [int]$Port = 5199,
-    [switch]$RefreshContracts,
     # Run in single-tenant identity mode (the self-host default) instead of the dev-headers shim.
     [switch]$SingleTenant,
     # Anything after the named switches is forwarded to `dotnet run` — e.g.
@@ -51,7 +40,6 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repo = $PSScriptRoot                    # atlas-community
-$monorepo = Split-Path $repo -Parent     # Vev-software (holds .local-nuget + sibling repos)
 
 function Assert-Command($name, $hint) {
     if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
@@ -60,25 +48,6 @@ function Assert-Command($name, $hint) {
 }
 
 Assert-Command dotnet 'Install the .NET 10 SDK: https://dotnet.microsoft.com/download'
-
-# --- Temporary local contracts feed -------------------------------------------------------
-$feed = Join-Path $monorepo '.local-nuget'
-$contractsCsproj = Join-Path $monorepo 'atlas-contracts/sdk/dotnet/Vev.Atlas.Contracts/Vev.Atlas.Contracts.csproj'
-
-if ($RefreshContracts) {
-    if (-not (Test-Path $contractsCsproj)) {
-        throw "-RefreshContracts needs the sibling atlas-contracts repo at $contractsCsproj"
-    }
-    Write-Host "Re-packing Vev.Atlas.Contracts -> .local-nuget ..." -ForegroundColor Cyan
-    dotnet pack $contractsCsproj -c Release -o $feed
-    # Same version (0.1.0) -> the host global cache would otherwise serve the stale copy. Drop it.
-    $cached = Join-Path $env:USERPROFILE '.nuget/packages/vev.atlas.contracts'
-    if (Test-Path $cached) { Remove-Item -Recurse -Force $cached }
-}
-
-if (-not (Test-Path (Join-Path $feed 'Vev.Atlas.Contracts.*.nupkg'))) {
-    Write-Warning "No Vev.Atlas.Contracts package in $feed. Run with -RefreshContracts (needs the atlas-contracts sibling repo)."
-}
 
 # --- Run ----------------------------------------------------------------------------------
 $env:ASPNETCORE_URLS = "http://localhost:$Port"

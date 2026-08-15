@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="980" viewBox="0 0 1400 980" role="img" aria-labelledby="title desc">
   <title id="title">Atlas repository architecture</title>
-  <desc id="desc">Diagram showing how atlas-community, atlas-contracts, fabric, atlas-enterprise, portic-community and portic-sdk relate, including NuGet, npm and the temporary local feed.</desc>
+  <desc id="desc">Diagram showing how atlas-community, atlas-contracts, fabric, atlas-enterprise, portic-community and portic-sdk relate, including NuGet and npm package distribution.</desc>
   <defs>
     <style>
       text { font-family: "Segoe UI", Arial, sans-serif; fill: #10233a; }
@@ -134,12 +134,9 @@
   <text x="1170" y="712" class="box-body">same published schemas.</text>
   <text x="1150" y="750" class="box-body">6. Enterprise depends on public packages,</text>
   <text x="1170" y="772" class="box-body">not on community internals.</text>
-  <text x="1150" y="810" class="box-body">7. Before release, Atlas Community packs</text>
-  <text x="1170" y="832" class="box-body">the sibling contracts repo into a local</text>
-  <text x="1170" y="854" class="box-body">NuGet feed: ../.local-nuget.</text>
-
-  <rect x="260" y="690" width="300" height="56" class="card note"/>
-  <text x="282" y="723" class="label">Temporary local feed during development: ../.local-nuget</text>
+  <text x="1150" y="810" class="box-body">7. Local, CI and container builds all</text>
+  <text x="1170" y="832" class="box-body">restore the same published contracts</text>
+  <text x="1170" y="854" class="box-body">package from nuget.org.</text>
 
   <path d="M 370 265 H 420" class="line line-blue" marker-end="url(#arrowBlue)"/>
   <text x="380" y="250" class="label">shared substrate contracts</text>
@@ -165,12 +162,8 @@
   <path d="M 740 570 H 870" class="line line-blue" marker-end="url(#arrowBlue)"/>
   <text x="754" y="556" class="label">community ecosystem</text>
 
-  <path d="M 560 718 H 80" class="line line-gray dashed" marker-end="url(#arrowGray)"/>
-  <text x="86" y="705" class="label">packed from sibling atlas-contracts repo until public publish</text>
-
-  <path d="M 410 690 V 655" class="line line-gray dashed" marker-end="url(#arrowGray)"/>
   <path d="M 560 718 H 1150" class="line line-gray dashed" marker-end="url(#arrowGray)"/>
-  <text x="802" y="705" class="label">temporary replacement for nuget.org during local iteration</text>
+  <text x="812" y="705" class="label">published public package consumed consistently across environments</text>
 
   <path d="M 440 864 H 500" class="line line-red" marker-end="url(#arrowRed)"/>
   <text x="447" y="848" class="label">same repo split idea</text>

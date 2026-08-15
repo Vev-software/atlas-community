@@ -4,9 +4,8 @@
     Build and run Atlas Community as a container, outside Visual Studio, using Podman (or Docker).
 
 .DESCRIPTION
-    Builds the self-host image with the MONOREPO ROOT as the build context (so the temporary
-    sibling contracts feed ../.local-nuget is available to the build — exactly as CI does it),
-    then runs it single-tenant on a persistent named volume.
+    Builds the self-host image from this repository and runs it single-tenant on a persistent
+    named volume.
 
     The container listens on 8080, runs as non-root, stores the SQLite catalogue on the
     `atlas-data` volume (/data/atlas.db), and runs in single-tenant identity mode (set in the
@@ -16,11 +15,6 @@
 
 .PARAMETER Port
     Host port to publish the container's 8080 on. Default 8080.
-
-.PARAMETER RefreshContracts
-    Re-pack Vev.Atlas.Contracts from ../atlas-contracts into ../.local-nuget before building.
-    The container does its own hermetic restore, so re-packing is all that's needed for the
-    build to pick up contract changes (no host cache to clear).
 
 .PARAMETER Rebuild
     Force a fresh image build (no layer cache).
@@ -38,15 +32,11 @@
     ./deploy.ps1
 
 .EXAMPLE
-    ./deploy.ps1 -Rebuild -RefreshContracts -Logs
-
-.EXAMPLE
     ./deploy.ps1 -Down
 #>
 [CmdletBinding()]
 param(
     [int]$Port = 8080,
-    [switch]$RefreshContracts,
     [switch]$Rebuild,
     [switch]$Down,
     [switch]$Purge,
@@ -57,7 +47,6 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repo = $PSScriptRoot                    # atlas-community
-$monorepo = Split-Path $repo -Parent     # Vev-software (the build context)
 $image = 'atlas-community:local'
 $name = 'atlas-community'
 $volume = 'atlas-data'
@@ -81,26 +70,12 @@ if ($Down) {
     return
 }
 
-# --- Temporary local contracts feed -------------------------------------------------------
-if ($RefreshContracts) {
-    $contractsCsproj = Join-Path $monorepo 'atlas-contracts/sdk/dotnet/Vev.Atlas.Contracts/Vev.Atlas.Contracts.csproj'
-    if (-not (Test-Path $contractsCsproj)) {
-        throw "-RefreshContracts needs the sibling atlas-contracts repo at $contractsCsproj"
-    }
-    if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-        throw "dotnet not found — needed to re-pack the contracts feed."
-    }
-    Write-Host "Re-packing Vev.Atlas.Contracts -> .local-nuget ..." -ForegroundColor Cyan
-    dotnet pack $contractsCsproj -c Release -o (Join-Path $monorepo '.local-nuget')
-}
-
 # --- Build --------------------------------------------------------------------------------
-# Context = monorepo root so the Dockerfile can COPY .local-nuget; -f points at this repo's Dockerfile.
 $buildArgs = @('build', '-f', (Join-Path $repo 'Dockerfile'), '-t', $image)
 if ($Rebuild) { $buildArgs += '--no-cache' }
-$buildArgs += $monorepo
+$buildArgs += $repo
 
-Write-Host "Building image '$image' (context: $monorepo) ..." -ForegroundColor Cyan
+Write-Host "Building image '$image' (context: $repo) ..." -ForegroundColor Cyan
 & $engine @buildArgs
 if ($LASTEXITCODE -ne 0) { throw "$engine build failed." }
 

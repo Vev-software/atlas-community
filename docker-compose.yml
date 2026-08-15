@@ -1,17 +1,13 @@
 # Atlas Community Edition — one-command self-host.
 #
 #   docker compose up --build       (or: podman compose up --build)
-#
-# The build context is the monorepo root (..), so the temporary sibling contracts feed
-# (.local-nuget) is available to the build — see Dockerfile. Once Vev.Atlas.Contracts is on
-# nuget.org (atlas#10), the context can narrow to this repo.
 name: atlas-community
 
 services:
   atlas:
     build:
-      context: ..
-      dockerfile: atlas-community/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     image: atlas-community:local
     ports:
       - "8080:8080"
