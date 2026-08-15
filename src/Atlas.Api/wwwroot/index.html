@@ -201,6 +201,43 @@
       padding: 10px 12px;
       background: #fbfbfc;
     }
+    .allowance-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+      display: grid;
+      gap: 8px;
+    }
+    .allowance-card.exhausted {
+      border-color: #f6c9c9;
+      background: var(--danger-soft);
+    }
+    .allowance-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: space-between;
+    }
+    .allowance-head strong { font-size: 13px; }
+    .allowance-badge {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: #f8fafc;
+    }
+    .allowance-card.exhausted .allowance-badge {
+      color: #a11a1a;
+      border-color: #f6c9c9;
+      background: #fff;
+    }
+    .allowance-cta {
+      justify-self: start;
+    }
     .stack { display: grid; gap: 14px; }
     .section { border-top: 1px solid var(--line); padding-top: 14px; }
     .section:first-child { border-top: none; padding-top: 0; }
@@ -546,6 +583,7 @@
     let canAuthor = false;      // Set from GET /api/v1/capabilities — never assumed.
     let editingId = null;       // Non-null while the asset form is editing an existing asset.
     let setupGuide = null;      // Grounded onboarding guide for the current tenant.
+    let aiAllowances = [];      // Visible AI-hook allowance state for the current tenant.
     let contextPackAssetIds = new Set();
 
     const el = (id) => document.getElementById(id);
@@ -580,7 +618,7 @@
         landscape.assets ||= [];
         landscape.relationships ||= [];
         el("toolbar").hidden = false;
-        await loadSetupCopilot();
+        await Promise.all([loadSetupCopilot(), loadAiAllowances()]);
         render();
         if (selectedId) showDetail(selectedId);
         else if (searchQuery.trim()) {
@@ -827,11 +865,22 @@
 
     async function loadSetupCopilot() {
       try {
-        const res = await fetch("/api/v1/setup-copilot", { headers: { "Accept": "application/json" } });
+        const res = await fetch(api("/v1/setup-copilot"), { headers: { "Accept": "application/json" } });
         if (!res.ok) throw new Error("HTTP " + res.status);
         setupGuide = await res.json();
       } catch {
         setupGuide = null;
+      }
+    }
+
+    async function loadAiAllowances() {
+      try {
+        const res = await fetch(api("/v1/ai/allowances"), { headers: { "Accept": "application/json" } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const payload = await res.json();
+        aiAllowances = Array.isArray(payload.capabilities) ? payload.capabilities : [];
+      } catch {
+        aiAllowances = [];
       }
     }
 
@@ -873,6 +922,9 @@
 
       wrap.appendChild(renderSetupSection("Next steps", setupGuide.suggestions));
       wrap.appendChild(renderSetupSection("What each surface does", setupGuide.features));
+      if (aiAllowances.length) {
+        wrap.appendChild(renderAllowanceSection());
+      }
       detail.appendChild(wrap);
     }
 
@@ -900,6 +952,78 @@
       const dd = document.createElement("dd");
       dd.textContent = value;
       host.append(dt, dd);
+    }
+
+    function renderAllowanceSection() {
+      const section = document.createElement("section");
+      section.className = "section";
+      section.innerHTML = "<h3>AI allowances</h3>";
+
+      for (const allowance of aiAllowances) {
+        const card = document.createElement("div");
+        card.className = "allowance-card" + (allowance.status === "exhausted" ? " exhausted" : "");
+
+        const head = document.createElement("div");
+        head.className = "allowance-head";
+        const title = document.createElement("strong");
+        title.textContent = allowance.capability === "atlas.ai.structure"
+          ? "Paste to landscape"
+          : allowance.capability;
+        const badge = document.createElement("span");
+        badge.className = "allowance-badge";
+        badge.textContent = allowance.status === "unlimited"
+          ? "Unlimited"
+          : allowance.status === "exhausted"
+            ? "Exhausted"
+            : "Free allowance";
+        head.append(title, badge);
+
+        const hook = document.createElement("p");
+        hook.className = "placeholder";
+        hook.textContent = allowance.hook;
+
+        const state = document.createElement("p");
+        state.textContent = formatAllowanceState(allowance);
+
+        card.append(head, hook, state);
+
+        if (allowance.upgrade) {
+          const note = document.createElement("div");
+          note.className = "note";
+          note.textContent = allowance.upgrade;
+          card.appendChild(note);
+        }
+
+        if (allowance.status === "exhausted") {
+          const cta = document.createElement("button");
+          cta.type = "button";
+          cta.className = "btn-sm allowance-cta";
+          cta.textContent = "Upgrade for more AI";
+          cta.addEventListener("click", () => {
+            toast("Atlas Enterprise can raise or remove the daily AI allowance.");
+          });
+          card.appendChild(cta);
+        }
+
+        section.appendChild(card);
+      }
+
+      return section;
+    }
+
+    function formatAllowanceState(allowance) {
+      if (allowance.status === "unlimited") {
+        return "This tenant has an entitled AI allowance for this hook.";
+      }
+      if (allowance.limit == null) {
+        return allowance.reasonCode === "entitlement_denied"
+          ? "This hook is not enabled for the current tenant."
+          : "Allowance data is unavailable.";
+      }
+      if (allowance.status === "exhausted") {
+        return `Used ${allowance.used} of ${allowance.limit} today. No free AI structurings remain right now.`;
+      }
+      return `Used ${allowance.used} of ${allowance.limit} today. ${allowance.remaining} remaining in the current daily allowance.`;
     }
 
     function runSetupAction(action) {

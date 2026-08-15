@@ -8,16 +8,27 @@ namespace Vev.Atlas.Fabric.Dev;
 /// a capability that is not explicitly granted is denied, never silently allowed (handbook 09 §4, E6).
 /// <para>
 /// In the Community Edition the granted set is <b>empty</b>, so every paid capability is denied while
-/// the free asset-management capabilities (which do not pass through entitlement) run fully.
+/// the free asset-management capabilities (which do not pass through entitlement) run fully. Selected
+/// AI hooks may still have a small bounded allowance via <see cref="GetLimit"/> without becoming fully
+/// paid capabilities.
 /// </para>
 /// </summary>
-public sealed class CommunityEntitlementService(IReadOnlySet<string> grantedCapabilities) : IEntitlementService
+public sealed class CommunityEntitlementService(
+    IReadOnlySet<string> grantedCapabilities,
+    IReadOnlyDictionary<string, EntitlementLimitSnapshot>? limits = null) : IEntitlementService
 {
     private const string Source = "entitlement:local-snapshot";
+    private static readonly IReadOnlyDictionary<string, EntitlementLimitSnapshot> DefaultCommunityLimits =
+        new Dictionary<string, EntitlementLimitSnapshot>(StringComparer.Ordinal)
+        {
+            ["atlas.ai.structure"] = EntitlementLimitSnapshot.FixedWindow(3, EntitlementLimitWindows.Day, Source)
+        };
 
     /// <summary>An evaluator with no granted paid capabilities — the Community Edition default.</summary>
     public static CommunityEntitlementService Community { get; } =
-        new(new HashSet<string>(StringComparer.Ordinal));
+        new(
+            new HashSet<string>(StringComparer.Ordinal),
+            DefaultCommunityLimits);
 
     /// <inheritdoc />
     public Decision Evaluate(EntitlementRequest request)
@@ -26,5 +37,21 @@ public sealed class CommunityEntitlementService(IReadOnlySet<string> grantedCapa
         return grantedCapabilities.Contains(request.Capability.Value)
             ? Decision.Allow(Source)
             : Decision.Deny(ReasonCodes.EntitlementDenied, Source);
+    }
+
+    /// <inheritdoc />
+    public EntitlementLimitSnapshot GetLimit(EntitlementLimitRequest request)
+    {
+        if (grantedCapabilities.Contains(request.Capability.Value))
+        {
+            return EntitlementLimitSnapshot.UnlimitedAllowance(Source);
+        }
+
+        if ((limits ?? DefaultCommunityLimits).TryGetValue(request.Capability.Value, out var limit))
+        {
+            return limit;
+        }
+
+        return EntitlementLimitSnapshot.Deny(ReasonCodes.EntitlementDenied, Source);
     }
 }

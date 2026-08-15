@@ -16,7 +16,7 @@ using Xunit;
 namespace Vev.Atlas.Api.Tests;
 
 /// <summary>
-/// Draft-structuring tests: entitlement-gated in Community, clean manual fallback with no provider, and
+/// Draft-structuring tests: free-but-bounded in Community, clean manual fallback with no provider, and
 /// multimodal image input routed through the Fabric AI seam.
 /// </summary>
 public sealed class StructureDraftTests(AtlasApiFactory factory) : IClassFixture<AtlasApiFactory>
@@ -33,9 +33,36 @@ public sealed class StructureDraftTests(AtlasApiFactory factory) : IClassFixture
     }
 
     [Fact]
-    public async Task Structure_draft_is_entitlement_denied_in_community()
+    public async Task Structure_draft_uses_the_free_community_allowance_before_ai_is_configured()
     {
         var response = await Client(tenant: "t-structure-denied").PostAsJsonAsync(
+            "/api/v1/structure/draft",
+            new StructureDraftRequest("App runs on server"),
+            Json);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var draft = await response.Content.ReadFromJsonAsync<JsonElement>(Json);
+        Assert.Equal("manual", draft.GetProperty("mode").GetString());
+        Assert.Equal("ai_not_configured", draft.GetProperty("status").GetString());
+        Assert.True(draft.GetProperty("reviewRequired").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Structure_draft_is_denied_when_the_free_allowance_is_exhausted()
+    {
+        var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
+        for (var i = 0; i < 3; i++)
+        {
+            await audit.WriteAsync(new AuditEvent(
+                TenantId: "t-structure-exhausted",
+                ActorPrincipalId: "viewer",
+                Action: AtlasCapabilities.AiStructure.Value,
+                Resource: "atlas:structure-draft",
+                OccurredAt: TimeProvider.System.GetUtcNow(),
+                CorrelationId: Guid.NewGuid().ToString("N")));
+        }
+
+        var response = await Client(tenant: "t-structure-exhausted").PostAsJsonAsync(
             "/api/v1/structure/draft",
             new StructureDraftRequest("App runs on server"),
             Json);
@@ -43,7 +70,10 @@ public sealed class StructureDraftTests(AtlasApiFactory factory) : IClassFixture
         Assert.Equal(HttpStatusCode.PaymentRequired, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(Json);
         Assert.Equal("atlas.ai.structure", body.GetProperty("capability").GetString());
-        Assert.Equal("entitlement_denied", body.GetProperty("reasonCode").GetString());
+        Assert.Equal("entitlement_limit_exhausted", body.GetProperty("reasonCode").GetString());
+        Assert.Equal(3, body.GetProperty("limit").GetInt32());
+        Assert.Equal(3, body.GetProperty("used").GetInt32());
+        Assert.Equal(0, body.GetProperty("remaining").GetInt32());
     }
 
     [Fact]

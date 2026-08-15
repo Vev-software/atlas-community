@@ -81,6 +81,8 @@ public sealed class SetupCopilotTests(AtlasApiFactory factory) : IClassFixture<A
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("Setup copilot", body);
-        Assert.Contains("/api/v1/setup-copilot", body);
+        Assert.Contains('"' + "/v1/setup-copilot" + '"', body);
+        Assert.Contains('"' + "/v1/ai/allowances" + '"', body);
+        Assert.Contains("AI allowances", body);
     }
 }
