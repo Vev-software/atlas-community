@@ -141,12 +141,15 @@ public sealed class ContextPackTests(AtlasApiFactory factory) : IClassFixture<At
             {
                 services.RemoveAll<Microsoft.EntityFrameworkCore.DbContextOptions<Vev.Atlas.Persistence.AtlasDbContext>>();
                 services.AddDbContext<Vev.Atlas.Persistence.AtlasDbContext>(options => options.UseSqlite(_connection));
-                services.RemoveAll<IEntitlementService>();
-                services.AddSingleton<IEntitlementService>(new CommunityEntitlementService(
+                var entitlements = new CommunityEntitlementService(
                     new HashSet<string>(StringComparer.Ordinal)
                     {
                         AtlasCapabilities.AiBrief.Value
-                    }));
+                    });
+                services.RemoveAll<IEntitlementService>();
+                services.RemoveAll<IEntitlementAllowanceProvider>();
+                services.AddSingleton<IEntitlementService>(entitlements);
+                services.AddSingleton<IEntitlementAllowanceProvider>(entitlements);
             });
         }
 

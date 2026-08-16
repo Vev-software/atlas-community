@@ -43,7 +43,7 @@ public sealed class ModuleInstallGuardTests
 
             var ex = await Assert.ThrowsAsync<ModuleRejectedException>(() => guard.EnsureInstallableAsync(manifest));
 
-            Assert.Equal(ReasonCodes.ReservedCapability, ex.Decision.ReasonCode);
+            Assert.Equal(AtlasReasonCodes.ReservedCapability, ex.Decision.ReasonCode);
             Assert.Contains(reserved, ex.ReservedCapabilities);
             var rejection = Assert.Single(audit.Events);
             Assert.Equal("atlas.module.rejected", rejection.Action);

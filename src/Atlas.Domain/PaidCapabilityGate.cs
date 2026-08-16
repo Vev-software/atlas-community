@@ -1,4 +1,5 @@
 using Vev.Atlas.Fabric;
+using Vev.Fabric.Contracts.Entitlements;
 
 namespace Vev.Atlas.Domain;
 
@@ -11,10 +12,10 @@ namespace Vev.Atlas.Domain;
 public sealed class PaidCapabilityGate(IRequestContextAccessor context, IEntitlementService entitlements)
 {
     /// <summary>
-    /// Evaluate the entitlement for the given capability, returning the <see cref="Decision"/> so the
+    /// Evaluate the entitlement for the given capability, returning the <see cref="EntitlementDecision"/> so the
     /// caller (or the UI) can surface a reason-code-driven upgrade path instead of a broken experience.
     /// </summary>
-    public Decision Evaluate(CapabilityId capability, ResourceId resource) =>
+    public EntitlementDecision Evaluate(CapabilityId capability, ResourceId resource) =>
         entitlements.Evaluate(new EntitlementRequest(context.Tenant, capability, context.Principal, resource));
 
     /// <summary>Require the capability; throws <see cref="AccessDeniedException"/> when it is not granted.</summary>
@@ -23,7 +24,7 @@ public sealed class PaidCapabilityGate(IRequestContextAccessor context, IEntitle
         var decision = Evaluate(capability, resource);
         if (!decision.Allowed)
         {
-            throw new AccessDeniedException(decision, $"Capability '{capability}' is not enabled ({decision.ReasonCode}).");
+            throw AccessDeniedException.FromEntitlement(decision, $"Capability '{capability}' is not enabled ({decision.ReasonCode}).");
         }
     }
 }

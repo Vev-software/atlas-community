@@ -185,7 +185,7 @@ public sealed class ContextPackService(
         var decision = authorizer.Authorize(context.Tenant, context.Principal, AtlasActions.AssetRead, ContextPackResource);
         if (!decision.Allowed)
         {
-            throw new AccessDeniedException(decision, $"'{AtlasActions.AssetRead}' denied ({decision.ReasonCode}).");
+            throw AccessDeniedException.FromAuthorization(decision, $"'{AtlasActions.AssetRead}' denied ({decision.ReasonCode}).");
         }
     }
 

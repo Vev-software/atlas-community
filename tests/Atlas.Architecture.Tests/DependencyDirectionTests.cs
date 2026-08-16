@@ -11,7 +11,7 @@ namespace Vev.Atlas.Architecture.Tests;
 public sealed class DependencyDirectionTests
 {
     private static readonly System.Reflection.Assembly Domain = typeof(AssetService).Assembly;
-    private static readonly System.Reflection.Assembly FabricAbstractions = typeof(Vev.Atlas.Fabric.TenantContext).Assembly;
+    private static readonly System.Reflection.Assembly FabricAbstractions = typeof(Vev.Atlas.Fabric.IRequestContextAccessor).Assembly;
 
     [Fact]
     public void Domain_does_not_depend_on_persistence_or_api()
