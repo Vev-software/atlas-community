@@ -87,13 +87,16 @@ public sealed class AiAllowanceTests(AtlasApiFactory factory) : IClassFixture<At
             {
                 services.RemoveAll<DbContextOptions<Vev.Atlas.Persistence.AtlasDbContext>>();
                 services.AddDbContext<Vev.Atlas.Persistence.AtlasDbContext>(options => options.UseSqlite(_connection));
-                services.RemoveAll<IEntitlementService>();
-                services.AddSingleton<IEntitlementService>(new CommunityEntitlementService(
+                var entitlements = new CommunityEntitlementService(
                     new HashSet<string>(StringComparer.Ordinal),
-                    new Dictionary<string, EntitlementLimitSnapshot>(StringComparer.Ordinal)
+                    new Dictionary<string, EntitlementAllowanceSnapshot>(StringComparer.Ordinal)
                     {
-                        [AtlasCapabilities.AiStructure.Value] = EntitlementLimitSnapshot.UnlimitedAllowance("entitlement:test")
-                    }));
+                        [AtlasCapabilities.AiStructure.Value] = EntitlementAllowanceSnapshot.UnlimitedAllowance("entitlement:test")
+                    });
+                services.RemoveAll<IEntitlementService>();
+                services.RemoveAll<IEntitlementAllowanceProvider>();
+                services.AddSingleton<IEntitlementService>(entitlements);
+                services.AddSingleton<IEntitlementAllowanceProvider>(entitlements);
             });
         }
 

@@ -61,7 +61,7 @@ public sealed class SetupCopilotService(
         var decision = authorizer.Authorize(context.Tenant, context.Principal, AtlasActions.AssetRead, SetupResource);
         if (!decision.Allowed)
         {
-            throw new AccessDeniedException(decision, $"'{AtlasActions.AssetRead}' denied ({decision.ReasonCode}).");
+            throw AccessDeniedException.FromAuthorization(decision, $"'{AtlasActions.AssetRead}' denied ({decision.ReasonCode}).");
         }
     }
 

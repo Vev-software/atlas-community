@@ -3,6 +3,7 @@ using Vev.Atlas.Domain;
 using Vev.Atlas.Domain.Portability;
 using Vev.Atlas.Fabric;
 using Vev.Atlas.Fabric.Dev;
+using Vev.Fabric.Contracts.Entitlements;
 using Vev.Atlas.Persistence;
 
 namespace Vev.Atlas.Api;
@@ -27,8 +28,13 @@ public static class AtlasCommunityRegistration
         services.AddSingleton(policies);
         services.AddSingleton<IAuthorizer, DevAuthorizer>();
 
-        // Community Edition: no paid capabilities granted → the entitlement seam denies them all (atlas#8).
-        services.AddSingleton<IEntitlementService>(CommunityEntitlementService.Community);
+        // Consume the public Fabric entitlement contract locally: request-path evaluation stays local and
+        // fail-static, while the snapshot source is configured per deployment (atlas#21, fabric#4).
+        services.AddHttpClient(EntitlementSnapshotRefreshService.HttpClientName);
+        services.AddSingleton<CommunityEntitlementService>();
+        services.AddSingleton<IEntitlementService>(sp => sp.GetRequiredService<CommunityEntitlementService>());
+        services.AddSingleton<IEntitlementAllowanceProvider>(sp => sp.GetRequiredService<CommunityEntitlementService>());
+        services.AddHostedService<EntitlementSnapshotRefreshService>();
         services.AddSingleton<IAiAssistService>(CommunityAiAssistService.Unconfigured);
 
         services.AddSingleton<InMemoryAuditSink>();

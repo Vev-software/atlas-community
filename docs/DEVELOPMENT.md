@@ -13,10 +13,10 @@ public repository.
 
 ```
 src/
-  Atlas.Fabric.Abstractions  Fabric contract shim: tenant/principal, authz, audit, entitlements
-                             (shaped to match the forthcoming Vev.Fabric.* packages — fabric#3-7)
-  Atlas.Fabric.Dev           Dev implementations of the shim (single tenant, role-gated authz,
-                             fail-static community entitlements, in-memory audit)
+  Atlas.Fabric.Abstractions  Atlas-owned seam types over the public Vev.Fabric.Contracts package
+                             (request context, authz/audit adapters, allowance UX helpers)
+  Atlas.Fabric.Dev           Local implementations over that seam (single tenant, role-gated authz,
+                             signed-snapshot entitlements, in-memory audit)
   Atlas.Domain               Asset catalogue domain; consumes the public atlas-contracts model
   Atlas.Persistence          EF Core / SQLite behind the repository port
   Atlas.Api                  ASP.NET Core minimal API (API/SDK-first) + OpenAPI
@@ -41,6 +41,31 @@ dotnet run --project src/Atlas.Api
 The API creates its SQLite schema on first run. OpenAPI is at `/openapi/v1.json`; health at `/health`.
 The catalogue file holds reconnaissance-grade landscape data — for any real deployment, encrypt it at
 rest ([Encryption at rest](#encryption-at-rest)).
+
+## Entitlements & signed snapshots
+
+Atlas now consumes the public `Vev.Fabric.Contracts` entitlement contract directly. The request path
+never calls a control-plane API synchronously: `PaidCapabilityGate` asks the local
+`CommunityEntitlementService`, which evaluates a cached signed snapshot with the Fabric
+`LocalEntitlementEvaluator`.
+
+- With **no snapshot source configured**, Community behaves exactly like before: paid capabilities are
+  denied with `entitlement_denied`, and the visible free AI-structuring allowance remains local.
+- With a **signed snapshot document** configured, Atlas verifies it against the configured trust
+  anchors and evaluates grants locally and fail-static.
+- With a **snapshot URL** configured, Atlas refreshes the cached signed snapshot periodically in the
+  background; request-time decisions still stay local.
+
+Configuration lives under `Atlas:Entitlements` (`Atlas__Entitlements__*` via env vars):
+
+| Key | Meaning |
+|---|---|
+| `SnapshotDocumentJson` | Inline signed snapshot document JSON to import at startup. |
+| `SnapshotDocumentPath` | Path to a signed snapshot document for offline / air-gapped installs. |
+| `SnapshotDocumentUrl` | Connected source returning a signed snapshot document; refreshed in the background. |
+| `SnapshotRefreshSeconds` | Refresh interval for `SnapshotDocumentUrl` (minimum effective interval 30s). |
+| `TrustedKeys:<key-id>` | Base64-encoded symmetric key for the current Fabric HMAC verifier. |
+| `CommunityAiStructureDailyLimit` | Local visible free allowance for `atlas.ai.structure` when no snapshot is configured. |
 
 ### Try it
 

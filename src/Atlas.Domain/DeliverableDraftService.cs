@@ -73,7 +73,7 @@ public sealed class DeliverableDraftService(
         var decision = authorizer.Authorize(context.Tenant, context.Principal, AtlasActions.AssetRead, DeliverableResource);
         if (!decision.Allowed)
         {
-            throw new AccessDeniedException(decision, $"'{AtlasActions.AssetRead}' denied ({decision.ReasonCode}).");
+            throw AccessDeniedException.FromAuthorization(decision, $"'{AtlasActions.AssetRead}' denied ({decision.ReasonCode}).");
         }
     }
 

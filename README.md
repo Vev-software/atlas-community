@@ -11,8 +11,9 @@ The paid capabilities that *work with* that data live in **Atlas Enterprise**, t
 separately-licensed commercial edition developed outside this public repository.
 
 > **Status: early.** The Community runtime foundation is in place — a tenant-scoped asset
-> catalogue (CRUD, manual relationships, tags) over an API-first .NET stack, on the Fabric
-> contract shim, with architecture fitness tests that fail the build on a boundary violation.
+> catalogue (CRUD, manual relationships, tags) over an API-first .NET stack, consuming the
+> public Fabric contracts with local signed-snapshot entitlement evaluation, plus architecture
+> fitness tests that fail the build on a boundary violation.
 > Self-hosted packaging (Docker + Compose) is in the tree; basic visualisation is still landing.
 > Treat anything not yet in the source tree as intended direction rather than a shipped feature.
 
@@ -158,8 +159,8 @@ runtime/compatibility posture are in
 
 ```
 src/
-  Atlas.Fabric.Abstractions  Fabric contract shim: tenant/principal, authz, audit, entitlements
-  Atlas.Fabric.Dev           Dev implementations (single tenant, role-gated authz, in-memory audit)
+  Atlas.Fabric.Abstractions  Atlas-side seam over the public Fabric contracts + allowance UX types
+  Atlas.Fabric.Dev           Local authz/audit + signed-snapshot entitlement evaluator
   Atlas.Domain               Asset catalogue domain; consumes the public atlas-contracts model
   Atlas.Persistence          EF Core / SQLite behind the repository port
   Atlas.Api                  ASP.NET Core minimal API (API/SDK-first) + OpenAPI

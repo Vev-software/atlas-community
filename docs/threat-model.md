@@ -18,8 +18,9 @@ built and where to look. The security goal is the **confidentiality and integrit
 - **Caller → API.** Requests are not trusted to name their own tenant or roles; identity is established
   by the configured identity mode, and every write and every export is authorized.
 - **API → Fabric substrate.** Identity, authorization, audit and entitlements are consumed through the
-  Fabric contracts. In Community these run as a local shim (`Atlas.Fabric.Dev`) until the real
-  `Vev.Fabric.*` services land (`fabric#3`–`#7`); the seam, not the shim, is the contract.
+  Fabric contracts. In Community, authorization/audit run locally and entitlements are evaluated from a
+  signed local snapshot through `Vev.Fabric.Contracts` — the seam is the public contract, not a private
+  product dependency.
 - **Runtime → disk.** The whole map persists to a SQLite file on a mounted volume. The file is a
   reconnaissance-grade artifact at rest.
 - **Image → operator.** The self-hoster runs a container they did not build; they need to verify what it
@@ -35,7 +36,7 @@ What defends the map today, and where each control lives:
 | One tenant reads another tenant's map | **EF Core global query filter** keyed on the ambient tenant — isolation holds by default even if a query forgets the predicate; a fitness test fails the build if the filter is removed, and the only bypass is an audited `cross-tenant:` opt-out | `atlas#35` · [Tenant isolation](./DEVELOPMENT.md#tenant-isolation) |
 | Silent bulk exfiltration of the whole map | `/export` is **hardened**: an elevated `atlas.landscape.export` authorization (read-only customers denied `403`), exactly one audit record per export, and per-tenant **rate limiting** | `atlas#36` · [Portability](./DEVELOPMENT.md#portability-export--import) |
 | No record of who changed or read what | An append-only **audit envelope** on every write and every export (actor, tenant, action, resource, time), with no secrets or customer content in it | `fabric#6` |
-| A paid capability is reached in the free edition | The **entitlement seam** denies reserved paid capabilities in Community (fail-static), so the free/paid line is data, not code — enforced by a fitness test that forbids `if (plan == …)` | `atlas#8` |
+| A paid capability is reached in the free edition | The **entitlement seam** denies reserved paid capabilities in Community (fail-static): no snapshot means the empty set; a signed snapshot is verified and evaluated locally; the free/paid line remains data, not code | `atlas#8`, `atlas#21` |
 | The map is read from a stolen disk or volume | Documented **encryption-at-rest** expectation (encrypt the volume, or an encrypted-database option), plus the same care for exports and backups | `atlas#37` · [Encryption at rest](./DEVELOPMENT.md#encryption-at-rest) |
 | Running a tampered or unknown image | Tagged releases publish a **signed** image with an **SBOM** and **SLSA provenance**; an unsigned or tampered image fails `cosign verify` | `atlas#38` · [Supply chain](./DEVELOPMENT.md#supply-chain-sbom--signed-provenance) |
 | Architecture erosion (a boundary or provider leak) | **Architecture fitness tests** fail the build on a dependency-direction violation, a `plan ==` check, or a direct AI-provider call | `Atlas.Architecture.Tests` |

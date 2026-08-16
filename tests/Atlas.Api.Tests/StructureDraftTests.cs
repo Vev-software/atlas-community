@@ -147,9 +147,12 @@ public sealed class StructureDraftTests(AtlasApiFactory factory) : IClassFixture
             {
                 services.RemoveAll<DbContextOptions<Vev.Atlas.Persistence.AtlasDbContext>>();
                 services.AddDbContext<Vev.Atlas.Persistence.AtlasDbContext>(options => options.UseSqlite(_connection));
+                var entitlements = new CommunityEntitlementService(
+                    new HashSet<string>(StringComparer.Ordinal) { AtlasCapabilities.AiStructure.Value });
                 services.RemoveAll<IEntitlementService>();
-                services.AddSingleton<IEntitlementService>(new CommunityEntitlementService(
-                    new HashSet<string>(StringComparer.Ordinal) { AtlasCapabilities.AiStructure.Value }));
+                services.RemoveAll<IEntitlementAllowanceProvider>();
+                services.AddSingleton<IEntitlementService>(entitlements);
+                services.AddSingleton<IEntitlementAllowanceProvider>(entitlements);
             });
         }
 

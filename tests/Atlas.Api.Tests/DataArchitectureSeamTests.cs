@@ -21,7 +21,7 @@ public sealed class DataArchitectureSeamTests
             var decision = gate.Evaluate(capability, new ResourceId("atlas:asset/data-architecture"));
 
             Assert.False(decision.Allowed);
-            Assert.Equal(ReasonCodes.EntitlementDenied, decision.ReasonCode);
+            Assert.Equal(Vev.Fabric.Contracts.Entitlements.ReasonCodes.EntitlementDenied, decision.ReasonCode);
         }
     }
 

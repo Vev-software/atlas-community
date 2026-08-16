@@ -4,11 +4,13 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using ModelContextProtocol.Server;
 using Vev.Atlas.Api;
+using Vev.Atlas.Fabric.Dev;
 using Vev.Atlas.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = builder.Configuration.GetConnectionString("Atlas") ?? "Data Source=atlas.db";
+builder.Services.Configure<AtlasEntitlementOptions>(builder.Configuration.GetSection(AtlasEntitlementOptions.SectionName));
 builder.Services.AddAtlasCommunity(connectionString);
 builder.Services.AddMcpServer()
     .WithHttpTransport(options => options.Stateless = true)

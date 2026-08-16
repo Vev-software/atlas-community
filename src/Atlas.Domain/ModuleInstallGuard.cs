@@ -60,7 +60,7 @@ public sealed class ModuleInstallGuard(IRequestContextAccessor context, IAuditSi
             return;
         }
 
-        var decision = Decision.Deny(ReasonCodes.ReservedCapability, Source);
+        var decision = Decision.Deny(AtlasReasonCodes.ReservedCapability, Source);
         await EmitRejectionAsync(manifest, reserved, ct);
 
         var claimed = string.Join(", ", reserved.Select(c => c.Value));

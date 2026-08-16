@@ -362,7 +362,7 @@ public sealed class AssetService(
         var decision = authorizer.Authorize(context.Tenant, context.Principal, action, resource);
         if (!decision.Allowed)
         {
-            throw new AccessDeniedException(decision, $"'{action}' denied ({decision.ReasonCode}).");
+            throw AccessDeniedException.FromAuthorization(decision, $"'{action}' denied ({decision.ReasonCode}).");
         }
     }
 
