@@ -31,9 +31,9 @@ curl -X POST "http://localhost:5199/api/v1/import?format=atlas-json" \
 - `mode: replace` matches your tenant to this bundle. Switch to `merge` to upsert into an existing
   landscape instead of replacing it.
 
-**Soon (from the UI):** once the in-app file import lands
-([atlas-community#92](https://github.com/Vev-software/atlas-community/issues/92)), you'll be able to
-upload this file straight from the **Import** panel — which links back to this folder.
+**From the UI:** open the **Import** panel (next to **Export JSON** in the landscape toolbar), pick this
+file, choose **Merge** or **Replace**, and import — the panel links straight back to this folder. Import
+is an author-only action, so sign in with an author-capable principal to see it.
 
 ## Keeping it valid
 
