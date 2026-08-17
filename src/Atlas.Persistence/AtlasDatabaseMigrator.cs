@@ -20,29 +20,13 @@ public static class AtlasDatabaseMigrator
         {
             await UpgradeLegacySqliteDatabaseIfNeededAsync(db, ct);
 
-            var connection = db.Database.GetDbConnection();
-            if (connection.State != System.Data.ConnectionState.Open)
+            // Check if we have a corrupted database (migration history but missing tables)
+            var needsFreshStart = await NeedsFreshDatabaseAsync(db, ct);
+            if (needsFreshStart)
             {
-                await connection.OpenAsync(ct);
-            }
-
-            var requiredTables = new[] { "assets", "relationships", "ai_module_settings" };
-            var missingTables = new List<string>();
-            foreach (var table in requiredTables)
-            {
-                var exists = await ScalarAsync<long>(
-                    connection,
-                    $"SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = '{table}';",
-                    ct) > 0;
-                if (!exists)
-                {
-                    missingTables.Add(table);
-                }
-            }
-
-            if (missingTables.Count > 0 || await NeedsFreshDatabaseAsync(db, ct))
-            {
-                await RecreateDatabaseFromScratchAsync(db, ct);
+                // Don't try to delete - just recreate using EnsureCreated
+                await db.Database.EnsureCreatedAsync(ct);
+                await RecordMigrationHistoryAsync(db, ct);
                 return;
             }
         }
@@ -78,17 +62,8 @@ public static class AtlasDatabaseMigrator
         }
     }
 
-    private static async Task RecreateDatabaseFromScratchAsync(AtlasDbContext db, CancellationToken ct)
+    private static async Task RecordMigrationHistoryAsync(AtlasDbContext db, CancellationToken ct)
     {
-        // Close the connection before deleting the database file
-        await db.Database.CloseConnectionAsync();
-        
-        // Delete the corrupted database
-        await db.Database.EnsureDeletedAsync(ct);
-        
-        // Create the database fresh from the model
-        await db.Database.EnsureCreatedAsync(ct);
-
         var connection = db.Database.GetDbConnection();
         if (connection.State != System.Data.ConnectionState.Open)
         {
