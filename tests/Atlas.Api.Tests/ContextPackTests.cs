@@ -54,8 +54,8 @@ public sealed class ContextPackTests(AtlasApiFactory factory) : IClassFixture<At
         var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
         Assert.Contains(audit.Events, e =>
             e.Action == "atlas.context.export" &&
-            e.TenantId == "t-pack-path" &&
-            e.Resource.Contains("mode=deterministic", StringComparison.Ordinal));
+            e.Tenant.TenantId == "t-pack-path" &&
+            e.Resource.Value.Contains("mode=deterministic", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -141,12 +141,15 @@ public sealed class ContextPackTests(AtlasApiFactory factory) : IClassFixture<At
             {
                 services.RemoveAll<Microsoft.EntityFrameworkCore.DbContextOptions<Vev.Atlas.Persistence.AtlasDbContext>>();
                 services.AddDbContext<Vev.Atlas.Persistence.AtlasDbContext>(options => options.UseSqlite(_connection));
-                services.RemoveAll<IEntitlementService>();
-                services.AddSingleton<IEntitlementService>(new CommunityEntitlementService(
+                var entitlements = new CommunityEntitlementService(
                     new HashSet<string>(StringComparer.Ordinal)
                     {
                         AtlasCapabilities.AiBrief.Value
-                    }));
+                    });
+                services.RemoveAll<IEntitlementService>();
+                services.RemoveAll<IEntitlementAllowanceProvider>();
+                services.AddSingleton<IEntitlementService>(entitlements);
+                services.AddSingleton<IEntitlementAllowanceProvider>(entitlements);
             });
         }
 

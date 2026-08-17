@@ -1,0 +1,25 @@
+# Atlas Community — unauthenticated overlay (local development only).
+#
+# Overrides the default compose to run Atlas in single-tenant mode with no authentication.
+# This is ONLY for local development — never use this in production.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.unsecure.yml up --build
+#
+# This removes the Keycloak dependency and switches to the fixed-identity single-tenant mode.
+# Everyone gets full architect access.
+
+services:
+  keycloak:
+    # Remove the Keycloak service entirely.
+    image: ""
+    command: []
+    ports: []
+    volumes: []
+    environment: {}
+
+  atlas:
+    environment:
+      # Override: no OIDC, fixed single-tenant identity.
+      Atlas__Identity__Mode: "single-tenant"
+      Atlas__Identity__Oidc__Authority: ""
+    depends_on: []

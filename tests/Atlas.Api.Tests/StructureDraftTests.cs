@@ -54,11 +54,15 @@ public sealed class StructureDraftTests(AtlasApiFactory factory) : IClassFixture
         for (var i = 0; i < 3; i++)
         {
             await audit.WriteAsync(new AuditEvent(
-                TenantId: "t-structure-exhausted",
-                ActorPrincipalId: "viewer",
-                Action: AtlasCapabilities.AiStructure.Value,
-                Resource: "atlas:structure-draft",
+                EventId: Guid.NewGuid().ToString("N"),
                 OccurredAt: TimeProvider.System.GetUtcNow(),
+                Tenant: new TenantContext("t-structure-exhausted"),
+                Actor: new AuditActor("viewer"),
+                Source: "atlas",
+                Action: AtlasCapabilities.AiStructure.Value,
+                Resource: new AuditResource("atlas:structure-draft"),
+                Category: AuditCategory.Data,
+                Outcome: AuditOutcome.Success,
                 CorrelationId: Guid.NewGuid().ToString("N")));
         }
 
@@ -106,8 +110,8 @@ public sealed class StructureDraftTests(AtlasApiFactory factory) : IClassFixture
         var audit = entitledFactory.Services.GetRequiredService<InMemoryAuditSink>();
         Assert.Contains(audit.Events, e =>
             e.Action == "atlas.ai.structure" &&
-            e.TenantId == "t-structure-manual" &&
-            e.Resource.Contains("images=1", StringComparison.Ordinal));
+            e.Tenant.TenantId == "t-structure-manual" &&
+            e.Resource.Value.Contains("images=1", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -147,9 +151,12 @@ public sealed class StructureDraftTests(AtlasApiFactory factory) : IClassFixture
             {
                 services.RemoveAll<DbContextOptions<Vev.Atlas.Persistence.AtlasDbContext>>();
                 services.AddDbContext<Vev.Atlas.Persistence.AtlasDbContext>(options => options.UseSqlite(_connection));
+                var entitlements = new CommunityEntitlementService(
+                    new HashSet<string>(StringComparer.Ordinal) { AtlasCapabilities.AiStructure.Value });
                 services.RemoveAll<IEntitlementService>();
-                services.AddSingleton<IEntitlementService>(new CommunityEntitlementService(
-                    new HashSet<string>(StringComparer.Ordinal) { AtlasCapabilities.AiStructure.Value }));
+                services.RemoveAll<IEntitlementAllowanceProvider>();
+                services.AddSingleton<IEntitlementService>(entitlements);
+                services.AddSingleton<IEntitlementAllowanceProvider>(entitlements);
             });
         }
 

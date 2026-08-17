@@ -19,15 +19,19 @@ public sealed class AmbientRequestContextAccessor : IRequestContextAccessor
     public PrincipalContext Principal => Current.Value?.Principal
         ?? throw new InvalidOperationException("No request context bound. Call BeginScope first.");
 
-    /// <summary>Bind a tenant + principal for the current flow; dispose to clear.</summary>
-    public static IDisposable BeginScope(TenantContext tenant, PrincipalContext principal)
+    /// <inheritdoc />
+    public string CorrelationId => Current.Value?.CorrelationId
+        ?? throw new InvalidOperationException("No request context bound. Call BeginScope first.");
+
+    /// <summary>Bind a tenant + principal + correlation id for the current flow; dispose to clear.</summary>
+    public static IDisposable BeginScope(TenantContext tenant, PrincipalContext principal, string correlationId)
     {
         var previous = Current.Value;
-        Current.Value = new Scope(tenant, principal);
+        Current.Value = new Scope(tenant, principal, correlationId);
         return new Restore(previous);
     }
 
-    private sealed record Scope(TenantContext Tenant, PrincipalContext Principal);
+    private sealed record Scope(TenantContext Tenant, PrincipalContext Principal, string CorrelationId);
 
     private sealed class Restore(Scope? previous) : IDisposable
     {

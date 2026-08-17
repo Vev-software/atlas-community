@@ -6,30 +6,34 @@
   <ItemGroup>
     <!-- Public contract surface (Apache-2.0). The AGPL runtime consumes it; never the reverse. -->
     <PackageVersion Include="Vev.Atlas.Contracts" Version="0.1.0" />
+    <PackageVersion Include="Vev.Fabric.Contracts" Version="0.1.0" />
 
     <!-- Persistence: thin storage behind the Fabric storage abstraction, not an ORM religion (05 §2). -->
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
 
     <!-- API surface / OpenAPI (API-first, E1). -->
-    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.11" />
     <PackageVersion Include="ModelContextProtocol" Version="2.2.0" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
 
     <!-- Identity: validate real OIDC JWT bearer tokens for the fabric-oidc mode (fabric#3). The
          provider is external (OIDC/SCIM, handbook 05 §6); Atlas only validates tokens + reads claims. -->
-    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
 
     <!-- Architecture fitness tests. -->
     <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
 
     <!-- Test stack. -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
-    <!-- Issue self-signed JWTs in the OIDC identity tests. Pinned to the version the JwtBearer 10.0.0
+    <!-- Issue self-signed JWTs in the OIDC identity tests. Pinned to the version the JwtBearer 10.0.11
          stack resolves transitively, so token creation and validation share one IdentityModel. -->
-    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.19.2" />
     <PackageVersion Include="xunit" Version="2.9.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
   </ItemGroup>
 </Project>

@@ -21,3 +21,12 @@ file narrows it to the disclosure risks that matter most here.
 - Security vulnerabilities do **not** belong in a public issue or PR. Follow `SECURITY.md`.
 - If the explanation seems to require private implementation detail, move that detail to a private
   channel and leave only the public-safe summary here.
+
+## GitHub workflow
+
+- When opening a pull request that resolves one or more issues, include explicit GitHub closing
+  keywords in the PR body.
+- Use `Closes #<issue>`, `Fixes #<issue>`, or `Resolves #<issue>` under a dedicated `## Closing`
+  section.
+- Do not rely on plain issue mentions like `#123`; they do not auto-close issues.
+- If a pull request resolves multiple issues, list each one explicitly on its own line.

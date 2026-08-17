@@ -11,8 +11,14 @@ namespace Vev.Atlas.Domain;
 /// </summary>
 public interface IAssetRepository
 {
+    /// <summary>List assets in the tenant, including their stable numeric ids.</summary>
+    Task<ImmutableArray<CataloguedAsset>> ListCataloguedAssetsAsync(TenantContext tenant, AssetKind? kind, CancellationToken ct = default);
+
     /// <summary>List assets in the tenant, optionally filtered by kind.</summary>
     Task<ImmutableArray<Asset>> ListAssetsAsync(TenantContext tenant, AssetKind? kind, CancellationToken ct = default);
+
+    /// <summary>Get one asset plus its stable numeric id, or null if it does not exist in the tenant.</summary>
+    Task<CataloguedAsset?> GetCataloguedAssetAsync(TenantContext tenant, string id, CancellationToken ct = default);
 
     /// <summary>Get a single asset by id, or null if it does not exist in the tenant.</summary>
     Task<Asset?> GetAssetAsync(TenantContext tenant, string id, CancellationToken ct = default);
@@ -20,8 +26,11 @@ public interface IAssetRepository
     /// <summary>True if an asset with the id exists in the tenant.</summary>
     Task<bool> AssetExistsAsync(TenantContext tenant, string id, CancellationToken ct = default);
 
-    /// <summary>Insert a new asset.</summary>
-    Task AddAssetAsync(TenantContext tenant, Asset asset, CancellationToken ct = default);
+    /// <summary>Reserve the next stable numeric id for a new asset in the tenant.</summary>
+    Task<long> AllocateAssetNumericIdAsync(TenantContext tenant, CancellationToken ct = default);
+
+    /// <summary>Insert a new asset. <paramref name="createdBy"/> is the principal id of the creator (atlas#76).</summary>
+    Task AddAssetAsync(TenantContext tenant, Asset asset, long numericId, string? createdBy, CancellationToken ct = default);
 
     /// <summary>Replace an existing asset.</summary>
     Task UpdateAssetAsync(TenantContext tenant, Asset asset, CancellationToken ct = default);
@@ -44,3 +53,6 @@ public interface IAssetRepository
     /// </summary>
     Task<ImmutableArray<string>> DeleteRelationshipsForAssetAsync(TenantContext tenant, string assetId, CancellationToken ct = default);
 }
+
+/// <summary>One catalogued asset plus the stable numeric id assigned when it was created.</summary>
+public sealed record CataloguedAsset(Asset Asset, long NumericId, string? CreatedBy);

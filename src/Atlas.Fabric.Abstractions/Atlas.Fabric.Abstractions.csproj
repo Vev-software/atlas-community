@@ -11,4 +11,8 @@
     </Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Vev.Fabric.Contracts" />
+  </ItemGroup>
+
 </Project>

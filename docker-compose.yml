@@ -2,22 +2,52 @@
 #
 #   docker compose up --build       (or: podman compose up --build)
 #
-# The build context is the monorepo root (..), so the temporary sibling contracts feed
-# (.local-nuget) is available to the build — see Dockerfile. Once Vev.Atlas.Contracts is on
-# nuget.org (atlas#10), the context can narrow to this repo.
+# Secure by default: the default compose brings up a bundled Keycloak for authentication.
+# Every request requires login. The seeded admin password is temporary and MUST be changed
+# on first login. See README.md § "First-run setup".
+#
+# To run without authentication (local development only), use:
+#   docker compose -f docker-compose.yml -f docker-compose.unsecure.yml up --build
 name: atlas-community
 
 services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # A fixed hostname so the token issuer is the same URL Atlas validates against, from inside the
+      # compose network (http://keycloak:8080) and for tokens fetched from the host via the mapped port.
+      KC_HOSTNAME: http://keycloak:8080
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+
   atlas:
     build:
-      context: ..
-      dockerfile: atlas-community/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     image: atlas-community:local
     ports:
       - "8080:8080"
     environment:
       # The catalogue lives in SQLite on the mounted volume, so it survives container restarts.
       ConnectionStrings__Atlas: "Data Source=/data/atlas.db"
+      # Validate real OIDC tokens from the bundled Keycloak realm.
+      Atlas__Identity__Mode: "fabric-oidc"
+      Atlas__Identity__Oidc__Authority: "http://keycloak:8080/realms/atlas"
+      # Browsers reach the bundled Keycloak through the published host port, not the internal compose DNS name.
+      Atlas__Identity__Oidc__BrowserAuthority: "http://localhost:8081/realms/atlas"
+      Atlas__Identity__Oidc__ClientId: "atlas-api"
+      # The bundled Keycloak speaks plain HTTP in self-hosted mode.
+      Atlas__Identity__Oidc__RequireHttpsMetadata: "false"
+    depends_on:
+      - keycloak
     volumes:
       - atlas-data:/data
     restart: unless-stopped

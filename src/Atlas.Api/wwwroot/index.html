@@ -33,6 +33,7 @@
       --kind-data-area: #b45309;
       --kind-dataset: #0f766e;
       --kind-column: #7c3aed;
+      --focus-ring: 0 0 0 3px rgba(79, 70, 229, .22);
       --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .10);
       --shadow-lg: 0 10px 25px rgba(16, 24, 40, .12), 0 4px 10px rgba(16, 24, 40, .08);
     }
@@ -67,6 +68,46 @@
       padding: 3px 10px;
     }
     header .badge.author { color: var(--accent); border-color: #c7cbf5; background: #eef2ff; }
+    header .user {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: 12px;
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+    header .user .avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: var(--accent-ink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    header .user .roles {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    header .user a {
+      font-size: 11px;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    header .user a:hover { text-decoration: underline; }
+    header .docs-link {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--accent);
+      text-decoration: none;
+      padding: 3px 10px;
+      border: 1px solid #d9defa;
+      border-radius: 999px;
+    }
+    header .docs-link:hover { background: #eef2ff; }
     .toolbar {
       display: flex;
       align-items: center;
@@ -126,6 +167,8 @@
       border-radius: 8px; padding: 6px 13px; display: inline-flex; align-items: center; gap: 6px;
     }
     button.primary:hover { background: #4338ca; border-color: #4338ca; }
+    button.primary.danger-primary { border-color: var(--danger); background: var(--danger); }
+    button.primary.danger-primary:hover { border-color: #b91c1c; background: #b91c1c; }
     button.primary .plus { font-size: 15px; line-height: 1; margin-top: -1px; }
     main { flex: 1; display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
     #canvas { position: relative; overflow: auto; background:
@@ -150,7 +193,18 @@
     aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0 0 10px; }
     .detail .dname { font-size: 16px; font-weight: 650; margin: 0 0 2px; }
     .detail .dkind { color: var(--muted); font-size: 12.5px; text-transform: capitalize; margin-bottom: 14px; }
+    .detail .dmeta { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; }
     .detail-actions { display: flex; gap: 8px; margin: 0 0 16px; }
+    .link-btn {
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--accent);
+      background: none;
+      border: none;
+      padding: 0;
+    }
+    .link-btn:hover { text-decoration: underline; }
     .btn-sm {
       font: inherit; font-size: 12px; cursor: pointer;
       border: 1px solid var(--line); background: #fff; color: var(--ink);
@@ -181,6 +235,17 @@
     }
     .rel-list .rel-del:hover { color: var(--danger); background: var(--danger-soft); }
     .placeholder { color: var(--muted); font-size: 13px; }
+    .history-list { list-style: none; margin: 0; padding: 0; }
+    .history-item { padding: 10px 0; border-top: 1px solid var(--line); }
+    .history-item:first-child { border-top: none; padding-top: 0; }
+    .history-item strong { display: block; font-size: 12.5px; margin-bottom: 2px; }
+    .history-item .meta { color: var(--muted); font-size: 12px; }
+    .future-slot {
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      background: #fbfbfc;
+    }
     .pack-box {
       font-size: 12.5px;
       background: #f8fafc;
@@ -314,6 +379,12 @@
       border-top: 1px solid var(--line); background: #fbfbfc;
     }
     .modal footer .spacer { flex: 1; }
+    .modal button.secondary {
+      font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+      border: 1px solid #cdd5df; background: transparent; color: #344054;
+      border-radius: 8px; padding: 6px 13px; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .modal button.secondary:hover { border-color: #98a2b3; background: #f8fafc; color: #101828; }
     .field { margin-bottom: 14px; }
     .field:last-child { margin-bottom: 0; }
     .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 600; }
@@ -349,6 +420,22 @@
     }
     .form-error[hidden] { display: none; }
     button.primary[disabled] { opacity: .6; cursor: default; }
+    button.primary:focus-visible,
+    button.secondary:focus-visible,
+    .toolbar button.action:focus-visible,
+    .btn-sm:focus-visible,
+    .chip:focus-visible,
+    .crumb:focus-visible,
+    .mini:focus-visible,
+    .search-card:focus-visible,
+    .add-tag:focus-visible,
+    .rel-head .add-rel:focus-visible,
+    .rel-list .rel-del:focus-visible,
+    .modal header .close:focus-visible,
+    .tag-row button.remove:focus-visible {
+      outline: none;
+      box-shadow: var(--focus-ring);
+    }
 
     /* --- Toast --- */
     #toast {
@@ -358,7 +445,232 @@
     }
     #toast[hidden] { display: none; }
     #toast.err { background: #7f1d1d; }
+    .toolbar button.action.ai-entry {
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .toolbar button.action.ai-entry:hover {
+      background: #eef2ff;
+    }
+    .ai-panel-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(16, 24, 40, .12);
+      z-index: 55;
+    }
+    .ai-panel-backdrop[hidden] { display: none; }
+    .ai-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: min(440px, 100vw);
+      height: 100vh;
+      background: var(--panel);
+      border-left: 1px solid var(--line);
+      box-shadow: var(--shadow-lg);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      z-index: 56;
+    }
+    .ai-panel[hidden] { display: none; }
+    .ai-panel header {
+      align-items: center;
+      gap: 10px;
+      padding: 16px 18px;
+    }
+    .ai-panel .ai-title {
+      display: grid;
+      gap: 2px;
+    }
+    .ai-panel .ai-title strong { font-size: 15px; }
+    .ai-panel .ai-title span { color: var(--muted); font-size: 12px; }
+    .ai-panel .close {
+      margin-left: auto;
+      font: inherit;
+      font-size: 18px;
+      border: none;
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 8px;
+    }
+    .ai-panel .close:hover { background: #f1f3f7; color: var(--ink); }
+    .ai-body {
+      overflow: auto;
+      padding: 16px 18px;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+      background: #fbfbfd;
+    }
+    .ai-panel footer {
+      border-top: 1px solid var(--line);
+      background: #fff;
+      padding: 14px 18px 18px;
+    }
+    .chat-thread {
+      display: grid;
+      gap: 12px;
+    }
+    .chat-message {
+      display: grid;
+      gap: 5px;
+    }
+    .chat-message .meta {
+      font-size: 11px;
+      letter-spacing: .4px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .chat-bubble {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px 13px;
+      background: #fff;
+      white-space: pre-wrap;
+    }
+    .chat-message.user .chat-bubble {
+      background: #eef2ff;
+      border-color: #c7cbf5;
+    }
+    .ai-actions, .doc-links {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .doc-links a {
+      font-size: 12px;
+      color: var(--accent);
+      text-decoration: none;
+      border: 1px solid #d9defa;
+      background: #fff;
+      border-radius: 999px;
+      padding: 5px 10px;
+    }
+    .doc-links a:hover { background: #eef2ff; }
+    .ai-empty {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+    .ai-form {
+      display: grid;
+      gap: 12px;
+    }
+    .consent-box {
+      display: grid;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 12px;
+    }
+    .consent-box label {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 12.5px;
+      color: #344054;
+    }
+    .consent-box input { margin-top: 2px; }
+    .ai-footer-form {
+      display: grid;
+      gap: 10px;
+    }
+    .ai-footer-form textarea {
+      width: 100%;
+      min-height: 82px;
+      resize: vertical;
+      font: inherit;
+      font-size: 13px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .ai-footer-form textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px #eef2ff;
+    }
+    .ai-footer-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .ai-status-pill {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: #fff;
+    }
 
+    /* --- Table view --- */
+    .asset-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .asset-table th,
+    .asset-table td {
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .asset-table th {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      color: var(--muted);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      background: var(--panel);
+      cursor: pointer;
+      user-select: none;
+    }
+    .asset-table th:hover { color: var(--accent); }
+    .asset-table th .sort-arrow { margin-left: 4px; font-size: 10px; }
+    .asset-table tbody tr { cursor: pointer; }
+    .asset-table tbody tr:hover { background: #f8fafc; }
+    .asset-table tbody tr.selected { background: #eef2ff; }
+    .asset-table .kind-dot {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .view-toggle {
+      display: flex;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-left: auto;
+    }
+    .view-toggle button {
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      border: none;
+      background: #fff;
+      color: var(--muted);
+      padding: 4px 10px;
+      border-right: 1px solid var(--line);
+    }
+    .view-toggle button:last-child { border-right: none; }
+    .view-toggle button[aria-pressed="true"] { background: #eef2ff; color: var(--accent); }
+    .table-container { overflow: auto; max-height: calc(100vh - 160px); }
     @media (max-width: 820px) { main { grid-template-columns: 1fr; } aside { border-left: none; border-top: 1px solid var(--line); } }
   </style>
   <!-- Runtime deployment config (atlas#19): sets window.__ATLAS__ (API base incl. path base). -->
@@ -366,9 +678,16 @@
 </head>
 <body>
   <header>
-    <h1>Atlas · Community</h1>
+    <h1 id="brandName">Atlas · Community</h1>
     <span class="sub">Landscape</span>
+    <a class="docs-link" id="docsLink" href="https://github.com/Vev-software/docs/blob/main/docs" target="_blank" rel="noreferrer" title="Documentation">Docs</a>
     <span class="badge" id="capBadge">Read-only</span>
+    <div class="user" id="userInfo" hidden>
+      <span class="avatar" id="userAvatar"></span>
+      <span class="name" id="userName"></span>
+      <span class="roles" id="userRoles"></span>
+      <a href="/login/?action=admin" id="usersLink">Users</a>
+    </div>
   </header>
 
   <div class="toolbar" id="toolbar" hidden>
@@ -385,9 +704,14 @@
       <span class="hint">Column-level search</span>
     </label>
     <span class="count" id="count"></span>
+    <div class="view-toggle" id="viewToggle">
+      <button aria-pressed="true" data-view="graph" title="Graph view">Graph</button>
+      <button aria-pressed="false" data-view="table" title="Table view">Table</button>
+    </div>
     <button class="primary" id="newAsset" hidden title="Add a new asset to the catalogue"><span class="plus">+</span>New asset</button>
     <button class="action" id="contextPack" title="Export a grounded brief for the selected slice" disabled>Context pack</button>
-    <button class="action" id="setupCopilot" title="Grounded suggestions for where to start">Setup copilot</button>
+    <button class="action ai-entry" id="aiChatButton" title="Ask grounded questions about this landscape">✦ Atlas AI</button>
+    <button class="action" id="setupCopilot" title="Grounded suggestions for where to start">Getting started</button>
     <button class="action" id="refresh" title="Reload the landscape">Refresh</button>
     <button class="action" id="export" title="Download the landscape as a portable JSON document">Export JSON</button>
   </div>
@@ -399,6 +723,19 @@
       <div id="detail" class="stack"><p class="placeholder">Select an asset in the map to inspect it.</p></div>
     </aside>
   </main>
+
+  <div class="ai-panel-backdrop" id="aiPanelBackdrop" hidden></div>
+  <section class="ai-panel" id="aiPanel" hidden aria-labelledby="aiPanelTitle" aria-modal="true" role="dialog">
+    <header>
+      <div class="ai-title">
+        <strong id="aiPanelTitle">Atlas AI chat</strong>
+        <span id="aiPanelSubtitle">Grounded Q&A over the current landscape</span>
+      </div>
+      <button class="close" id="closeAiPanel" aria-label="Close Atlas AI">×</button>
+    </header>
+    <div class="ai-body" id="aiPanelBody"></div>
+    <footer id="aiPanelFooter"></footer>
+  </section>
 
   <!-- Asset create/edit form. A single dialog reused for both; kind-specific fields toggle on kind. -->
   <div class="backdrop" id="assetBackdrop" hidden>
@@ -503,7 +840,7 @@
       </div>
       <footer>
         <span class="spacer"></span>
-        <button class="action" type="button" data-close-asset>Cancel</button>
+        <button class="secondary" type="button" data-close-asset>Cancel</button>
         <button class="primary" type="submit" form="assetForm" id="assetSubmit">Create asset</button>
       </footer>
     </div>
@@ -546,8 +883,25 @@
       </div>
       <footer>
         <span class="spacer"></span>
-        <button class="action" type="button" data-close-rel>Cancel</button>
+        <button class="secondary" type="button" data-close-rel>Cancel</button>
         <button class="primary" type="submit" form="relForm" id="relSubmit">Create link</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="backdrop" id="confirmBackdrop" hidden>
+    <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage" style="max-width: 420px;">
+      <header>
+        <h2 id="confirmTitle">Confirm action</h2>
+        <button class="close" id="confirmClose" type="button" aria-label="Close">×</button>
+      </header>
+      <div class="body">
+        <p id="confirmMessage" style="margin:0;"></p>
+      </div>
+      <footer>
+        <span class="spacer"></span>
+        <button class="secondary" type="button" id="confirmCancel">Cancel</button>
+        <button class="primary danger-primary" type="button" id="confirmAccept">Delete</button>
       </footer>
     </div>
   </div>
@@ -573,18 +927,59 @@
     // Runtime deployment config (atlas#19): the API base (path base included) comes from
     // app-config.js, so the UI is not hard-coded to "/api" and works under a reverse-proxy
     // sub-path. The fallback keeps the one-host default working if the config script is absent.
-    const ATLAS = window.__ATLAS__ || { apiBase: "/api", loginPath: "/login" };
+    const ATLAS = window.__ATLAS__ || { apiBase: "/api", loginPath: "/login", brandName: "Atlas · Community", docsBaseUrl: "https://github.com/Vev-software/docs/blob/main/docs" };
     const api = (path) => ATLAS.apiBase + path;
+
+    // Apply runtime branding (issue #81)
+    if (ATLAS.brandName) {
+      el("brandName").textContent = ATLAS.brandName;
+      document.title = ATLAS.brandName + " — Landscape";
+    }
+    if (ATLAS.docsBaseUrl) {
+      el("docsLink").href = ATLAS.docsBaseUrl;
+    }
+
+    // --- Auth helpers (issue #78): inject bearer token, redirect to login on 401 ---
+    function getToken() { return sessionStorage.getItem("atlas_token"); }
+
+    async function fetchWithAuth(url, init = {}) {
+      const token = getToken();
+      const headers = { ...init.headers };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      headers["Accept"] = "application/json";
+      const res = await fetch(url, { ...init, headers });
+      if (res.status === 401) {
+        // Token expired or missing — redirect to login.
+        sessionStorage.removeItem("atlas_token");
+        sessionStorage.removeItem("atlas_refresh_token");
+        location.href = ATLAS.loginPath + "/?return_to=" + encodeURIComponent(location.pathname + location.search);
+        throw new Error("Unauthorized");
+      }
+      return res;
+    }
 
     let landscape = { assets: [], relationships: [] };
     let filter = "all";
     let selectedId = null;
     let searchQuery = "";
+    let currentView = "graph";  // "graph" or "table" (issue #87)
+    let tableSort = { key: "name", dir: "asc" };
     let canAuthor = false;      // Set from GET /api/v1/capabilities — never assumed.
+    let principalId = "";       // Current user's principal id (atlas#76).
     let editingId = null;       // Non-null while the asset form is editing an existing asset.
     let setupGuide = null;      // Grounded onboarding guide for the current tenant.
     let aiAllowances = [];      // Visible AI-hook allowance state for the current tenant.
+    let aiModule = null;        // Server-side AI setup status (consent, provider, key presence).
+    let aiMessages = [];        // Client-only chat transcript for the current browser session.
+    let aiPanelView = "chat";
+    let aiBusy = false;
     let contextPackAssetIds = new Set();
+    let historyOpenId = null;   // Which asset's changelog section is open in the detail panel.
+    const assetHistoryCache = new Map();
+    const assetHistoryPending = new Map();
+    let pendingConfirm = null;
 
     const el = (id) => document.getElementById(id);
     const canvas = el("canvas");
@@ -592,7 +987,7 @@
     // --- Capability probe: decides whether author affordances are shown at all (atlas#17). --------------
     async function loadCapabilities() {
       try {
-        const res = await fetch(api("/v1/capabilities"), { headers: { "Accept": "application/json" } });
+        const res = await fetchWithAuth(api("/v1/capabilities"));
         if (res.ok) {
           const caps = await res.json();
           canAuthor = !!caps.canAuthor;
@@ -609,16 +1004,37 @@
       el("newAsset").hidden = !canAuthor;
     }
 
+    // --- Session identity (atlas#80): shows who is logged in and their roles. --------------------------
+    async function loadSession() {
+      try {
+        const res = await fetch(api("/v1/session"), { headers: { "Accept": "application/json" } });
+        if (res.ok) {
+          const session = await res.json();
+          principalId = session.principalId || "";
+          const avatar = el("userAvatar");
+          const name = el("userName");
+          const roles = el("userRoles");
+          const userInfo = el("userInfo");
+          avatar.textContent = session.displayName.charAt(0).toUpperCase();
+          name.textContent = session.displayName;
+          roles.textContent = session.roles.join(", ");
+          userInfo.hidden = false;
+        }
+      } catch {
+        // Session endpoint unavailable — hide user info gracefully.
+      }
+    }
+
     async function load() {
       canvas.innerHTML = '<div class="empty"><h3>Loading landscape…</h3></div>';
       try {
-        const res = await fetch(api("/v1/landscape"), { headers: { "Accept": "application/json" } });
+        const res = await fetchWithAuth(api("/v1/landscape"));
         if (!res.ok) throw new Error("HTTP " + res.status);
         landscape = await res.json();
         landscape.assets ||= [];
         landscape.relationships ||= [];
         el("toolbar").hidden = false;
-        await Promise.all([loadSetupCopilot(), loadAiAllowances()]);
+        await Promise.all([loadSetupCopilot(), loadAiAllowances(), loadAiModule()]);
         render();
         if (selectedId) showDetail(selectedId);
         else if (searchQuery.trim()) {
@@ -731,7 +1147,21 @@
         el("detail").innerHTML = '<p class="placeholder">Select an asset in the map to inspect it.</p>';
         return;
       }
-      drawGraph(assets);
+      if (currentView === "table") {
+        drawTable(assets);
+      } else {
+        drawGraph(assets);
+      }
+    }
+
+    function renderDefaultDetail() {
+      const detail = el("detail");
+      detail.innerHTML = '<p class="placeholder">Select an asset in the map to inspect it.</p>';
+      if (searchQuery.trim()) {
+        renderSearchResults(detail);
+        return;
+      }
+      if (setupGuide) renderSetupCopilot();
     }
 
     // Deterministic lane layout: one column per asset kind, nodes stacked within the lane. Simple and
@@ -833,6 +1263,88 @@
       if (selectedId && visibleIds.has(selectedId)) applySelection(); else clearSelection();
     }
 
+    // Table view (issue #87): sortable, selectable list of assets
+    function drawTable(assets) {
+      const sorted = sortAssets(assets);
+      const container = document.createElement("div");
+      container.className = "table-container";
+
+      const table = document.createElement("table");
+      table.className = "asset-table";
+
+      const thead = document.createElement("thead");
+      const headerRow = document.createElement("tr");
+      const cols = [
+        { key: "name", label: "Name" },
+        { key: "kind", label: "Kind" },
+        { key: "lifecycle", label: "Lifecycle" },
+        { key: "id", label: "ID" },
+      ];
+      for (const col of cols) {
+        const th = document.createElement("th");
+        th.textContent = col.label;
+        if (tableSort.key === col.key) {
+          th.innerHTML += `<span class="sort-arrow">${tableSort.dir === "asc" ? "▲" : "▼"}</span>`;
+        }
+        const ck = col.key;
+        th.addEventListener("click", () => {
+          tableSort = { key: ck, dir: tableSort.key === ck && tableSort.dir === "asc" ? "desc" : "asc" };
+          render();
+        });
+        headerRow.appendChild(th);
+      }
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement("tbody");
+      for (const a of sorted) {
+        const tr = document.createElement("tr");
+        if (a.id === selectedId) tr.classList.add("selected");
+
+        const tdName = document.createElement("td");
+        const dot = document.createElement("span");
+        dot.className = "kind-dot";
+        dot.style.background = KIND_COLOR[a.kind] || "#888";
+        tdName.append(dot, document.createTextNode(a.name || a.id));
+        tr.appendChild(tdName);
+
+        const tdKind = document.createElement("td");
+        tdKind.textContent = a.kind;
+        tdKind.style.textTransform = "capitalize";
+        tr.appendChild(tdKind);
+
+        const tdLifecycle = document.createElement("td");
+        tdLifecycle.textContent = a.lifecycle || "—";
+        tr.appendChild(tdLifecycle);
+
+        const tdId = document.createElement("td");
+        const code = document.createElement("code");
+        code.textContent = a.id;
+        tdId.appendChild(code);
+        tr.appendChild(tdId);
+
+        tr.addEventListener("click", () => select(a.id));
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      container.appendChild(table);
+
+      canvas.innerHTML = "";
+      canvas.appendChild(container);
+    }
+
+    function sortAssets(assets) {
+      return [...assets].sort((a, b) => {
+        let va, vb;
+        if (tableSort.key === "name") { va = a.name || a.id; vb = b.name || b.id; }
+        else if (tableSort.key === "kind") { va = a.kind; vb = b.kind; }
+        else if (tableSort.key === "lifecycle") { va = a.lifecycle || ""; vb = b.lifecycle || ""; }
+        else { va = a.id; vb = b.id; }
+        const cmp = va.localeCompare(vb);
+        return tableSort.dir === "asc" ? cmp : -cmp;
+      });
+    }
+
     function select(id) {
       selectedId = id;
       applySelection();
@@ -865,7 +1377,7 @@
 
     async function loadSetupCopilot() {
       try {
-        const res = await fetch(api("/v1/setup-copilot"), { headers: { "Accept": "application/json" } });
+        const res = await fetchWithAuth(api("/v1/setup-copilot"));
         if (!res.ok) throw new Error("HTTP " + res.status);
         setupGuide = await res.json();
       } catch {
@@ -875,7 +1387,7 @@
 
     async function loadAiAllowances() {
       try {
-        const res = await fetch(api("/v1/ai/allowances"), { headers: { "Accept": "application/json" } });
+        const res = await fetchWithAuth(api("/v1/ai/allowances"));
         if (!res.ok) throw new Error("HTTP " + res.status);
         const payload = await res.json();
         aiAllowances = Array.isArray(payload.capabilities) ? payload.capabilities : [];
@@ -884,6 +1396,321 @@
       }
     }
 
+    async function ensureAssetHistory(id) {
+      if (!id || assetHistoryCache.has(id) || assetHistoryPending.has(id)) return;
+      const pending = fetch(api(`/v1/assets/${encodeURIComponent(id)}/history`), { headers: { "Accept": "application/json" } })
+        .then(async res => {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return await res.json();
+        })
+        .then(history => {
+          assetHistoryCache.set(id, history);
+          return history;
+        })
+        .finally(() => {
+          assetHistoryPending.delete(id);
+        });
+      assetHistoryPending.set(id, pending);
+
+      try {
+        await pending;
+        if (selectedId === id) showDetail(id);
+      } catch {
+        if (selectedId === id) showDetail(id);
+      }
+    }
+
+    function toggleHistory(id) {
+      historyOpenId = historyOpenId === id ? null : id;
+      showDetail(id);
+    }
+
+    function formatStamp(value) {
+      if (!value) return "—";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime())
+        ? "—"
+        : date.toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    }
+
+    function renderHistorySection(asset, history) {
+      const section = document.createElement("section");
+      section.className = "section";
+      section.innerHTML = "<h3>History</h3>";
+
+      if (historyOpenId !== asset.id) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "link-btn";
+        btn.textContent = "Open changelog";
+        btn.addEventListener("click", () => toggleHistory(asset.id));
+        section.appendChild(btn);
+        return section;
+      }
+
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "link-btn";
+      close.textContent = "Hide changelog";
+      close.addEventListener("click", () => toggleHistory(asset.id));
+      section.appendChild(close);
+
+      if (assetHistoryPending.has(asset.id) && !history) {
+        const p = document.createElement("p");
+        p.className = "placeholder";
+        p.textContent = "Loading changelog…";
+        section.appendChild(p);
+        return section;
+      }
+
+      if (!history || !Array.isArray(history.entries) || history.entries.length === 0) {
+        const p = document.createElement("p");
+        p.className = "placeholder";
+        p.textContent = "No audit events have been recorded for this asset yet.";
+        section.appendChild(p);
+        return section;
+      }
+
+      const list = document.createElement("ul");
+      list.className = "history-list";
+      for (const entry of history.entries) {
+        const item = document.createElement("li");
+        item.className = "history-item";
+
+        const title = document.createElement("strong");
+        title.textContent = entry.summary || entry.action || "Change recorded";
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = `${entry.actor || "unknown"} · ${formatStamp(entry.occurredAt)}`;
+
+        item.append(title, meta);
+        list.appendChild(item);
+      }
+      section.appendChild(list);
+      return section;
+    }
+
+    function renderPlannedVersionsSection() {
+      const section = document.createElement("section");
+      section.className = "section";
+      section.innerHTML = "<h3>Planned versions</h3>";
+      const slot = document.createElement("div");
+      slot.className = "future-slot";
+      slot.textContent = "Reserved layout space for planned versions. No future-state items are shown here yet.";
+      section.appendChild(slot);
+      return section;
+    }
+    async function loadAiModule() {
+      try {
+        const res = await fetch(api("/v1/ai/module"), { headers: { "Accept": "application/json" } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        aiModule = await res.json();
+      } catch {
+        aiModule = null;
+      }
+    }
+
+    function openAiPanel(view = "chat") {
+      aiPanelView = view;
+      el("aiPanelBackdrop").hidden = false;
+      el("aiPanel").hidden = false;
+      renderAiPanel();
+    }
+
+    function closeAiPanel() {
+      el("aiPanelBackdrop").hidden = true;
+      el("aiPanel").hidden = true;
+    }
+
+    function renderAiPanel() {
+      const body = el("aiPanelBody");
+      const footer = el("aiPanelFooter");
+      const subtitle = el("aiPanelSubtitle");
+      body.innerHTML = "";
+      footer.innerHTML = "";
+
+      if (aiPanelView === "setup") {
+        subtitle.textContent = "Admin / Setup · enable Atlas AI and add your own provider key";
+        renderAiSetup(body, footer);
+        return;
+      }
+
+      subtitle.textContent = "Grounded Q&A over the current landscape";
+      renderAiChat(body, footer);
+    }
+
+    function renderAiChat(body, footer) {
+      const docs = document.createElement("div");
+      docs.className = "doc-links";
+      if (aiModule && aiModule.docs) {
+        docs.innerHTML =
+          `<a href="${escapeHtml(aiModule.docs.chat)}" target="_blank" rel="noreferrer">AI chat docs</a>` +
+          `<a href="${escapeHtml(aiModule.docs.setup)}" target="_blank" rel="noreferrer">Setup docs</a>`;
+      }
+      body.appendChild(docs);
+
+      if (!aiModule || !aiModule.ready) {
+        const empty = document.createElement("div");
+        empty.className = "ai-empty";
+        empty.innerHTML =
+          `<strong>Atlas AI is not set up yet.</strong>` +
+          `<p class="placeholder">Enable the AI module, accept the consent step and save a BYOK provider key before chat can answer grounded questions here.</p>`;
+        const actions = document.createElement("div");
+        actions.className = "ai-actions";
+        const openSetup = document.createElement("button");
+        openSetup.type = "button";
+        openSetup.className = "primary";
+        openSetup.textContent = aiModule && aiModule.canManage ? "Set up Atlas AI" : "View setup";
+        openSetup.addEventListener("click", () => openAiPanel("setup"));
+        actions.appendChild(openSetup);
+        empty.appendChild(actions);
+        body.appendChild(empty);
+        return;
+      }
+
+      if (!aiMessages.length) {
+        const empty = document.createElement("div");
+        empty.className = "ai-empty";
+        empty.innerHTML =
+          `<strong>Ask your architecture questions in plain language.</strong>` +
+          `<p class="placeholder">Try “what depends on this dataset?”, “what has no owner?” or “what sits around the selected asset?”.</p>`;
+        body.appendChild(empty);
+      }
+
+      const thread = document.createElement("div");
+      thread.className = "chat-thread";
+      for (const message of aiMessages) {
+        const node = document.createElement("div");
+        node.className = "chat-message " + (message.role === "user" ? "user" : "assistant");
+        node.innerHTML =
+          `<span class="meta">${escapeHtml(message.role === "user" ? "You" : "Atlas AI")}</span>` +
+          `<div class="chat-bubble">${escapeHtml(message.text)}</div>`;
+        thread.appendChild(node);
+      }
+      body.appendChild(thread);
+
+      const form = document.createElement("form");
+      form.className = "ai-footer-form";
+      form.innerHTML =
+        `<textarea id="aiQuestion" placeholder="Ask a grounded question about the current landscape"></textarea>` +
+        `<div class="ai-footer-row"><span class="ai-status-pill">${escapeHtml(aiModule.provider || "provider")} · ${aiBusy ? "Thinking" : "Ready"}</span><button class="primary" id="sendAiQuestion" ${aiBusy ? "disabled" : ""}>Send</button></div>`;
+      form.addEventListener("submit", submitAiQuestion);
+      footer.appendChild(form);
+    }
+
+    function renderAiSetup(body, footer) {
+      const status = document.createElement("div");
+      status.className = "ai-empty";
+      status.innerHTML =
+        `<strong>Atlas AI setup</strong>` +
+        `<p class="placeholder">Your provider key stays in this Atlas instance and is used only after you explicitly enable the module.</p>`;
+      body.appendChild(status);
+
+      if (aiModule && aiModule.allowance) {
+        aiAllowances = [aiModule.allowance];
+        body.appendChild(renderAllowanceSection());
+      }
+
+      const form = document.createElement("form");
+      form.className = "ai-form";
+      form.innerHTML =
+        `<div class="consent-box">` +
+          `<strong>Consent</strong>` +
+          `<p class="placeholder">Atlas AI sends your grounded question plus selected landscape facts to your own configured provider. The key stays in your own Atlas instance.</p>` +
+          `<label><input id="aiConsent" type="checkbox" ${aiModule && aiModule.consentAccepted ? "checked" : ""} />I accept and start using Atlas AI</label>` +
+        `</div>` +
+        `<div class="field"><label for="aiProvider">Provider</label><select id="aiProvider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option></select></div>` +
+        `<div class="field"><label for="aiApiKey">API key</label><input id="aiApiKey" type="password" autocomplete="off" placeholder="Paste your provider API key" /><div class="hint">${aiModule && aiModule.apiKeyConfigured ? "A key is already stored. Paste a new one to replace it." : "The key is encrypted at rest and never shown back in the UI."}</div></div>`;
+      body.appendChild(form);
+      if (aiModule && aiModule.provider) {
+        form.querySelector("#aiProvider").value = aiModule.provider;
+      }
+
+      const footerForm = document.createElement("form");
+      footerForm.className = "ai-footer-form";
+      footerForm.innerHTML =
+        `<div class="ai-footer-row"><span class="ai-status-pill">${aiModule && aiModule.ready ? "Configured" : "Not configured"}</span><button class="primary" id="saveAiSetup" ${aiBusy ? "disabled" : ""}>Enable Atlas AI</button></div>`;
+      footerForm.addEventListener("submit", submitAiSetup);
+      footer.appendChild(footerForm);
+    }
+
+    async function submitAiSetup(ev) {
+      ev.preventDefault();
+      if (aiBusy) return;
+
+      const consentAccepted = !!el("aiConsent").checked;
+      const provider = el("aiProvider").value;
+      const apiKey = el("aiApiKey").value.trim();
+      if (!consentAccepted) {
+        toast("Accept the Atlas AI consent step before enabling the module.", true);
+        return;
+      }
+      if (!apiKey) {
+        toast("Paste an API key for the selected provider.", true);
+        return;
+      }
+
+      aiBusy = true;
+      renderAiPanel();
+      try {
+        const res = await fetch(api("/v1/ai/module"), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({ enabled: true, consentAccepted, provider, apiKey }),
+        });
+        if (!res.ok) {
+          toast(await apiError(res), true);
+          return;
+        }
+        aiModule = await res.json();
+        aiPanelView = "chat";
+        toast("Atlas AI is enabled and ready.");
+      } catch (err) {
+        toast("Could not save Atlas AI setup (" + err.message + ").", true);
+      } finally {
+        aiBusy = false;
+        renderAiPanel();
+      }
+    }
+
+    async function submitAiQuestion(ev) {
+      ev.preventDefault();
+      if (aiBusy) return;
+
+      const question = el("aiQuestion").value.trim();
+      if (!question) return;
+
+      aiMessages.push({ role: "user", text: question });
+      aiBusy = true;
+      renderAiPanel();
+
+      try {
+        const res = await fetch(api("/v1/ai/chat"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({
+            question,
+            assetIds: selectedId ? [selectedId] : Array.from(contextPackAssetIds)
+          }),
+        });
+        if (!res.ok) {
+          aiMessages.push({ role: "assistant", text: await apiError(res) });
+          return;
+        }
+        const reply = await res.json();
+        if (reply.status === "setup-required") {
+          aiPanelView = "setup";
+          toast("Atlas AI needs setup before chat can answer.", true);
+        } else {
+          aiMessages.push({ role: "assistant", text: reply.message || "No answer returned." });
+        }
+      } catch (err) {
+        aiMessages.push({ role: "assistant", text: "Could not reach Atlas AI (" + err.message + ")." });
+      } finally {
+        aiBusy = false;
+        renderAiPanel();
+      }
+    }
     function renderSetupCopilot() {
       if (!setupGuide) return;
       selectedId = null;
@@ -895,7 +1722,7 @@
       const wrap = document.createElement("div");
       wrap.className = "detail";
       wrap.innerHTML =
-        `<p class="dname">Setup copilot</p>` +
+        `<p class="dname">Getting started</p>` +
         `<p class="dkind">${escapeHtml(setupGuide.mode === "ai" ? "Grounded AI assist" : "Grounded static onboarding")}</p>`;
 
       const intro = document.createElement("p");
@@ -922,6 +1749,18 @@
 
       wrap.appendChild(renderSetupSection("Next steps", setupGuide.suggestions));
       wrap.appendChild(renderSetupSection("What each surface does", setupGuide.features));
+      if (canAuthor) {
+        const aiSetup = document.createElement("section");
+        aiSetup.className = "section";
+        aiSetup.innerHTML = `<h3>Atlas AI</h3>`;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "mini";
+        btn.innerHTML = `Set up Atlas AI<span class="meta">Enable the module, accept consent and save your own provider key.</span>`;
+        btn.addEventListener("click", () => openAiPanel("setup"));
+        aiSetup.appendChild(btn);
+        wrap.appendChild(aiSetup);
+      }
       if (aiAllowances.length) {
         wrap.appendChild(renderAllowanceSection());
       }
@@ -1073,7 +1912,7 @@
       detail.innerHTML = '<p class="placeholder">Building context pack…</p>';
 
       try {
-        const res = await fetch(`/api/v1/context-pack?${params.toString()}`, { headers: { "Accept": "application/json" } });
+        const res = await fetchWithAuth(`/api/v1/context-pack?${params.toString()}`);
         if (res.status === 402) {
           const problem = await res.json();
           renderContextPackMessage(
@@ -1168,8 +2007,12 @@
     function showDetail(id) {
       const a = landscape.assets.find(x => x.id === id);
       if (!a) return;
+      if (!assetHistoryCache.has(id) && !assetHistoryPending.has(id)) {
+        void ensureAssetHistory(id);
+      }
       const rels = landscape.relationships.filter(r => r.fromId === id || r.toId === id);
       const d = a.application || a.server || a.infrastructure || a.dataArea || a.dataset || a.column || null;
+      const history = assetHistoryCache.get(id);
       const detail = el("detail");
       detail.innerHTML = "";
 
@@ -1186,6 +2029,19 @@
       dkind.textContent = `${a.kind} · ${a.lifecycle || "—"}`;
       wrap.appendChild(dkind);
 
+      const meta = document.createElement("p");
+      meta.className = "dmeta";
+      const createdStamp = history && history.createdAt
+        ? `Created ${formatStamp(history.createdAt)} · by ${history.createdBy || "unknown"}`
+        : assetHistoryPending.has(id)
+          ? "Loading created-by and history…"
+          : "Created provenance not recorded yet.";
+      const updatedStamp = history && history.lastUpdatedAt
+        ? `Last updated ${formatStamp(history.lastUpdatedAt)}`
+        : "Last updated —";
+      meta.textContent = `${createdStamp} · ${updatedStamp}`;
+      wrap.appendChild(meta);
+
       const actions = document.createElement("div");
       actions.className = "detail-actions";
       const pack = document.createElement("button");
@@ -1194,15 +2050,26 @@
       pack.addEventListener("click", () => toggleContextPackAsset(a.id));
       actions.appendChild(pack);
 
-      // Author actions — shown only to an author-capable principal (atlas#17).
-      if (canAuthor) {
+      // Per-asset edit authorization (atlas#76): allow if the principal has the write role OR is the creator.
+      const canEditAsset = canAuthor || (a.createdBy === principalId);
+      if (canEditAsset) {
         const edit = document.createElement("button");
         edit.className = "btn-sm"; edit.textContent = "Edit";
         edit.addEventListener("click", () => openAssetForm(a));
+        actions.appendChild(edit);
+      } else if (!canAuthor && a.createdBy) {
+        const editDisabled = document.createElement("button");
+        editDisabled.className = "btn-sm"; editDisabled.textContent = "Edit";
+        editDisabled.disabled = true;
+        editDisabled.title = "Only the creator or an author can edit this asset";
+        actions.appendChild(editDisabled);
+      }
+      // Delete is still role-gated (not creator-only).
+      if (canAuthor) {
         const del = document.createElement("button");
         del.className = "btn-sm danger"; del.textContent = "Delete";
         del.addEventListener("click", () => deleteAsset(a));
-        actions.append(edit, del);
+        actions.appendChild(del);
       }
       wrap.appendChild(actions);
 
@@ -1216,6 +2083,7 @@
         kv.append(dt, dd);
       };
       addKv("ID", a.id);
+      if (a.numericId != null) addKv("Numeric ID", String(a.numericId));
       if (a.description) addKv("Notes", a.description);
       if (d) for (const [k, v] of Object.entries(d)) {
         if (v == null || v === "") continue;
@@ -1279,6 +2147,9 @@
         p.textContent = "No manual relationships.";
         wrap.appendChild(p);
       }
+
+      wrap.appendChild(renderHistorySection(a, history));
+      wrap.appendChild(renderPlannedVersionsSection());
 
       detail.appendChild(wrap);
       renderHierarchy(a, detail);
@@ -1567,9 +2438,9 @@
       try {
         const editing = editingId !== null;
         const url = editing ? api(`/v1/assets/${encodeURIComponent(editingId)}`) : api("/v1/assets");
-        const res = await fetch(url, {
+        const res = await fetchWithAuth(url, {
           method: editing ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
         if (!res.ok) { showFormError("assetError", await apiError(res)); return; }
@@ -1586,13 +2457,16 @@
     }
 
     async function deleteAsset(a) {
-      if (!confirm(`Delete "${a.name || a.id}"? This also removes its relationships from the map.`)) return;
+      if (!await confirmDestructiveAction(
+        "Delete asset",
+        `Delete "${a.name || a.id}"? This also removes its relationships from the map.`,
+        "Delete asset")) return;
       try {
-        const res = await fetch(api(`/v1/assets/${encodeURIComponent(a.id)}`), { method: "DELETE" });
+        const res = await fetchWithAuth(api(`/v1/assets/${encodeURIComponent(a.id)}`), { method: "DELETE" });
         if (!res.ok && res.status !== 404) { toast(await apiError(res), true); return; }
         if (selectedId === a.id) selectedId = null;
         await load();
-        el("detail").innerHTML = '<p class="placeholder">Select an asset in the map to inspect it.</p>';
+        renderDefaultDetail();
         toast("Asset deleted.");
       } catch (err) {
         toast("Could not reach the API (" + err.message + ").", true);
@@ -1633,9 +2507,9 @@
       const submit = el("relSubmit");
       submit.disabled = true;
       try {
-        const res = await fetch(api("/v1/relationships"), {
+        const res = await fetchWithAuth(api("/v1/relationships"), {
           method: "POST",
-          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
         if (!res.ok) { showFormError("relError", await apiError(res)); return; }
@@ -1651,9 +2525,12 @@
     }
 
     async function deleteRelationship(r) {
-      if (!confirm(`Remove the "${REL_LABELS[r.type] || r.type}" link between ${label(r.fromId)} and ${label(r.toId)}?`)) return;
+      if (!await confirmDestructiveAction(
+        "Delete relationship",
+        `Remove the "${REL_LABELS[r.type] || r.type}" link between ${label(r.fromId)} and ${label(r.toId)}?`,
+        "Delete relationship")) return;
       try {
-        const res = await fetch(api(`/v1/relationships/${encodeURIComponent(r.id)}`), { method: "DELETE" });
+        const res = await fetchWithAuth(api(`/v1/relationships/${encodeURIComponent(r.id)}`), { method: "DELETE" });
         if (!res.ok && res.status !== 404) { toast(await apiError(res), true); return; }
         const keep = selectedId;
         await load();
@@ -1680,6 +2557,26 @@
       }
       if (!detail) detail = "The API rejected the request (HTTP " + res.status + ").";
       return detail;
+    }
+
+    function confirmDestructiveAction(title, message, actionText) {
+      if (pendingConfirm) pendingConfirm(false);
+      el("confirmTitle").textContent = title;
+      el("confirmMessage").textContent = message;
+      el("confirmAccept").textContent = actionText;
+      el("confirmBackdrop").hidden = false;
+      el("confirmCancel").focus();
+      return new Promise(resolve => {
+        pendingConfirm = (result) => {
+          pendingConfirm = null;
+          el("confirmBackdrop").hidden = true;
+          resolve(result);
+        };
+      });
+    }
+
+    function closeConfirm(result) {
+      if (pendingConfirm) pendingConfirm(result);
     }
 
     function showFormError(id, message) {
@@ -1756,8 +2653,10 @@
     document.querySelectorAll(".chip").forEach(chip => {
       chip.addEventListener("click", () => {
         filter = chip.dataset.kind;
+        selectedId = null;
         document.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c === chip)));
         render();
+        renderDefaultDetail();
       });
     });
     el("search").addEventListener("input", e => {
@@ -1771,8 +2670,18 @@
     });
     el("refresh").addEventListener("click", load);
     el("newAsset").addEventListener("click", () => openAssetForm());
+    el("viewToggle").querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        currentView = btn.dataset.view;
+        el("viewToggle").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === btn)));
+        render();
+      });
+    });
     el("contextPack").addEventListener("click", () => renderContextPack());
+    el("aiChatButton").addEventListener("click", () => openAiPanel("chat"));
     el("setupCopilot").addEventListener("click", renderSetupCopilot);
+    el("closeAiPanel").addEventListener("click", closeAiPanel);
+    el("aiPanelBackdrop").addEventListener("click", closeAiPanel);
     el("export").addEventListener("click", () => {
       const blob = new Blob([JSON.stringify(landscape, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -1799,18 +2708,24 @@
     el("rType").addEventListener("change", populateRelationshipTargets);
     document.querySelectorAll("[data-close-rel]").forEach(b => b.addEventListener("click", closeRelForm));
     el("relBackdrop").addEventListener("click", e => { if (e.target === el("relBackdrop")) closeRelForm(); });
+    el("confirmCancel").addEventListener("click", () => closeConfirm(false));
+    el("confirmAccept").addEventListener("click", () => closeConfirm(true));
+    el("confirmClose").addEventListener("click", () => closeConfirm(false));
+    el("confirmBackdrop").addEventListener("click", e => { if (e.target === el("confirmBackdrop")) closeConfirm(false); });
 
     document.addEventListener("keydown", e => {
       if (e.key === "Escape") {
+        if (!el("aiPanel").hidden) closeAiPanel();
         if (!el("assetBackdrop").hidden) closeAssetForm();
         if (!el("relBackdrop").hidden) closeRelForm();
+        if (!el("confirmBackdrop").hidden) closeConfirm(false);
       }
     });
     window.addEventListener("resize", () => { if (landscape.assets.length) render(); });
 
-    // Learn the principal's capability first, then draw — so the first paint already reflects author vs.
-    // read-only and never flashes controls a read-only user may not use.
-    (async () => { await loadCapabilities(); await load(); })();
+    // Learn the principal's capability and identity first, then draw — so the first paint already reflects
+    // author vs. read-only, shows who is logged in, and never flashes controls a read-only user may not use.
+    (async () => { await Promise.all([loadCapabilities(), loadSession()]); await load(); })();
   </script>
 </body>
 </html>

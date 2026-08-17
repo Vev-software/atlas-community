@@ -43,6 +43,6 @@ public sealed class DevAuthorizer(AuthorizationPolicyRegistry policies) : IAutho
         var holdsRole = principal.Roles.Any(r => required.Contains(r, StringComparer.Ordinal));
         return holdsRole
             ? Decision.Allow(Source)
-            : Decision.Deny(ReasonCodes.RoleMissing, Source);
+            : Decision.Deny(Vev.Fabric.Contracts.Entitlements.ReasonCodes.RoleMissing, Source);
     }
 }

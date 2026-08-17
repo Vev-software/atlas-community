@@ -14,7 +14,8 @@ namespace Vev.Atlas.Domain;
 public sealed class AssetService(
     IRequestContextAccessor context,
     IAuthorizer authorizer,
-    IAuditSink audit,
+    IAtlasAuditSink audit,
+    IAuditQueryService auditQuery,
     IAssetRepository repository,
     TimeProvider clock)
 {
@@ -39,6 +40,13 @@ public sealed class AssetService(
         return repository.ListAssetsAsync(context.Tenant, kind, ct);
     }
 
+    /// <summary>List assets in the current tenant, including their stable numeric ids.</summary>
+    public Task<ImmutableArray<CataloguedAsset>> ListCataloguedAssetsAsync(AssetKind? kind, CancellationToken ct = default)
+    {
+        AuthorizeRead(AssetResource("*"));
+        return repository.ListCataloguedAssetsAsync(context.Tenant, kind, ct);
+    }
+
     /// <summary>Get a single asset, or null if it does not exist in the current tenant.</summary>
     public Task<Asset?> GetAssetAsync(string id, CancellationToken ct = default)
     {
@@ -46,8 +54,59 @@ public sealed class AssetService(
         return repository.GetAssetAsync(context.Tenant, id, ct);
     }
 
+    /// <summary>
+    /// Read the audit-backed changelog for one asset. Uses the existing Fabric audit trail only; no
+    /// separate product store is introduced.
+    /// </summary>
+    public async Task<AssetHistorySnapshot?> GetAssetHistoryAsync(string id, CancellationToken ct = default)
+    {
+        var resource = AssetResource(id);
+        AuthorizeRead(resource);
+
+        if (!await repository.AssetExistsAsync(context.Tenant, id, ct))
+        {
+            return null;
+        }
+
+        var tenantId = context.Tenant.TenantId;
+        var fromInclusive = DateTimeOffset.UnixEpoch;
+        var toExclusive = DateTimeOffset.MaxValue;
+
+        var entries = AssetAuditActions
+            .SelectMany(action => auditQuery.Query(tenantId, action, fromInclusive, toExclusive))
+            .Where(evt => string.Equals(evt.Resource.Value, resource.Value, StringComparison.Ordinal))
+            .OrderByDescending(evt => evt.OccurredAt)
+            .Select(ToHistoryEntry)
+            .ToImmutableArray();
+
+        var created = entries
+            .Where(entry => string.Equals(entry.Action, AssetCreatedAction, StringComparison.Ordinal))
+            .OrderBy(entry => entry.OccurredAt)
+            .FirstOrDefault();
+
+        var lastUpdated = entries
+            .Where(entry =>
+                string.Equals(entry.Action, AssetCreatedAction, StringComparison.Ordinal) ||
+                string.Equals(entry.Action, AssetUpdatedAction, StringComparison.Ordinal))
+            .OrderByDescending(entry => entry.OccurredAt)
+            .FirstOrDefault();
+
+        return new AssetHistorySnapshot(
+            CreatedAt: created?.OccurredAt,
+            CreatedBy: created?.Actor,
+            LastUpdatedAt: lastUpdated?.OccurredAt,
+            Entries: entries);
+    }
+
+    /// <summary>Get a single asset together with its stable numeric id.</summary>
+    public Task<CataloguedAsset?> GetCataloguedAssetAsync(string id, CancellationToken ct = default)
+    {
+        AuthorizeRead(AssetResource(id));
+        return repository.GetCataloguedAssetAsync(context.Tenant, id, ct);
+    }
+
     /// <summary>Create a new asset. Requires write authorization; emits an audit event.</summary>
-    public async Task<Asset> CreateAssetAsync(Asset asset, CancellationToken ct = default)
+    public async Task<CataloguedAsset> CreateAssetAsync(Asset asset, CancellationToken ct = default)
     {
         var resource = AssetResource(asset.Id);
         AuthorizeWrite(resource);
@@ -57,12 +116,17 @@ public sealed class AssetService(
             throw new CatalogueConflictException($"Asset '{asset.Id}' already exists.");
         }
 
-        await repository.AddAssetAsync(context.Tenant, asset, ct);
+        var numericId = await repository.AllocateAssetNumericIdAsync(context.Tenant, ct);
+        var createdBy = context.Principal.PrincipalId;
+        await repository.AddAssetAsync(context.Tenant, asset, numericId, createdBy, ct);
         await EmitAsync("atlas.asset.created", resource, ct);
-        return asset;
+        return new CataloguedAsset(asset, numericId, createdBy);
     }
 
-    /// <summary>Replace an existing asset. Requires write authorization; emits an audit event.</summary>
+    /// <summary>
+    /// Replace an existing asset. Requires write authorization OR the principal is the asset's creator
+    /// (atlas#76). Emits an audit event.
+    /// </summary>
     public async Task<Asset?> UpdateAssetAsync(string id, Asset asset, CancellationToken ct = default)
     {
         if (!string.Equals(id, asset.Id, StringComparison.Ordinal))
@@ -71,7 +135,7 @@ public sealed class AssetService(
         }
 
         var resource = AssetResource(id);
-        AuthorizeWrite(resource);
+        await AuthorizeWriteOrCreatorAsync(resource, id, ct);
 
         if (!await repository.AssetExistsAsync(context.Tenant, id, ct))
         {
@@ -193,7 +257,8 @@ public sealed class AssetService(
 
             resolvedAssets.Add(new Asset(
                 id, imported.Kind, imported.Name, imported.Lifecycle, imported.Description,
-                imported.Tags, imported.Application, imported.Server, imported.Infrastructure));
+                imported.Tags, imported.Application, imported.Server, imported.Infrastructure,
+                imported.DataArea, imported.Dataset, imported.Column));
         }
 
         // Resolve relationship endpoints against the bundle first, then the existing catalogue. An
@@ -261,7 +326,8 @@ public sealed class AssetService(
             }
             else
             {
-                await repository.AddAssetAsync(tenant, asset, ct);
+                var numericId = await repository.AllocateAssetNumericIdAsync(tenant, ct);
+                await repository.AddAssetAsync(tenant, asset, numericId, null, ct);
                 created++;
             }
         }
@@ -357,36 +423,66 @@ public sealed class AssetService(
 
     private void AuthorizeWrite(ResourceId resource) => Authorize(AtlasActions.AssetWrite, resource);
 
+    /// <summary>
+    /// Authorize write: allow if the principal has the write role OR is the asset's creator (atlas#76).
+    /// </summary>
+    private async Task AuthorizeWriteOrCreatorAsync(ResourceId resource, string assetId, CancellationToken ct = default)
+    {
+        var decision = authorizer.Authorize(context.Tenant, context.Principal, AtlasActions.AssetWrite, resource);
+        if (decision.Allowed)
+        {
+            return;
+        }
+
+        var existing = await repository.GetCataloguedAssetAsync(context.Tenant, assetId, ct);
+        if (existing is not null && string.Equals(existing.CreatedBy, context.Principal.PrincipalId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        throw AccessDeniedException.FromAuthorization(decision, $"'{AtlasActions.AssetWrite}' denied ({decision.ReasonCode}).");
+    }
+
     private void Authorize(string action, ResourceId resource)
     {
         var decision = authorizer.Authorize(context.Tenant, context.Principal, action, resource);
         if (!decision.Allowed)
         {
-            throw new AccessDeniedException(decision, $"'{action}' denied ({decision.ReasonCode}).");
+            throw AccessDeniedException.FromAuthorization(decision, $"'{action}' denied ({decision.ReasonCode}).");
         }
     }
 
-    private ValueTask EmitAsync(string action, ResourceId resource, CancellationToken ct)
-    {
+    private ValueTask EmitAsync(string action, ResourceId resource, CancellationToken ct) =>
         // No secrets, no customer content — only the actor, action and the resource identifier (E4/E5).
-        var evt = new AuditEvent(
-            TenantId: context.Tenant.TenantId,
-            ActorPrincipalId: context.Principal.PrincipalId,
-            Action: action,
-            Resource: resource.Value,
-            OccurredAt: clock.GetUtcNow(),
-            CorrelationId: Guid.NewGuid().ToString("N"));
-        return audit.WriteAsync(evt, ct);
-    }
+        audit.WriteAsync(AtlasAudit.Event(context, clock, action, resource.Value), ct);
 
     private static ResourceId AssetResource(string id) => new($"atlas:asset/{id}");
 
     private static ResourceId RelationshipResource(string id) => new($"atlas:relationship/{id}");
 
     private static readonly ResourceId LandscapeResource = new("atlas:landscape");
+    private const string AssetCreatedAction = "atlas.asset.created";
+    private const string AssetUpdatedAction = "atlas.asset.updated";
+    private const string AssetDeletedAction = "atlas.asset.deleted";
+    private static readonly ImmutableArray<string> AssetAuditActions =
+        [AssetCreatedAction, AssetUpdatedAction, AssetDeletedAction];
 
     // Encode the export scope + format into the audited resource id — metadata, not customer content (E4/E5).
     private static ResourceId ExportResource(string format) => new($"atlas:landscape/export?format={format}&scope=full");
+
+    private static AssetHistoryEntry ToHistoryEntry(AuditEvent auditEvent) => new(
+        OccurredAt: auditEvent.OccurredAt,
+        Actor: string.IsNullOrWhiteSpace(auditEvent.Actor.DisplayName)
+            ? auditEvent.Actor.PrincipalId
+            : auditEvent.Actor.DisplayName,
+        Action: auditEvent.Action,
+        Summary: auditEvent.Action switch
+        {
+            AssetCreatedAction => "Asset created",
+            AssetUpdatedAction => "Asset details updated",
+            AssetDeletedAction => "Asset deleted",
+            _ => auditEvent.Action
+        });
 }
 
 /// <summary>
@@ -396,3 +492,17 @@ public sealed class AssetService(
 /// </summary>
 /// <param name="CanAuthor">Whether the principal may create, edit or delete catalogue entries.</param>
 public sealed record CatalogueCapabilities(bool CanAuthor);
+
+/// <summary>Audit-backed provenance and changelog for one asset.</summary>
+public sealed record AssetHistorySnapshot(
+    DateTimeOffset? CreatedAt,
+    string? CreatedBy,
+    DateTimeOffset? LastUpdatedAt,
+    ImmutableArray<AssetHistoryEntry> Entries);
+
+/// <summary>One user-facing changelog row derived from an audit event.</summary>
+public sealed record AssetHistoryEntry(
+    DateTimeOffset OccurredAt,
+    string Actor,
+    string Action,
+    string Summary);

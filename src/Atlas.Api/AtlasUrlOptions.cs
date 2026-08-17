@@ -29,6 +29,15 @@ public sealed class AtlasUrlOptions
 
     /// <summary>The path (under <see cref="PathBase"/>) the product API is mounted at.</summary>
     public string ApiBasePath { get; set; } = "/api";
+
+    /// <summary>Absolute base URL for product documentation links.</summary>
+    public string DocsBaseUrl { get; set; } = "https://github.com/Vev-software/docs/blob/main/docs";
+
+    /// <summary>
+    /// Brand name shown in the header and page title. Defaults to "Atlas · Community" which is safe for
+    /// the open-core distribution. A self-hoster can override to their own identity.
+    /// </summary>
+    public string BrandName { get; set; } = "Atlas · Community";
 }
 
 /// <summary>
@@ -48,6 +57,12 @@ public sealed class AtlasUrls
         PathBase = NormalizePath(options.PathBase, fallback: "");
         ApiBasePath = NormalizePath(options.ApiBasePath, fallback: "/api");
         LoginPath = NormalizePath(options.LoginPath, fallback: "/login");
+        DocsBaseUrl = string.IsNullOrWhiteSpace(options.DocsBaseUrl)
+            ? "https://github.com/Vev-software/docs/blob/main/docs"
+            : options.DocsBaseUrl.Trim().TrimEnd('/');
+        BrandName = string.IsNullOrWhiteSpace(options.BrandName)
+            ? "Atlas · Community"
+            : options.BrandName!.Trim();
         _publicBaseUrl = string.IsNullOrWhiteSpace(options.PublicBaseUrl)
             ? null
             : options.PublicBaseUrl!.Trim().TrimEnd('/');
@@ -61,6 +76,12 @@ public sealed class AtlasUrls
 
     /// <summary>Normalized login path (relative to the app root, before any path base), e.g. <c>/login</c>.</summary>
     public string LoginPath { get; }
+
+    /// <summary>Normalized absolute docs base URL.</summary>
+    public string DocsBaseUrl { get; }
+
+    /// <summary>Brand name for the header and page title.</summary>
+    public string BrandName { get; }
 
     /// <summary>
     /// The from-origin API base a browser calls, including the request's path base (so it is correct behind
@@ -81,6 +102,13 @@ public sealed class AtlasUrls
         return _publicBaseUrl is not null
             ? _publicBaseUrl + path
             : $"{request.Scheme}://{request.Host.Value}{request.PathBase.Value}{path}";
+    }
+
+    /// <summary>Resolve a stable documentation path or anchor under the configured docs host.</summary>
+    public string DocumentationUrl(string pathOrAnchor)
+    {
+        var path = pathOrAnchor.StartsWith('/') ? pathOrAnchor : "/" + pathOrAnchor;
+        return DocsBaseUrl + path;
     }
 
     // Normalize a configured path to "" or "/seg[/seg…]": ensure a single leading slash, drop the trailing

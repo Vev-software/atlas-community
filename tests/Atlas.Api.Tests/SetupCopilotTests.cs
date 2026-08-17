@@ -40,8 +40,8 @@ public sealed class SetupCopilotTests(AtlasApiFactory factory) : IClassFixture<A
         var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
         Assert.Contains(audit.Events, e =>
             e.Action == "atlas.ai.assist.setup" &&
-            e.TenantId == "t-setup-empty" &&
-            e.Resource == "atlas:setup-copilot");
+            e.Tenant.TenantId == "t-setup-empty" &&
+            e.Resource.Value == "atlas:setup-copilot");
     }
 
     [Fact]
@@ -80,7 +80,7 @@ public sealed class SetupCopilotTests(AtlasApiFactory factory) : IClassFixture<A
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Setup copilot", body);
+        Assert.Contains("Getting started", body);
         Assert.Contains('"' + "/v1/setup-copilot" + '"', body);
         Assert.Contains('"' + "/v1/ai/allowances" + '"', body);
         Assert.Contains("AI allowances", body);

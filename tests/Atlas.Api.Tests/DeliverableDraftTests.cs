@@ -79,8 +79,8 @@ public sealed class DeliverableDraftTests(AtlasApiFactory factory) : IClassFixtu
         var audit = entitledFactory.Services.GetRequiredService<InMemoryAuditSink>();
         Assert.Contains(audit.Events, e =>
             e.Action == "atlas.ai.generate" &&
-            e.TenantId == "t-deliverable-template" &&
-            e.Resource.Contains("format=deck", StringComparison.Ordinal));
+            e.Tenant.TenantId == "t-deliverable-template" &&
+            e.Resource.Value.Contains("format=deck", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -118,9 +118,12 @@ public sealed class DeliverableDraftTests(AtlasApiFactory factory) : IClassFixtu
             {
                 services.RemoveAll<DbContextOptions<Vev.Atlas.Persistence.AtlasDbContext>>();
                 services.AddDbContext<Vev.Atlas.Persistence.AtlasDbContext>(options => options.UseSqlite(_connection));
+                var entitlements = new CommunityEntitlementService(
+                    new HashSet<string>(StringComparer.Ordinal) { AtlasCapabilities.AiGenerate.Value });
                 services.RemoveAll<IEntitlementService>();
-                services.AddSingleton<IEntitlementService>(new CommunityEntitlementService(
-                    new HashSet<string>(StringComparer.Ordinal) { AtlasCapabilities.AiGenerate.Value }));
+                services.RemoveAll<IEntitlementAllowanceProvider>();
+                services.AddSingleton<IEntitlementService>(entitlements);
+                services.AddSingleton<IEntitlementAllowanceProvider>(entitlements);
             });
         }
 

@@ -3,6 +3,7 @@ using Vev.Atlas.Domain;
 using Vev.Atlas.Domain.Portability;
 using Vev.Atlas.Fabric;
 using Vev.Atlas.Fabric.Dev;
+using Vev.Fabric.Contracts.Entitlements;
 using Vev.Atlas.Persistence;
 
 namespace Vev.Atlas.Api;
@@ -27,12 +28,16 @@ public static class AtlasCommunityRegistration
         services.AddSingleton(policies);
         services.AddSingleton<IAuthorizer, DevAuthorizer>();
 
-        // Community Edition: no paid capabilities granted → the entitlement seam denies them all (atlas#8).
-        services.AddSingleton<IEntitlementService>(CommunityEntitlementService.Community);
-        services.AddSingleton<IAiAssistService>(CommunityAiAssistService.Unconfigured);
+        // Consume the public Fabric entitlement contract locally: request-path evaluation stays local and
+        // fail-static, while the snapshot source is configured per deployment (atlas#21, fabric#4).
+        services.AddHttpClient(EntitlementSnapshotRefreshService.HttpClientName);
+        services.AddSingleton<CommunityEntitlementService>();
+        services.AddSingleton<IEntitlementService>(sp => sp.GetRequiredService<CommunityEntitlementService>());
+        services.AddSingleton<IEntitlementAllowanceProvider>(sp => sp.GetRequiredService<CommunityEntitlementService>());
+        services.AddHostedService<EntitlementSnapshotRefreshService>();
 
         services.AddSingleton<InMemoryAuditSink>();
-        services.AddSingleton<IAuditSink>(sp => sp.GetRequiredService<InMemoryAuditSink>());
+        services.AddSingleton<IAtlasAuditSink>(sp => sp.GetRequiredService<InMemoryAuditSink>());
         services.AddSingleton<IAuditQueryService>(sp => sp.GetRequiredService<InMemoryAuditSink>());
 
         services.AddSingleton(TimeProvider.System);
@@ -40,6 +45,8 @@ public static class AtlasCommunityRegistration
         // --- Persistence (thin storage behind the repository port) ---
         services.AddDbContext<AtlasDbContext>(options => options.UseSqlite(connectionString));
         services.AddScoped<IAssetRepository, EfAssetRepository>();
+        services.AddScoped<IAiModuleConfigurationStore, EfAiModuleConfigurationStore>();
+        services.AddScoped<IAiAssistService, CommunityAiAssistService>();
 
         // --- Domain ---
         services.AddScoped<AssetService>();
@@ -47,6 +54,8 @@ public static class AtlasCommunityRegistration
         services.AddScoped<StructureDraftService>();
         services.AddScoped<DeliverableDraftService>();
         services.AddScoped<AiAllowanceService>();
+        services.AddScoped<AiModuleService>();
+        services.AddScoped<LandscapeChatService>();
         services.AddScoped<McpReadService>();
         services.AddScoped<PaidCapabilityGate>();
         services.AddScoped<SetupCopilotService>();
@@ -60,6 +69,7 @@ public static class AtlasCommunityRegistration
         // (ArchiMate/BPMN/report) add themselves by registering more ILandscapeExporter/Importer here.
         services.AddSingleton<ILandscapeExporter, AtlasJsonLandscapeExporter>();
         services.AddSingleton<ILandscapeImporter, AtlasJsonLandscapeImporter>();
+        services.AddSingleton<ILandscapeImporter, AtlasMarkdownLandscapeImporter>();
         services.AddSingleton<LandscapeFormatRegistry>();
 
         return services;

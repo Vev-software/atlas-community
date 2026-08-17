@@ -22,25 +22,40 @@ public static class AssetEndpoints
         var assets = app.MapGroup($"{v1}/assets").WithTags("Assets");
 
         assets.MapGet("", async (string? kind, AssetService service, CancellationToken ct) =>
-            Results.Ok(await service.ListAssetsAsync(ParseKind(kind), ct)))
+            Results.Ok((await service.ListCataloguedAssetsAsync(ParseKind(kind), ct)).Select(ToAssetPayload)))
             .WithName("ListAssets")
             .WithSummary("List catalogued assets, optionally filtered by kind (system|application|server|infrastructure|data-area|dataset|column).");
 
         assets.MapGet("/{id}", async (string id, AssetService service, CancellationToken ct) =>
-            await service.GetAssetAsync(id, ct) is { } asset ? Results.Ok(asset) : Results.NotFound())
+            await service.GetCataloguedAssetAsync(id, ct) is { } asset ? Results.Ok(ToAssetPayload(asset)) : Results.NotFound())
             .WithName("GetAsset")
             .WithSummary("Get a single asset by id.");
+
+        assets.MapGet("/{id}/history", async (string id, AssetService service, CancellationToken ct) =>
+            await service.GetAssetHistoryAsync(id, ct) is { } history ? Results.Ok(history) : Results.NotFound())
+            .WithName("GetAssetHistory")
+            .WithSummary("Read the audit-backed changelog and provenance for one asset.");
 
         assets.MapPost("", async (Asset asset, AssetService service, CancellationToken ct) =>
         {
             var created = await service.CreateAssetAsync(asset, ct);
-            return Results.Created($"{v1}/assets/{created.Id}", created);
+            return Results.Created($"{v1}/assets/{created.Asset.Id}", ToAssetPayload(created));
         })
             .WithName("CreateAsset")
             .WithSummary("Create a new asset (hold it in the catalogue).");
 
         assets.MapPut("/{id}", async (string id, Asset asset, AssetService service, CancellationToken ct) =>
-            await service.UpdateAssetAsync(id, asset, ct) is { } updated ? Results.Ok(updated) : Results.NotFound())
+        {
+            var updated = await service.UpdateAssetAsync(id, asset, ct);
+            if (updated is null)
+            {
+                return Results.NotFound();
+            }
+
+            var reloaded = await service.GetCataloguedAssetAsync(id, ct)
+                ?? throw new InvalidOperationException($"Asset '{id}' was updated but could not be reloaded.");
+            return Results.Ok(ToAssetPayload(reloaded));
+        })
             .WithName("UpdateAsset")
             .WithSummary("Replace an existing asset.");
 
@@ -80,6 +95,24 @@ public static class AssetEndpoints
             .WithName("GetCapabilities")
             .WithSummary("Describe what the current principal may do in the catalogue (drives the UI's author affordances).");
 
+        // Session identity (atlas#80): returns the current principal's display name and roles so the UI can
+        // show who is logged in and surface user management links. This is not an atlas-contracts portability
+        // type — it describes the live session, not held data.
+        app.MapGet($"{v1}/session", (IRequestContextAccessor context) =>
+        {
+            var principal = context.Principal;
+            return Results.Ok(new
+            {
+                principalId = principal.PrincipalId,
+                displayName = principal.DisplayName,
+                roles = principal.Roles,
+                tenant = context.Tenant.TenantId
+            });
+        })
+            .WithTags("Session")
+            .WithName("GetSession")
+            .WithSummary("Describe the current principal's identity and roles (atlas#80).");
+
         app.MapGet("/api/v1/setup-copilot", async (SetupCopilotService service, CancellationToken ct) =>
             Results.Ok(await service.GetGuideAsync(ct)))
             .WithTags("Session")
@@ -100,11 +133,96 @@ public static class AssetEndpoints
             .WithName("GetAiAllowances")
             .WithSummary("Describe the current tenant's visible AI-hook allowances and upgrade states.");
 
+        app.MapGet("/api/v1/ai/module", async (AiModuleService service, AtlasUrls urls, CancellationToken ct) =>
+        {
+            var status = await service.GetStatusAsync(ct);
+            return Results.Ok(new
+            {
+                enabled = status.Enabled,
+                consentAccepted = status.ConsentAccepted,
+                provider = status.Provider,
+                apiKeyConfigured = status.ApiKeyConfigured,
+                ready = status.Ready,
+                canManage = status.CanManage,
+                consentAcceptedAt = status.ConsentAcceptedAt,
+                consentAcceptedBy = status.ConsentAcceptedBy,
+                allowance = ToAiAllowancePayload(status.Allowance,
+                    "Paste supplied notes or images into a draft landscape import bundle for review."),
+                docs = new
+                {
+                    setup = AtlasDocumentationLinks.Resolve(urls, "atlas-ai-setup"),
+                    chat = AtlasDocumentationLinks.Resolve(urls, "atlas-ai-chat")
+                }
+            });
+        })
+            .WithTags("Session")
+            .WithName("GetAiModuleStatus")
+            .WithSummary("Describe the current tenant's AI module setup state without exposing the BYOK secret.");
+
+        app.MapPut("/api/v1/ai/module", async (AiModuleSaveRequest request, AiModuleService service, AtlasUrls urls, CancellationToken ct) =>
+        {
+            var status = await service.SaveAsync(request, ct);
+            return Results.Ok(new
+            {
+                enabled = status.Enabled,
+                consentAccepted = status.ConsentAccepted,
+                provider = status.Provider,
+                apiKeyConfigured = status.ApiKeyConfigured,
+                ready = status.Ready,
+                canManage = status.CanManage,
+                consentAcceptedAt = status.ConsentAcceptedAt,
+                consentAcceptedBy = status.ConsentAcceptedBy,
+                allowance = ToAiAllowancePayload(status.Allowance,
+                    "Paste supplied notes or images into a draft landscape import bundle for review."),
+                docs = new
+                {
+                    setup = AtlasDocumentationLinks.Resolve(urls, "atlas-ai-setup"),
+                    chat = AtlasDocumentationLinks.Resolve(urls, "atlas-ai-chat")
+                }
+            });
+        })
+            .WithTags("Session")
+            .WithName("SaveAiModuleStatus")
+            .WithSummary("Enable Atlas AI for the current tenant, record consent and store the encrypted BYOK provider key.");
+
+        app.MapDelete("/api/v1/ai/module", async (AiModuleService service, CancellationToken ct) =>
+        {
+            await service.DisableAsync(ct);
+            return Results.NoContent();
+        })
+            .WithTags("Session")
+            .WithName("DisableAiModule")
+            .WithSummary("Disable Atlas AI and clear the stored BYOK provider key for the current tenant.");
+
+        app.MapPost("/api/v1/ai/chat", async (LandscapeChatRequest request, LandscapeChatService service, AtlasUrls urls, CancellationToken ct) =>
+        {
+            var reply = await service.AskAsync(request, ct);
+            return Results.Ok(new
+            {
+                status = reply.Status,
+                message = reply.Message,
+                source = reply.Source,
+                selectedAssetIds = reply.SelectedAssetIds,
+                docs = reply.DocLinks.Select(link => new
+                {
+                    label = link.Label,
+                    href = AtlasDocumentationLinks.Resolve(urls, link.Key)
+                })
+            });
+        })
+            .WithTags("Session")
+            .WithName("AskLandscapeChat")
+            .WithSummary("Ask a grounded, read-only question about the current tenant landscape.");
+
         // Read-only landscape surface (atlas#6): the whole tenant map — assets + manual relationships —
         // resolved into one atlas-contracts LandscapeDocument. Backs the browse/visualise UI, which is a
         // pure client of this API (API/SDK-first — the UI is never the only way in, handbook 15 §2).
         app.MapGet($"{v1}/landscape", async (AssetService service, CancellationToken ct) =>
-            Results.Ok(await service.GetLandscapeAsync(ct)))
+        {
+            var landscape = await service.GetLandscapeAsync(ct);
+            var assetsWithNumericIds = await service.ListCataloguedAssetsAsync(kind: null, ct);
+            return Results.Ok(ToLandscapePayload(landscape, assetsWithNumericIds));
+        })
             .WithTags("Landscape")
             .WithName("GetLandscape")
             .WithSummary("Read the whole tenant landscape (assets + relationships) as a portable LandscapeDocument.");
@@ -311,4 +429,31 @@ public static class AssetEndpoints
             _ =>
                 "AI-assisted landscape structuring is not enabled for this tenant."
         };
+
+    private static object ToAssetPayload(CataloguedAsset asset) => new
+    {
+        id = asset.Asset.Id,
+        numericId = asset.NumericId,
+        kind = asset.Asset.Kind,
+        name = asset.Asset.Name,
+        lifecycle = asset.Asset.Lifecycle,
+        description = asset.Asset.Description,
+        tags = asset.Asset.Tags,
+        createdBy = asset.CreatedBy,
+        application = asset.Asset.Application,
+        server = asset.Asset.Server,
+        infrastructure = asset.Asset.Infrastructure,
+        dataArea = asset.Asset.DataArea,
+        dataset = asset.Asset.Dataset,
+        column = asset.Asset.Column
+    };
+
+    private static object ToLandscapePayload(LandscapeDocument landscape, IEnumerable<CataloguedAsset> assets) => new
+    {
+        contractVersion = landscape.ContractVersion,
+        exportedAt = landscape.ExportedAt,
+        generator = landscape.Generator,
+        assets = assets.Select(ToAssetPayload),
+        relationships = landscape.Relationships
+    };
 }

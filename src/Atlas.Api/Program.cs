@@ -1,14 +1,18 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using ModelContextProtocol.Server;
 using Vev.Atlas.Api;
+using Vev.Atlas.Fabric.Dev;
 using Vev.Atlas.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = builder.Configuration.GetConnectionString("Atlas") ?? "Data Source=atlas.db";
+builder.Services.AddDataProtection();
+builder.Services.Configure<AtlasEntitlementOptions>(builder.Configuration.GetSection(AtlasEntitlementOptions.SectionName));
 builder.Services.AddAtlasCommunity(connectionString);
 builder.Services.AddMcpServer()
     .WithHttpTransport(options => options.Stateless = true)
@@ -71,7 +75,7 @@ if (urls.PathBase.Length > 0)
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AtlasDbContext>();
-    await db.Database.EnsureCreatedAsync();
+    await AtlasDatabaseMigrator.MigrateAsync(db);
 }
 
 app.UseExceptionHandler();
@@ -100,16 +104,8 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" })).WithTags("Ops").A
 // path base.
 app.MapGet("/app-config.js", (HttpRequest request, AtlasUrls u, IConfiguration configuration) =>
 {
-    var oidc = OidcBrowserOptions.FromConfiguration(configuration);
-    var config = new
-    {
-        apiBase = u.ClientApiBase(request),
-        loginPath = u.ClientLoginPath(request),
-        oidcAuthority = oidc?.Authority,
-        oidcClientId = oidc?.ClientId,
-        oidcAccountUrl = oidc?.AccountUrl
-    };
-    var js = $"window.__ATLAS__=Object.freeze({JsonSerializer.Serialize(config, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull })});";
+    var config = new { apiBase = u.ClientApiBase(request), loginPath = u.ClientLoginPath(request), brandName = u.BrandName, docsBaseUrl = u.DocsBaseUrl };
+    var js = $"window.__ATLAS__=Object.freeze({JsonSerializer.Serialize(config)});";
     return Results.Text(js, "application/javascript");
 }).WithTags("Ops").AllowAnonymous();
 

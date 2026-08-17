@@ -1,5 +1,5 @@
 # Ignore rules for the Atlas Community image build. Paths are relative to the build context
-# (the monorepo root — see Dockerfile). BuildKit reads this file because it is named
+# (this repository root — see Dockerfile). BuildKit reads this file because it is named
 # "<dockerfile>.dockerignore" next to the Dockerfile.
 
 # Build artefacts — never ship these into the build context.
@@ -19,5 +19,5 @@
 **/*.user
 **/.DS_Store
 
-# The Dockerfile copies only what it needs from atlas-community and .local-nuget; keep the
-# rest of the monorepo out of the context so builds stay fast and reproducible.
+# The Dockerfile copies only what it needs from this repository; keep noisy local artefacts
+# out of the context so builds stay fast and reproducible.

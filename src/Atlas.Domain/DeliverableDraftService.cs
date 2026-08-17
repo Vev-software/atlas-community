@@ -13,7 +13,7 @@ namespace Vev.Atlas.Domain;
 public sealed class DeliverableDraftService(
     IRequestContextAccessor context,
     IAuthorizer authorizer,
-    IAuditSink audit,
+    IAtlasAuditSink audit,
     ContextPackService contextPacks,
     IAiAssistService aiAssist,
     TimeProvider clock)
@@ -48,13 +48,8 @@ public sealed class DeliverableDraftService(
             ? assist.Message!
             : deterministicDraft;
 
-        await audit.WriteAsync(new AuditEvent(
-            TenantId: context.Tenant.TenantId,
-            ActorPrincipalId: context.Principal.PrincipalId,
-            Action: AtlasCapabilities.AiGenerate.Value,
-            Resource: AuditResource(format, selection, pack.Assets.Count, pack.Relationships.Count).Value,
-            OccurredAt: clock.GetUtcNow(),
-            CorrelationId: Guid.NewGuid().ToString("N")), ct);
+        await audit.WriteAsync(
+            AtlasAudit.Event(context, clock, AtlasCapabilities.AiGenerate.Value, AuditResource(format, selection, pack.Assets.Count, pack.Relationships.Count).Value), ct);
 
         return new DeliverableDraft(
             Format: format,
@@ -73,7 +68,7 @@ public sealed class DeliverableDraftService(
         var decision = authorizer.Authorize(context.Tenant, context.Principal, AtlasActions.AssetRead, DeliverableResource);
         if (!decision.Allowed)
         {
-            throw new AccessDeniedException(decision, $"'{AtlasActions.AssetRead}' denied ({decision.ReasonCode}).");
+            throw AccessDeniedException.FromAuthorization(decision, $"'{AtlasActions.AssetRead}' denied ({decision.ReasonCode}).");
         }
     }
 

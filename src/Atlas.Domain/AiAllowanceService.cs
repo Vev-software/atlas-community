@@ -9,13 +9,13 @@ namespace Vev.Atlas.Domain;
 /// </summary>
 public sealed class AiAllowanceService(
     IRequestContextAccessor context,
-    IEntitlementService entitlements,
+    IEntitlementAllowanceProvider entitlements,
     IAuditQueryService audit,
     TimeProvider clock)
 {
     public AiAllowanceSnapshot Describe(CapabilityId capability, ResourceId resource)
     {
-        var limit = entitlements.GetLimit(new EntitlementLimitRequest(
+        var limit = entitlements.Describe(new EntitlementAllowanceRequest(
             context.Tenant,
             capability,
             context.Principal,
@@ -47,7 +47,7 @@ public sealed class AiAllowanceService(
                 Used: 0,
                 Remaining: null,
                 limit.Window,
-                ReasonCodes.Allow,
+                Vev.Fabric.Contracts.Entitlements.ReasonCodes.Allow,
                 limit.Source);
         }
 
@@ -65,7 +65,7 @@ public sealed class AiAllowanceService(
             Used: used,
             Remaining: remaining,
             limit.Window,
-            allowed ? ReasonCodes.Allow : ReasonCodes.EntitlementLimitExhausted,
+            allowed ? Vev.Fabric.Contracts.Entitlements.ReasonCodes.Allow : AtlasReasonCodes.EntitlementLimitExhausted,
             limit.Source);
     }
 
@@ -74,7 +74,7 @@ public sealed class AiAllowanceService(
         var now = clock.GetUtcNow();
         return window switch
         {
-            EntitlementLimitWindows.Day =>
+            EntitlementAllowanceWindows.Day =>
                 (new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero),
                  new DateTimeOffset(now.UtcDateTime.Date.AddDays(1), TimeSpan.Zero)),
             _ => throw new CatalogueValidationException($"Unsupported entitlement window '{window}'.")

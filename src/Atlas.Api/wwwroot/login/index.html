@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atlas · Community — Sign in</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #16181d;
+      --muted: #6b7280;
+      --line: #e4e7ec;
+      --accent: #4f46e5;
+      --accent-ink: #ffffff;
+      --danger: #dc2626;
+      --danger-soft: #fef2f2;
+      --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .10);
+      --shadow-lg: 0 10px 25px rgba(16, 24, 40, .12), 0 4px 10px rgba(16, 24, 40, .08);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .login-wrap {
+      width: 100%;
+      max-width: 400px;
+      padding: 20px;
+    }
+    .login-card {
+      background: var(--panel);
+      border-radius: 14px;
+      box-shadow: var(--shadow-lg);
+      padding: 32px 28px;
+    }
+    .login-card h1 {
+      font-size: 18px;
+      margin: 0 0 4px;
+      text-align: center;
+    }
+    .login-card .sub {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+      margin: 0 0 24px;
+    }
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 600; }
+    .field input {
+      width: 100%; font: inherit; font-size: 14px; color: var(--ink);
+      border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; background: #fff;
+    }
+    .field input:focus {
+      outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px #eef2ff;
+    }
+    .btn-primary {
+      width: 100%; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink);
+      border-radius: 8px; padding: 10px 16px; margin-top: 4px;
+    }
+    .btn-primary:hover { background: #4338ca; border-color: #4338ca; }
+    .btn-primary:disabled { opacity: .6; cursor: default; }
+    .error-box {
+      background: var(--danger-soft); border: 1px solid #f6c9c9; color: #a11a1a;
+      border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 16px;
+      display: none;
+    }
+    .error-box.visible { display: block; }
+    .note {
+      font-size: 12px; color: var(--muted); text-align: center; margin-top: 16px;
+      border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fbfbfc;
+    }
+    .note a { color: inherit; font-weight: 600; }
+  </style>
+  <script src="../app-config.js"></script>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <h1>Atlas · Community</h1>
+      <p class="sub">Sign in to access your landscape</p>
+
+      <div class="error-box" id="error"></div>
+
+      <form id="loginForm">
+        <div class="field">
+          <label for="username">Username</label>
+          <input id="username" name="username" type="text" required autocomplete="username" />
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" required autocomplete="current-password" />
+        </div>
+        <button class="btn-primary" type="submit" id="submitBtn">Sign in</button>
+      </form>
+
+      <div class="note" id="firstRunNote" hidden>
+        First run with a temporary password? Change it in
+        <a id="accountLink" href="#" target="_blank" rel="noreferrer">Keycloak Account Console</a>
+        first, then return here to sign in to Atlas.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ATLAS = window.__ATLAS__ || { apiBase: "/api", loginPath: "/login" };
+    const OIDC_AUTHORITY = (ATLAS.oidcAuthority || "").replace(/\/+$/, "");
+    const OIDC_CLIENT_ID = ATLAS.oidcClientId || "atlas-api";
+    const OIDC_ACCOUNT_URL = ATLAS.oidcAccountUrl || (OIDC_AUTHORITY ? OIDC_AUTHORITY + "/account" : "");
+
+    const form = document.getElementById("loginForm");
+    const errorBox = document.getElementById("error");
+    const submitBtn = document.getElementById("submitBtn");
+    const firstRunNote = document.getElementById("firstRunNote");
+    const accountLink = document.getElementById("accountLink");
+    const usernameInput = document.getElementById("username");
+    const passwordInput = document.getElementById("password");
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.classList.add("visible");
+    }
+
+    if (OIDC_ACCOUNT_URL) {
+      accountLink.href = OIDC_ACCOUNT_URL;
+    } else {
+      accountLink.removeAttribute("href");
+      accountLink.removeAttribute("target");
+      accountLink.removeAttribute("rel");
+      accountLink.textContent = "your identity provider";
+    }
+
+    // Show first-run note if this looks like a fresh install (query param from redirect).
+    if (new URLSearchParams(location.search).has("first-run") || !!OIDC_ACCOUNT_URL) {
+      firstRunNote.hidden = false;
+    }
+
+    if (!OIDC_AUTHORITY) {
+      usernameInput.disabled = true;
+      passwordInput.disabled = true;
+      submitBtn.disabled = true;
+      showError("Interactive sign-in is not configured for this deployment. Ask your operator for the browser-facing OIDC authority.");
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorBox.classList.remove("visible");
+      errorBox.textContent = "";
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Signing in…";
+
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+
+      try {
+        // Request a token from Keycloak via direct access grant.
+        const tokenRes = await fetch(`${OIDC_AUTHORITY}/protocol/openid-connect/token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            grant_type: "password",
+            client_id: OIDC_CLIENT_ID,
+            username,
+            password,
+          }),
+        });
+
+        if (!tokenRes.ok) {
+          const err = await tokenRes.json().catch(() => ({}));
+          const description = err.error_description || err.error || "Login failed. Check your credentials.";
+          if (err.error === "invalid_grant" && OIDC_ACCOUNT_URL) {
+            firstRunNote.hidden = false;
+            throw new Error(description + " If this is the first run, change the temporary password in Keycloak first.");
+          }
+
+          throw new Error(description);
+        }
+
+        const tokenData = await tokenRes.json();
+        const accessToken = tokenData.access_token;
+
+        // Store the token for API requests.
+        sessionStorage.setItem("atlas_token", accessToken);
+
+        // Refresh token handling: store refresh token if available.
+        if (tokenData.refresh_token) {
+          sessionStorage.setItem("atlas_refresh_token", tokenData.refresh_token);
+        }
+
+        // Redirect back to the landscape (or the return URL from query).
+        const returnTo = new URLSearchParams(location.search).get("return_to") || "/";
+        location.href = returnTo;
+
+      } catch (err) {
+        showError(err.message || "Could not sign in. Please try again.");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Sign in";
+      }
+    });
+
+    // Auto-focus username field.
+    if (!usernameInput.disabled) {
+      usernameInput.focus();
+    }
+  </script>
+</body>
+</html>

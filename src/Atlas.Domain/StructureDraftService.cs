@@ -12,7 +12,7 @@ namespace Vev.Atlas.Domain;
 public sealed class StructureDraftService(
     IRequestContextAccessor context,
     IAuthorizer authorizer,
-    IAuditSink audit,
+    IAtlasAuditSink audit,
     IAiAssistService aiAssist,
     TimeProvider clock)
 {
@@ -53,13 +53,8 @@ public sealed class StructureDraftService(
             ? ParseDraft(assist.Message)
             : EmptyDraft();
 
-        await audit.WriteAsync(new AuditEvent(
-            TenantId: context.Tenant.TenantId,
-            ActorPrincipalId: context.Principal.PrincipalId,
-            Action: AtlasCapabilities.AiStructure.Value,
-            Resource: AuditResource(text, images.Length, draft.Proposal.Assets.Length, draft.Proposal.Relationships.Length).Value,
-            OccurredAt: clock.GetUtcNow(),
-            CorrelationId: Guid.NewGuid().ToString("N")), ct);
+        await audit.WriteAsync(
+            AtlasAudit.Event(context, clock, AtlasCapabilities.AiStructure.Value, AuditResource(text, images.Length, draft.Proposal.Assets.Length, draft.Proposal.Relationships.Length).Value), ct);
 
         if (!assist.Configured)
         {
@@ -87,7 +82,7 @@ public sealed class StructureDraftService(
         var decision = authorizer.Authorize(context.Tenant, context.Principal, AtlasActions.AssetRead, StructureResource);
         if (!decision.Allowed)
         {
-            throw new AccessDeniedException(decision, $"'{AtlasActions.AssetRead}' denied ({decision.ReasonCode}).");
+            throw AccessDeniedException.FromAuthorization(decision, $"'{AtlasActions.AssetRead}' denied ({decision.ReasonCode}).");
         }
     }
 

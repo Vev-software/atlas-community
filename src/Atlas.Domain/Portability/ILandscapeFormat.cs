@@ -45,4 +45,7 @@ public static class LandscapeFormats
 {
     /// <summary>The canonical atlas-contracts JSON form (the published, versioned contract).</summary>
     public const string AtlasJson = "atlas-json";
+
+    /// <summary>The human-writable Markdown landscape form (documented, structured subset).</summary>
+    public const string AtlasMarkdown = "atlas-md";
 }

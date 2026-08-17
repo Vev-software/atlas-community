@@ -1,4 +1,5 @@
 using Vev.Atlas.Fabric;
+using Vev.Fabric.Contracts.Audit;
 
 namespace Vev.Atlas.Domain;
 
@@ -43,7 +44,7 @@ public sealed class ModuleRejectedException(Decision decision, IReadOnlyCollecti
 /// violation is refused with a reason code and audited. Enforces, at the Atlas boundary, the guard
 /// defined generically in fabric#10.
 /// </summary>
-public sealed class ModuleInstallGuard(IRequestContextAccessor context, IAuditSink audit, TimeProvider clock)
+public sealed class ModuleInstallGuard(IRequestContextAccessor context, IAtlasAuditSink audit, TimeProvider clock)
 {
     private const string Source = "module-install-guard";
 
@@ -60,7 +61,7 @@ public sealed class ModuleInstallGuard(IRequestContextAccessor context, IAuditSi
             return;
         }
 
-        var decision = Decision.Deny(ReasonCodes.ReservedCapability, Source);
+        var decision = Decision.Deny(AtlasReasonCodes.ReservedCapability, Source);
         await EmitRejectionAsync(manifest, reserved, ct);
 
         var claimed = string.Join(", ", reserved.Select(c => c.Value));
@@ -73,13 +74,14 @@ public sealed class ModuleInstallGuard(IRequestContextAccessor context, IAuditSi
     private ValueTask EmitRejectionAsync(ModuleManifest manifest, IReadOnlyCollection<CapabilityId> reserved, CancellationToken ct)
     {
         // No secrets, no customer content — the module id, the action, and the reserved ids it claimed (E4/E5).
-        var evt = new AuditEvent(
-            TenantId: context.Tenant.TenantId,
-            ActorPrincipalId: context.Principal.PrincipalId,
-            Action: "atlas.module.rejected",
-            Resource: $"atlas:module/{manifest.Id}?reserved={string.Join('+', reserved.Select(c => c.Value))}",
-            OccurredAt: clock.GetUtcNow(),
-            CorrelationId: Guid.NewGuid().ToString("N"));
+        // A blocked install is a governed, security-relevant decision: category Admin, outcome Denied.
+        var evt = AtlasAudit.Event(
+            context,
+            clock,
+            "atlas.module.rejected",
+            $"atlas:module/{manifest.Id}?reserved={string.Join('+', reserved.Select(c => c.Value))}",
+            AuditCategory.Admin,
+            AuditOutcome.Denied);
         return audit.WriteAsync(evt, ct);
     }
 }

@@ -2,28 +2,25 @@
 
 # Atlas Community Edition — self-hosted container image.
 #
-# The build context is the monorepo ROOT (the parent of this repo), not atlas-community
-# itself, so the sibling public contracts feed (.local-nuget) is available to restore —
-# exactly as CI reconstructs it. This is temporary: once Vev.Atlas.Contracts is published
-# to nuget.org (atlas#10), drop the `.local-nuget` copy below and the build can use a plain
-# atlas-community context. See docs/DEVELOPMENT.md § "Run with Docker".
+# The build context is this repository. Dependencies restore from nuget.org, so the container
+# build no longer depends on a sibling checkout or a local feed. See docs/DEVELOPMENT.md
+# § "Run with Docker".
 #
-#   docker build -f atlas-community/Dockerfile -t atlas-community:local ..
+#   docker build -t atlas-community:local .
 #
-# or just `docker compose up` from inside atlas-community (compose sets the context for you).
+# or just `docker compose up` from inside atlas-community.
 
 # ---- build -----------------------------------------------------------------------------
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# Restore first, on just the manifests + the public contracts feed, so the (slow) restore
-# layer is cached and only reruns when dependencies change.
-COPY atlas-community/global.json atlas-community/nuget.config ./atlas-community/
-COPY atlas-community/Directory.Build.props atlas-community/Directory.Packages.props ./atlas-community/
-COPY .local-nuget ./.local-nuget
-COPY atlas-community/src ./atlas-community/src
+# Restore first, on just the manifests, so the (slow) restore layer is cached and only reruns
+# when dependencies change.
+COPY global.json nuget.config ./
+COPY Directory.Build.props Directory.Packages.props ./
+COPY src ./src
 
-WORKDIR /src/atlas-community
+WORKDIR /src
 # Strip any host build artefacts so the container restore/publish is hermetic. A host obj/ carries
 # absolute host paths in project.assets.json and must never leak into the Linux build. (Docker/BuildKit
 # users are also covered by Dockerfile.dockerignore; podman/buildah ignore that file, so we belt-and-brace.)
@@ -51,12 +48,12 @@ WORKDIR /app
 COPY --from=build --chown=app:app /app ./
 
 # Listen on 8080 (the .NET non-root default) and keep the database on the mounted volume.
-# Self-host runs as a single tenant: identity is a fixed tenant from config, not request headers, so a
-# caller cannot name another tenant or escalate roles (atlas#34). Override the tenant/roles if you like;
-# multi-tenant identity is Fabric OIDC (fabric#3).
+# Secure by default: the container refuses to start without an OIDC provider configured (atlas#34).
+# The docker-compose.yml ships a bundled Keycloak. If you bring your own OIDC, set the authority
+# and the container will start. Without authentication (local development only), override with
+# Atlas__Identity__Mode=single-tenant.
 ENV ASPNETCORE_URLS=http://+:8080 \
-    ConnectionStrings__Atlas="Data Source=/data/atlas.db" \
-    Atlas__Identity__Mode=single-tenant
+    ConnectionStrings__Atlas="Data Source=/data/atlas.db"
 EXPOSE 8080
 VOLUME ["/data"]
 

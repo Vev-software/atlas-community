@@ -12,7 +12,8 @@ public sealed class EfAssetRepository(AtlasDbContext db) : IAssetRepository
 {
     private static readonly JsonSerializerOptions Json = AtlasContracts.SerializerOptions;
 
-    public async Task<ImmutableArray<Asset>> ListAssetsAsync(TenantContext tenant, AssetKind? kind, CancellationToken ct = default)
+    public async Task<ImmutableArray<CataloguedAsset>> ListCataloguedAssetsAsync(
+        TenantContext tenant, AssetKind? kind, CancellationToken ct = default)
     {
         var query = db.Assets.AsNoTracking().Where(a => a.TenantId == tenant.TenantId);
         if (kind is { } k)
@@ -22,22 +23,37 @@ public sealed class EfAssetRepository(AtlasDbContext db) : IAssetRepository
         }
 
         var rows = await query.OrderBy(a => a.Name).ToListAsync(ct);
-        return [.. rows.Select(FromRow)];
+        return [.. rows.Select(FromRowWithNumericId)];
     }
 
-    public async Task<Asset?> GetAssetAsync(TenantContext tenant, string id, CancellationToken ct = default)
+    public async Task<ImmutableArray<Asset>> ListAssetsAsync(TenantContext tenant, AssetKind? kind, CancellationToken ct = default)
+        => [.. (await ListCataloguedAssetsAsync(tenant, kind, ct)).Select(a => a.Asset)];
+
+    public async Task<CataloguedAsset?> GetCataloguedAssetAsync(TenantContext tenant, string id, CancellationToken ct = default)
     {
         var row = await db.Assets.AsNoTracking()
             .FirstOrDefaultAsync(a => a.TenantId == tenant.TenantId && a.Id == id, ct);
-        return row is null ? null : FromRow(row);
+        return row is null ? null : FromRowWithNumericId(row);
     }
+
+    public async Task<Asset?> GetAssetAsync(TenantContext tenant, string id, CancellationToken ct = default)
+        => (await GetCataloguedAssetAsync(tenant, id, ct))?.Asset;
 
     public Task<bool> AssetExistsAsync(TenantContext tenant, string id, CancellationToken ct = default) =>
         db.Assets.AnyAsync(a => a.TenantId == tenant.TenantId && a.Id == id, ct);
 
-    public async Task AddAssetAsync(TenantContext tenant, Asset asset, CancellationToken ct = default)
+    public async Task<long> AllocateAssetNumericIdAsync(TenantContext tenant, CancellationToken ct = default)
     {
-        db.Assets.Add(ToRow(tenant, asset));
+        var current = await db.Assets.AsNoTracking()
+            .Where(a => a.TenantId == tenant.TenantId)
+            .Select(a => (long?)a.NumericId)
+            .MaxAsync(ct);
+        return (current ?? 0) + 1;
+    }
+
+    public async Task AddAssetAsync(TenantContext tenant, Asset asset, long numericId, string? createdBy, CancellationToken ct = default)
+    {
+        db.Assets.Add(ToRow(tenant, asset, numericId, createdBy));
         await db.SaveChangesAsync(ct);
     }
 
@@ -109,19 +125,24 @@ public sealed class EfAssetRepository(AtlasDbContext db) : IAssetRepository
         return [.. ids];
     }
 
-    private static AssetRow ToRow(TenantContext tenant, Asset asset) => new()
+    private static AssetRow ToRow(TenantContext tenant, Asset asset, long numericId, string? createdBy) => new()
     {
         TenantId = tenant.TenantId,
         Id = asset.Id,
+        NumericId = numericId,
         Kind = Wire(asset.Kind),
         Name = asset.Name,
         Lifecycle = Wire(asset.Lifecycle),
-        DocumentJson = JsonSerializer.Serialize(asset, Json)
+        DocumentJson = JsonSerializer.Serialize(asset, Json),
+        CreatedBy = createdBy
     };
 
     private static Asset FromRow(AssetRow row) =>
         JsonSerializer.Deserialize<Asset>(row.DocumentJson, Json)
         ?? throw new InvalidOperationException($"Corrupt asset document for '{row.Id}'.");
+
+    private static CataloguedAsset FromRowWithNumericId(AssetRow row) =>
+        new(FromRow(row), row.NumericId, row.CreatedBy);
 
     private static Relationship FromRow(RelationshipRow row) =>
         new(row.Id, row.FromId, row.ToId, WireToRelationshipType(row.Type), row.Description);

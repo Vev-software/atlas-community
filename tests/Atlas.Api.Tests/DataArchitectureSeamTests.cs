@@ -21,7 +21,7 @@ public sealed class DataArchitectureSeamTests
             var decision = gate.Evaluate(capability, new ResourceId("atlas:asset/data-architecture"));
 
             Assert.False(decision.Allowed);
-            Assert.Equal(ReasonCodes.EntitlementDenied, decision.ReasonCode);
+            Assert.Equal(Vev.Fabric.Contracts.Entitlements.ReasonCodes.EntitlementDenied, decision.ReasonCode);
         }
     }
 
@@ -37,5 +37,6 @@ public sealed class DataArchitectureSeamTests
     {
         public TenantContext Tenant { get; } = new("t-paid");
         public PrincipalContext Principal { get; } = new("arch", "Architect", [AtlasRoles.Architect]);
+        public string CorrelationId { get; } = "test-correlation";
     }
 }

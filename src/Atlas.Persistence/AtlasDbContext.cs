@@ -19,6 +19,7 @@ public sealed class AtlasDbContext(DbContextOptions<AtlasDbContext> options, IRe
 {
     internal DbSet<AssetRow> Assets => Set<AssetRow>();
     internal DbSet<RelationshipRow> Relationships => Set<RelationshipRow>();
+    internal DbSet<AiModuleSettingsRow> AiModuleSettings => Set<AiModuleSettingsRow>();
 
     /// <summary>
     /// The tenant for the current request. Read lazily through a property so the global query filter is
@@ -35,10 +36,13 @@ public sealed class AtlasDbContext(DbContextOptions<AtlasDbContext> options, IRe
         {
             e.ToTable("assets");
             e.HasKey(a => new { a.TenantId, a.Id });
+            e.Property(a => a.NumericId);
             e.Property(a => a.Kind).HasMaxLength(32);
             e.Property(a => a.Name).HasMaxLength(256);
             e.Property(a => a.Lifecycle).HasMaxLength(16);
+            e.Property(a => a.CreatedBy).HasMaxLength(128);
             e.HasIndex(a => new { a.TenantId, a.Kind });
+            e.HasIndex(a => new { a.TenantId, a.NumericId }).IsUnique();
             e.HasQueryFilter(a => a.TenantId == CurrentTenantId);
         });
 
@@ -48,6 +52,15 @@ public sealed class AtlasDbContext(DbContextOptions<AtlasDbContext> options, IRe
             e.HasKey(r => new { r.TenantId, r.Id });
             e.Property(r => r.Type).HasMaxLength(32);
             e.HasIndex(r => new { r.TenantId, r.FromId });
+            e.HasQueryFilter(r => r.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<AiModuleSettingsRow>(e =>
+        {
+            e.ToTable("ai_module_settings");
+            e.HasKey(r => r.TenantId);
+            e.Property(r => r.Provider).HasMaxLength(32);
+            e.Property(r => r.ConsentAcceptedBy).HasMaxLength(128);
             e.HasQueryFilter(r => r.TenantId == CurrentTenantId);
         });
     }

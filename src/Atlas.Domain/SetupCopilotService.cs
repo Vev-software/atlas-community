@@ -12,7 +12,7 @@ namespace Vev.Atlas.Domain;
 public sealed class SetupCopilotService(
     IRequestContextAccessor context,
     IAuthorizer authorizer,
-    IAuditSink audit,
+    IAtlasAuditSink audit,
     IAssetRepository repository,
     IAiAssistService aiAssist,
     TimeProvider clock)
@@ -61,20 +61,15 @@ public sealed class SetupCopilotService(
         var decision = authorizer.Authorize(context.Tenant, context.Principal, AtlasActions.AssetRead, SetupResource);
         if (!decision.Allowed)
         {
-            throw new AccessDeniedException(decision, $"'{AtlasActions.AssetRead}' denied ({decision.ReasonCode}).");
+            throw AccessDeniedException.FromAuthorization(decision, $"'{AtlasActions.AssetRead}' denied ({decision.ReasonCode}).");
         }
     }
 
     private ValueTask EmitUsageAsync(CancellationToken ct)
     {
         // Meter/setup usage without logging prompt or customer content.
-        return audit.WriteAsync(new AuditEvent(
-            TenantId: context.Tenant.TenantId,
-            ActorPrincipalId: context.Principal.PrincipalId,
-            Action: AtlasCapabilities.SetupAssist.Value,
-            Resource: SetupResource.Value,
-            OccurredAt: clock.GetUtcNow(),
-            CorrelationId: Guid.NewGuid().ToString("N")), ct);
+        return audit.WriteAsync(
+            AtlasAudit.Event(context, clock, AtlasCapabilities.SetupAssist.Value, SetupResource.Value), ct);
     }
 
     private static SetupCopilotSnapshot BuildSnapshot(

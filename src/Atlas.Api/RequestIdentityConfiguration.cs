@@ -53,6 +53,16 @@ public static class RequestIdentityConfiguration
     /// <summary>Expected token audience (the client id) for <see cref="FabricOidc"/> mode. Optional.</summary>
     public const string OidcAudienceKey = "Atlas:Identity:Oidc:Audience";
 
+    /// <summary>
+    /// Browser-facing OIDC authority for interactive sign-in. Optional; when unset, Atlas falls back to the
+    /// token-validation authority. Set this when the API sees an internal issuer URL but browsers must use a
+    /// different public origin (for example Docker Compose with Keycloak on localhost:8081).
+    /// </summary>
+    public const string OidcBrowserAuthorityKey = "Atlas:Identity:Oidc:BrowserAuthority";
+
+    /// <summary>The OIDC client id the browser login page uses for direct grant. Defaults to <c>atlas-api</c>.</summary>
+    public const string OidcClientIdKey = "Atlas:Identity:Oidc:ClientId";
+
     /// <summary>Token claim carrying the tenant id. Defaults to <c>tenant</c>.</summary>
     public const string OidcTenantClaimKey = "Atlas:Identity:Oidc:TenantClaim";
 

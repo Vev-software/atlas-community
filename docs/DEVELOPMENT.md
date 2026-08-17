@@ -13,10 +13,10 @@ public repository.
 
 ```
 src/
-  Atlas.Fabric.Abstractions  Fabric contract shim: tenant/principal, authz, audit, entitlements
-                             (shaped to match the forthcoming Vev.Fabric.* packages — fabric#3-7)
-  Atlas.Fabric.Dev           Dev implementations of the shim (single tenant, role-gated authz,
-                             fail-static community entitlements, in-memory audit)
+  Atlas.Fabric.Abstractions  Atlas-owned seam types over the public Vev.Fabric.Contracts package
+                             (request context, authz/audit adapters, allowance UX helpers)
+  Atlas.Fabric.Dev           Local implementations over that seam (single tenant, role-gated authz,
+                             signed-snapshot entitlements, in-memory audit)
   Atlas.Domain               Asset catalogue domain; consumes the public atlas-contracts model
   Atlas.Persistence          EF Core / SQLite behind the repository port
   Atlas.Api                  ASP.NET Core minimal API (API/SDK-first) + OpenAPI
@@ -29,16 +29,7 @@ tests/
 ## Prerequisites
 
 - .NET 10 SDK
-- The public `Vev.Atlas.Contracts` package. Until it is published to nuget.org, build it from the
-  sibling `atlas-contracts` repo into the shared local feed:
-
-  ```bash
-  dotnet pack ../atlas-contracts/sdk/dotnet/Vev.Atlas.Contracts/Vev.Atlas.Contracts.csproj \
-    -c Release -o ../.local-nuget
-  ```
-
-  `nuget.config` maps only `Vev.Atlas.*` to that folder; everything else comes from nuget.org, so the
-  public-build rule (`AGENTS.md §1.9`) still holds.
+- Access to nuget.org to restore the public `Vev.Atlas.Contracts` package.
 
 ## Build, test, run
 
@@ -50,6 +41,31 @@ dotnet run --project src/Atlas.Api
 The API creates its SQLite schema on first run. OpenAPI is at `/openapi/v1.json`; health at `/health`.
 The catalogue file holds reconnaissance-grade landscape data — for any real deployment, encrypt it at
 rest ([Encryption at rest](#encryption-at-rest)).
+
+## Entitlements & signed snapshots
+
+Atlas now consumes the public `Vev.Fabric.Contracts` entitlement contract directly. The request path
+never calls a control-plane API synchronously: `PaidCapabilityGate` asks the local
+`CommunityEntitlementService`, which evaluates a cached signed snapshot with the Fabric
+`LocalEntitlementEvaluator`.
+
+- With **no snapshot source configured**, Community behaves exactly like before: paid capabilities are
+  denied with `entitlement_denied`, and the visible free AI-structuring allowance remains local.
+- With a **signed snapshot document** configured, Atlas verifies it against the configured trust
+  anchors and evaluates grants locally and fail-static.
+- With a **snapshot URL** configured, Atlas refreshes the cached signed snapshot periodically in the
+  background; request-time decisions still stay local.
+
+Configuration lives under `Atlas:Entitlements` (`Atlas__Entitlements__*` via env vars):
+
+| Key | Meaning |
+|---|---|
+| `SnapshotDocumentJson` | Inline signed snapshot document JSON to import at startup. |
+| `SnapshotDocumentPath` | Path to a signed snapshot document for offline / air-gapped installs. |
+| `SnapshotDocumentUrl` | Connected source returning a signed snapshot document; refreshed in the background. |
+| `SnapshotRefreshSeconds` | Refresh interval for `SnapshotDocumentUrl` (minimum effective interval 30s). |
+| `TrustedKeys:<key-id>` | Base64-encoded symmetric key for the current Fabric HMAC verifier. |
+| `CommunityAiStructureDailyLimit` | Local visible free allowance for `atlas.ai.structure` when no snapshot is configured. |
 
 ### Try it
 
@@ -188,11 +204,9 @@ the platform Module Author Guide (handbook §16) and the Fabric extension model 
 ## Run with Docker
 
 Atlas Community ships a container image and a Compose file so a self-hoster gets the API, the
-read-only landscape UI and a persistent SQLite database with one command. Compose builds with the
-**monorepo root as the build context** so the temporary sibling contracts feed (`.local-nuget`) is
-available to the build — the same reconstruction CI does. Once `Vev.Atlas.Contracts` is on nuget.org
-(`atlas#10`), the context can narrow to this repo and the `.local-nuget` copy in the `Dockerfile`
-drops out.
+read-only landscape UI and a persistent SQLite database with one command. Compose builds directly
+from this repository; the Dockerfile restores `Vev.Atlas.Contracts` from nuget.org like the local
+CLI build does.
 
 ```bash
 # From the atlas-community repo root. Works with Docker or Podman.
@@ -215,10 +229,10 @@ The catalogue is stored in SQLite on the `atlas-data` volume (`/data/atlas.db` i
 it survives `docker compose down` / restarts. Remove it with `docker compose down -v`. That file holds
 the whole landscape map — protect it at rest: see [Encryption at rest](#encryption-at-rest).
 
-To build or run the image directly (note the `..` context — the monorepo root):
+To build or run the image directly:
 
 ```bash
-docker build -f Dockerfile -t atlas-community:local ..
+docker build -t atlas-community:local .
 docker run --rm -p 8080:8080 -v atlas-data:/data atlas-community:local
 ```
 
@@ -297,6 +311,8 @@ refused (`401`); only `/health` is exempt. Configuration keys (env form doubles 
 |---|---|---|
 | `Atlas:Identity:Oidc:Authority` | — (required) | OIDC issuer/authority URL. Without it, the host fails closed. |
 | `Atlas:Identity:Oidc:Audience` | — | Expected token audience (client id). When unset, audience is not validated. |
+| `Atlas:Identity:Oidc:BrowserAuthority` | `Atlas:Identity:Oidc:Authority` | Browser-facing realm base for the built-in login page. Set this when browsers must reach the IdP on a different origin than the API sees. |
+| `Atlas:Identity:Oidc:ClientId` | `atlas-api` | OIDC client id used by the built-in login page when requesting a token. |
 | `Atlas:Identity:Oidc:TenantClaim` | `tenant` | Claim carrying the tenant id. |
 | `Atlas:Identity:Oidc:PrincipalClaim` | `sub` | Claim carrying the stable principal id. |
 | `Atlas:Identity:Oidc:NameClaim` | `name` | Claim carrying the display name. |
@@ -318,15 +334,24 @@ docker compose -f docker-compose.yml -f docker-compose.oidc.yml up --build
 ```
 
 This imports the [`keycloak/atlas-realm.json`](../keycloak/atlas-realm.json) realm: a public client
-`atlas-api`, a seeded user `architect` / `architect` with role `AtlasArchitect` and tenant `community`, and
-the `roles` + `tenant` mappers. Get a token (direct grant) and call the API with it:
+`atlas-api`, a seeded user `admin` / `changeme` with role `AtlasArchitect` and tenant `community`, and
+the `roles` + `tenant` mappers.
+
+Because the seeded password is marked **temporary**, change it once in the Keycloak account console before
+using direct grant:
+
+1. Open `http://localhost:8081/realms/atlas/account/`.
+2. Sign in as `admin` / `changeme`.
+3. Set a new password when Keycloak prompts you.
+
+Then fetch a token with the new password and call the API:
 
 ```bash
 # Fetch an access token for the seeded user (the issuer inside the token is http://keycloak:8080/realms/atlas,
 # which is what Atlas validates against inside the compose network).
 TOKEN=$(curl -s http://localhost:8081/realms/atlas/protocol/openid-connect/token \
   -d grant_type=password -d client_id=atlas-api \
-  -d username=architect -d password=architect | python -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+  -d username=admin -d password='<your-new-password>' | python -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
 
 # Create an asset as the token's tenant (community); no X-* headers are consulted.
 curl -X POST http://localhost:8080/api/v1/assets -H "Authorization: Bearer $TOKEN" \
@@ -339,8 +364,8 @@ curl http://localhost:8080/health                       # → {"status":"ok"} (h
 ```
 
 The Keycloak admin console is at `http://localhost:8081` (admin / admin). This is the swap point for
-real identity: point `Atlas:Identity:Oidc:Authority` at your own OIDC provider in production and drop the
-overlay (handbook `11 §4`).
+real identity: point `Atlas:Identity:Oidc:Authority` at your own OIDC provider in production and set
+`Atlas:Identity:Oidc:BrowserAuthority` if browsers must use a different public origin than the API does.
 
 ## Tenant isolation
 

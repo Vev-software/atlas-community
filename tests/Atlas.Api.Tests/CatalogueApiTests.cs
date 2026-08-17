@@ -44,6 +44,24 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
     }
 
     [Fact]
+    public async Task Asset_api_and_landscape_surface_the_stable_numeric_id()
+    {
+        var client = Client(tenant: "t-numeric-id");
+
+        var created = await (await client.PostAsJsonAsync("/api/v1/assets", SampleApp("app-numeric"), Json))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var numericId = created.GetProperty("numericId").GetInt64();
+        Assert.True(numericId > 0);
+
+        var fetched = await client.GetFromJsonAsync<JsonElement>("/api/v1/assets/app-numeric", Json);
+        Assert.Equal(numericId, fetched.GetProperty("numericId").GetInt64());
+
+        var landscape = await client.GetFromJsonAsync<JsonElement>("/api/v1/landscape", Json);
+        var asset = landscape.GetProperty("assets").EnumerateArray().Single(a => a.GetProperty("id").GetString() == "app-numeric");
+        Assert.Equal(numericId, asset.GetProperty("numericId").GetInt64());
+    }
+
+    [Fact]
     public async Task Listing_can_filter_by_kind()
     {
         var client = Client(tenant: "t-filter");
@@ -147,8 +165,8 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
         var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
         Assert.Contains(audit.Events, e =>
             e.Action == "atlas.relationship.deleted" &&
-            e.TenantId == "t-cascade" &&
-            e.Resource == "atlas:relationship/r1");
+            e.Tenant.TenantId == "t-cascade" &&
+            e.Resource.Value == "atlas:relationship/r1");
     }
 
     [Fact]
@@ -280,8 +298,45 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
 
         Assert.Contains(audit.Events, e =>
             e.Action == "atlas.asset.created" &&
-            e.TenantId == "t-audit" &&
-            e.Resource == "atlas:asset/app-audit");
+            e.Tenant.TenantId == "t-audit" &&
+            e.Resource.Value == "atlas:asset/app-audit");
+    }
+
+    [Fact]
+    public async Task Asset_history_endpoint_returns_created_by_created_at_and_last_updated()
+    {
+        var asset = SampleApp("app-history");
+        await Client(tenant: "t-history", principal: "alice")
+            .PostAsJsonAsync("/api/v1/assets", asset, Json);
+
+        var updated = asset with { Name = "Checkout v2" };
+        await Client(tenant: "t-history", principal: "bob")
+            .PutAsJsonAsync("/api/v1/assets/app-history", updated, Json);
+
+        var response = await Client(tenant: "t-history", principal: "viewer", roles: "AtlasCustomer")
+            .GetAsync("/api/v1/assets/app-history/history");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("alice", body.GetProperty("createdBy").GetString());
+        Assert.True(body.GetProperty("createdAt").GetDateTimeOffset() <= body.GetProperty("lastUpdatedAt").GetDateTimeOffset());
+
+        var entries = body.GetProperty("entries").EnumerateArray().ToArray();
+        Assert.Equal(2, entries.Length);
+        Assert.Equal("Asset details updated", entries[0].GetProperty("summary").GetString());
+        Assert.Equal("bob", entries[0].GetProperty("actor").GetString());
+        Assert.Equal("Asset created", entries[1].GetProperty("summary").GetString());
+        Assert.Equal("alice", entries[1].GetProperty("actor").GetString());
+    }
+
+    [Fact]
+    public async Task Asset_history_endpoint_is_not_found_for_a_missing_asset()
+    {
+        var response = await Client(tenant: "t-history-missing", principal: "viewer", roles: "AtlasCustomer")
+            .GetAsync("/api/v1/assets/ghost/history");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     // --- Portability surface (issue #12): customer-owned export + import ---
@@ -497,5 +552,84 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Empty((await client.GetFromJsonAsync<List<Asset>>("/api/v1/assets", Json))!);
+    }
+
+    // --- Per-asset edit authorization (atlas#76): creator can edit even without write role ---
+
+    [Fact]
+    public async Task Creator_can_edit_own_asset_without_write_role()
+    {
+        // Create asset as architect (has write role)
+        var architect = Client(tenant: "t-creator-edit", principal: "alice", roles: "AtlasArchitect");
+        await architect.PostAsJsonAsync("/api/v1/assets",
+            new Asset("app-alice", AssetKind.Application, "Alice App", Lifecycle.Active), Json);
+
+        // Now alice as a read-only customer can still edit because she's the creator
+        var aliceReader = Client(tenant: "t-creator-edit", principal: "alice", roles: "AtlasCustomer");
+        var updated = new Asset("app-alice", AssetKind.Application, "Alice App v2", Lifecycle.Active, Description: "Updated by creator");
+        var put = await aliceReader.PutAsJsonAsync("/api/v1/assets/app-alice", updated, Json);
+
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+        var result = await put.Content.ReadFromJsonAsync<JsonElement>(Json);
+        Assert.Equal("Alice App v2", result.GetProperty("name").GetString());
+        Assert.Equal("alice", result.GetProperty("createdBy").GetString());
+    }
+
+    [Fact]
+    public async Task Non_creator_without_write_role_cannot_edit()
+    {
+        // Create asset as architect (has write role)
+        var architect = Client(tenant: "t-non-creator", principal: "alice", roles: "AtlasArchitect");
+        await architect.PostAsJsonAsync("/api/v1/assets",
+            new Asset("app-alice-2", AssetKind.Application, "Alice App", Lifecycle.Active), Json);
+
+        // Bob is not the creator and has no write role — denied
+        var bob = Client(tenant: "t-non-creator", principal: "bob", roles: "AtlasCustomer");
+        var updated = new Asset("app-alice-2", AssetKind.Application, "Bob Edit", Lifecycle.Active);
+        var response = await bob.PutAsJsonAsync("/api/v1/assets/app-alice-2", updated, Json);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("role_missing", problem.GetProperty("reasonCode").GetString());
+    }
+
+    [Fact]
+    public async Task Architect_can_edit_any_asset_regardless_of_creator()
+    {
+        // Create asset as alice (read-only customer) — but needs architect to create first
+        var creator = Client(tenant: "t-arch-edit", principal: "alice", roles: "AtlasArchitect");
+        await creator.PostAsJsonAsync("/api/v1/assets",
+            new Asset("app-arch", AssetKind.Application, "Alice App", Lifecycle.Active), Json);
+
+        // Bob is an architect — can edit alice's asset
+        var bob = Client(tenant: "t-arch-edit", principal: "bob", roles: "AtlasArchitect");
+        var updated = new Asset("app-arch", AssetKind.Application, "Bob Edit", Lifecycle.Active);
+        var response = await bob.PutAsJsonAsync("/api/v1/assets/app-arch", updated, Json);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Asset_payload_includes_created_by()
+    {
+        var client = Client(tenant: "t-created-by", principal: "creator-user");
+        await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("app-created-by", AssetKind.Application, "Test", Lifecycle.Active), Json);
+
+        var response = await client.GetFromJsonAsync<JsonElement>("/api/v1/assets/app-created-by", Json);
+        Assert.Equal("creator-user", response.GetProperty("createdBy").GetString());
+    }
+
+    [Fact]
+    public async Task Asset_identifier_remains_immutable_on_update()
+    {
+        var client = Client(tenant: "t-immutable-id", principal: "alice");
+        await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("app-original", AssetKind.Application, "Original", Lifecycle.Active), Json);
+
+        var updated = new Asset("app-renamed", AssetKind.Application, "Renamed", Lifecycle.Active);
+        var response = await client.PutAsJsonAsync("/api/v1/assets/app-original", updated, Json);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 }

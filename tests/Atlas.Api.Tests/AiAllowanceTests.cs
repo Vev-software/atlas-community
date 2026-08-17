@@ -36,11 +36,15 @@ public sealed class AiAllowanceTests(AtlasApiFactory factory) : IClassFixture<At
     {
         var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
         await audit.WriteAsync(new AuditEvent(
-            TenantId: "t-allowance-limited",
-            ActorPrincipalId: "viewer",
-            Action: AtlasCapabilities.AiStructure.Value,
-            Resource: "atlas:structure-draft",
+            EventId: Guid.NewGuid().ToString("N"),
             OccurredAt: TimeProvider.System.GetUtcNow(),
+            Tenant: new TenantContext("t-allowance-limited"),
+            Actor: new AuditActor("viewer"),
+            Source: "atlas",
+            Action: AtlasCapabilities.AiStructure.Value,
+            Resource: new AuditResource("atlas:structure-draft"),
+            Category: AuditCategory.Data,
+            Outcome: AuditOutcome.Success,
             CorrelationId: Guid.NewGuid().ToString("N")));
 
         var response = await Client(tenant: "t-allowance-limited").GetAsync("/api/v1/ai/allowances");
@@ -87,13 +91,16 @@ public sealed class AiAllowanceTests(AtlasApiFactory factory) : IClassFixture<At
             {
                 services.RemoveAll<DbContextOptions<Vev.Atlas.Persistence.AtlasDbContext>>();
                 services.AddDbContext<Vev.Atlas.Persistence.AtlasDbContext>(options => options.UseSqlite(_connection));
-                services.RemoveAll<IEntitlementService>();
-                services.AddSingleton<IEntitlementService>(new CommunityEntitlementService(
+                var entitlements = new CommunityEntitlementService(
                     new HashSet<string>(StringComparer.Ordinal),
-                    new Dictionary<string, EntitlementLimitSnapshot>(StringComparer.Ordinal)
+                    new Dictionary<string, EntitlementAllowanceSnapshot>(StringComparer.Ordinal)
                     {
-                        [AtlasCapabilities.AiStructure.Value] = EntitlementLimitSnapshot.UnlimitedAllowance("entitlement:test")
-                    }));
+                        [AtlasCapabilities.AiStructure.Value] = EntitlementAllowanceSnapshot.UnlimitedAllowance("entitlement:test")
+                    });
+                services.RemoveAll<IEntitlementService>();
+                services.RemoveAll<IEntitlementAllowanceProvider>();
+                services.AddSingleton<IEntitlementService>(entitlements);
+                services.AddSingleton<IEntitlementAllowanceProvider>(entitlements);
             });
         }
 
