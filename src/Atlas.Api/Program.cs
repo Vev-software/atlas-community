@@ -103,7 +103,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" })).WithTags("Ops").A
 // path base.
 app.MapGet("/app-config.js", (HttpRequest request, AtlasUrls u) =>
 {
-    var config = new { apiBase = u.ClientApiBase(request), loginPath = u.ClientLoginPath(request) };
+    var config = new { apiBase = u.ClientApiBase(request), loginPath = u.ClientLoginPath(request), brandName = u.BrandName, docsBaseUrl = u.DocsBaseUrl };
     var js = $"window.__ATLAS__=Object.freeze({JsonSerializer.Serialize(config)});";
     return Results.Text(js, "application/javascript");
 }).WithTags("Ops").AllowAnonymous();
