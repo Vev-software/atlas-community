@@ -1,3 +1,4 @@
+using System.Linq;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Vev.Atlas.Domain;
 using Vev.Atlas.Fabric;
@@ -63,6 +64,15 @@ public static class RequestIdentityConfiguration
 
     /// <summary>Token claim carrying role names (may repeat). Defaults to <c>roles</c>.</summary>
     public const string OidcRolesClaimKey = "Atlas:Identity:Oidc:RolesClaim";
+
+    /// <summary>
+    /// Browser-facing OIDC authority for the static login page. When set, this public URL is exposed
+    /// to the browser instead of the internal <see cref="OidcAuthorityKey"/> authority.
+    /// </summary>
+    public const string OidcBrowserAuthorityKey = "Atlas:Identity:Oidc:BrowserAuthority";
+
+    /// <summary>Browser-facing client id for the static login page.</summary>
+    public const string OidcClientIdKey = "Atlas:Identity:Oidc:ClientId";
 
     /// <summary>
     /// Whether provider metadata must be fetched over HTTPS. Defaults to <c>true</c>; a local dev
@@ -233,6 +243,51 @@ public sealed record OidcIdentityOptions(
         Value(config, RequestIdentityConfiguration.OidcPrincipalClaimKey, "sub"),
         Value(config, RequestIdentityConfiguration.OidcNameClaimKey, "name"),
         Value(config, RequestIdentityConfiguration.OidcRolesClaimKey, "roles"));
+
+    private static string Value(IConfiguration config, string key, string fallback)
+    {
+        var configured = config[key];
+        return string.IsNullOrWhiteSpace(configured) ? fallback : configured.Trim();
+    }
+}
+
+/// <summary>
+/// Browser-facing OIDC settings for the static login page. These may differ from the API's token-validation
+/// authority when the server sees an internal issuer URL but users sign in through a public endpoint.
+/// </summary>
+/// <param name="Authority">Public authority/realm base the browser talks to, e.g. <c>https://id.example.com/realms/atlas</c>.</param>
+/// <param name="ClientId">Client id used for direct-grant token requests.</param>
+public sealed record OidcBrowserOptions(
+    string Authority,
+    string ClientId)
+{
+    /// <summary>Keycloak account console URL under the configured authority.</summary>
+    public string AccountUrl => Authority + "/account";
+
+    /// <summary>
+    /// Resolve the browser-facing authority + client id. Returns <c>null</c> when no OIDC provider is configured.
+    /// Falls back from <see cref="RequestIdentityConfiguration.OidcBrowserAuthorityKey"/> to
+    /// <see cref="RequestIdentityConfiguration.OidcAuthorityKey"/>.
+    /// </summary>
+    public static OidcBrowserOptions? FromConfiguration(IConfiguration config)
+    {
+        var authority = FirstNonBlank(
+            config[RequestIdentityConfiguration.OidcBrowserAuthorityKey],
+            config[RequestIdentityConfiguration.OidcAuthorityKey]);
+        if (authority is null)
+        {
+            return null;
+        }
+
+        return new OidcBrowserOptions(
+            NormalizeUrl(authority),
+            Value(config, RequestIdentityConfiguration.OidcClientIdKey, "atlas-api"));
+    }
+
+    private static string? FirstNonBlank(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
+
+    private static string NormalizeUrl(string url) => url.Trim().TrimEnd('/');
 
     private static string Value(IConfiguration config, string key, string fallback)
     {

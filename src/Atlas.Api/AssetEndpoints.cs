@@ -133,7 +133,7 @@ public static class AssetEndpoints
                 IncludeUnsanctioned: unsanctioned,
                 IncludePastEol: pastEol);
             var flagged = await service.GetFlaggedAssetsAsync(filter, ct);
-            return Results.Ok(flagged.Select(ToAssetPayload));
+            return Results.Ok(flagged);
         })
             .WithName("GetShadowItAssets")
             .WithSummary("Filter assets by shadow-IT signals (unowned, unsanctioned, past-EOL). Flags use OR logic.");

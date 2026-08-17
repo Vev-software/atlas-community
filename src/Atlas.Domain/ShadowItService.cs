@@ -21,10 +21,10 @@ public sealed class ShadowItService(IRequestContextAccessor context, IAssetRepos
     /// Filter assets by shadow-IT signals. Each flag uses OR logic — an asset matching any
     /// selected signal is included.
     /// </summary>
-    public async Task<ImmutableArray<CataloguedAsset>> GetFlaggedAssetsAsync(ShadowItFilter filter, CancellationToken ct = default)
+    public async Task<ImmutableArray<Asset>> GetFlaggedAssetsAsync(ShadowItFilter filter, CancellationToken ct = default)
     {
-        var assets = await repository.ListCataloguedAssetsAsync(context.Tenant, kind: null, ct);
-        var flagged = assets.Where(a => Matches(a.Asset, filter)).ToImmutableArray();
+        var assets = await repository.ListAssetsAsync(context.Tenant, kind: null, ct);
+        var flagged = assets.Where(a => Matches(a, filter)).ToImmutableArray();
         return flagged;
     }
 
