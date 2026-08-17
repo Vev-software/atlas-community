@@ -109,6 +109,8 @@ app.MapGet("/app-config.js", (HttpRequest request, AtlasUrls u) =>
     {
         apiBase = u.ClientApiBase(request),
         loginPath = u.ClientLoginPath(request),
+        brandName = u.BrandName,
+        docsBaseUrl = u.DocsBaseUrl,
         oidcAuthority = oidc?.Authority,
         oidcClientId = oidc?.ClientId,
         oidcAccountUrl = oidc?.AccountUrl
