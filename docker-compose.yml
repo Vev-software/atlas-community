@@ -1,9 +1,33 @@
 # Atlas Community Edition — one-command self-host.
 #
 #   docker compose up --build       (or: podman compose up --build)
+#
+# Secure by default: the default compose brings up a bundled Keycloak for authentication.
+# Every request requires login. The seeded admin password is temporary and MUST be changed
+# on first login. See README.md § "First-run setup".
+#
+# To run without authentication (local development only), use:
+#   docker compose -f docker-compose.yml -f docker-compose.unsecure.yml up --build
 name: atlas-community
 
 services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # A fixed hostname so the token issuer is the same URL Atlas validates against, from inside the
+      # compose network (http://keycloak:8080) and for tokens fetched from the host via the mapped port.
+      KC_HOSTNAME: http://keycloak:8080
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+
   atlas:
     build:
       context: .
@@ -14,6 +38,13 @@ services:
     environment:
       # The catalogue lives in SQLite on the mounted volume, so it survives container restarts.
       ConnectionStrings__Atlas: "Data Source=/data/atlas.db"
+      # Validate real OIDC tokens from the bundled Keycloak realm.
+      Atlas__Identity__Mode: "fabric-oidc"
+      Atlas__Identity__Oidc__Authority: "http://keycloak:8080/realms/atlas"
+      # The bundled Keycloak speaks plain HTTP in self-hosted mode.
+      Atlas__Identity__Oidc__RequireHttpsMetadata: "false"
+    depends_on:
+      - keycloak
     volumes:
       - atlas-data:/data
     restart: unless-stopped

@@ -125,7 +125,7 @@ layer for identity, tenancy, entitlements, audit and other cross-cutting concern
 
 ## Run it (self-hosted)
 
-One command brings up the API and a persistent SQLite catalogue — with Docker or Podman:
+One command brings up the API, a persistent SQLite catalogue and a bundled Keycloak for authentication:
 
 ```bash
 docker compose up --build          # or: podman compose up --build
@@ -134,6 +134,26 @@ curl http://localhost:8080/health  # {"status":"ok"}
 
 On Windows, `./deploy.ps1` wraps this: it picks Podman or Docker, builds the image and runs it on
 port 8080 (`./deploy.ps1 -Down` tears it back down).
+
+### First-run setup
+
+Atlas is **secure by default**: every request requires authentication. The bundled Keycloak ships
+with a single admin account that **must change its password on first login**:
+
+1. Open **http://localhost:8080/** in a browser — you'll see the login screen.
+2. Sign in with username `admin` and password `changeme`.
+3. You **must** set a new password before you can access the catalogue.
+4. After changing the password, you're in as an architect with full access.
+
+The Keycloak admin console is at **http://localhost:8081** (admin / admin) if you need to manage
+users, create additional accounts, or inspect roles.
+
+**No default credentials are usable after the first-run password change.** The `changeme` password
+is marked `temporary` in Keycloak, so it cannot be reused after the first login.
+
+Want to run without authentication for local development? See
+[Development identity modes](./docs/DEVELOPMENT.md#identity--tenancy) for the `single-tenant` and
+`dev-headers` modes.
 
 Hostnames and paths are deployment configuration — the default is a flat single-host shape with no
 `vev.software` assumption. For a white-label host or a reverse-proxy sub-path, see

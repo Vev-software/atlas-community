@@ -50,15 +50,15 @@
   ],
   "users": [
     {
-      "username": "architect",
+      "username": "admin",
       "enabled": true,
       "emailVerified": true,
-      "firstName": "Ada",
-      "lastName": "Architect",
-      "email": "architect@atlas.local",
+      "firstName": "Atlas",
+      "lastName": "Admin",
+      "email": "admin@atlas.local",
       "attributes": { "tenant": ["community"] },
       "credentials": [
-        { "type": "password", "value": "architect", "temporary": false }
+        { "type": "password", "value": "changeme", "temporary": true }
       ],
       "realmRoles": ["AtlasArchitect"]
     }
