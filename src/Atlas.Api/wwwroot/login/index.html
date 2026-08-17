@@ -77,6 +77,7 @@
       font-size: 12px; color: var(--muted); text-align: center; margin-top: 16px;
       border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fbfbfc;
     }
+    .note a { color: inherit; font-weight: 600; }
   </style>
   <script src="../app-config.js"></script>
 </head>
@@ -101,31 +102,51 @@
       </form>
 
       <div class="note" id="firstRunNote" hidden>
-        First time? Use the credentials from your setup. You'll be asked to change your password.
+        First run with a temporary password? Change it in
+        <a id="accountLink" href="#" target="_blank" rel="noreferrer">Keycloak Account Console</a>
+        first, then return here to sign in to Atlas.
       </div>
     </div>
   </div>
 
   <script>
     const ATLAS = window.__ATLAS__ || { apiBase: "/api", loginPath: "/login" };
-
-    // Detect if we're in OIDC mode by checking for Keycloak availability.
-    // The Keycloak admin console is on port 8081 in the default compose.
-    const KEYCLOAK_BASE = (() => {
-      // In the default compose, Keycloak is on port 8081. Derive from current host.
-      const host = location.hostname;
-      const port = location.port;
-      return `http://${host}:8081`;
-    })();
+    const OIDC_AUTHORITY = (ATLAS.oidcAuthority || "").replace(/\/+$/, "");
+    const OIDC_CLIENT_ID = ATLAS.oidcClientId || "atlas-api";
+    const OIDC_ACCOUNT_URL = ATLAS.oidcAccountUrl || (OIDC_AUTHORITY ? OIDC_AUTHORITY + "/account" : "");
 
     const form = document.getElementById("loginForm");
     const errorBox = document.getElementById("error");
     const submitBtn = document.getElementById("submitBtn");
     const firstRunNote = document.getElementById("firstRunNote");
+    const accountLink = document.getElementById("accountLink");
+    const usernameInput = document.getElementById("username");
+    const passwordInput = document.getElementById("password");
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.classList.add("visible");
+    }
+
+    if (OIDC_ACCOUNT_URL) {
+      accountLink.href = OIDC_ACCOUNT_URL;
+    } else {
+      accountLink.removeAttribute("href");
+      accountLink.removeAttribute("target");
+      accountLink.removeAttribute("rel");
+      accountLink.textContent = "your identity provider";
+    }
 
     // Show first-run note if this looks like a fresh install (query param from redirect).
-    if (new URLSearchParams(location.search).has("first-run")) {
+    if (new URLSearchParams(location.search).has("first-run") || !!OIDC_ACCOUNT_URL) {
       firstRunNote.hidden = false;
+    }
+
+    if (!OIDC_AUTHORITY) {
+      usernameInput.disabled = true;
+      passwordInput.disabled = true;
+      submitBtn.disabled = true;
+      showError("Interactive sign-in is not configured for this deployment. Ask your operator for the browser-facing OIDC authority.");
     }
 
     form.addEventListener("submit", async (e) => {
@@ -140,12 +161,12 @@
 
       try {
         // Request a token from Keycloak via direct access grant.
-        const tokenRes = await fetch(`${KEYCLOAK_BASE}/realms/atlas/protocol/openid-connect/token`, {
+        const tokenRes = await fetch(`${OIDC_AUTHORITY}/protocol/openid-connect/token`, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({
             grant_type: "password",
-            client_id: "atlas-api",
+            client_id: OIDC_CLIENT_ID,
             username,
             password,
           }),
@@ -153,7 +174,13 @@
 
         if (!tokenRes.ok) {
           const err = await tokenRes.json().catch(() => ({}));
-          throw new Error(err.error_description || err.error || "Login failed. Check your credentials.");
+          const description = err.error_description || err.error || "Login failed. Check your credentials.";
+          if (err.error === "invalid_grant" && OIDC_ACCOUNT_URL) {
+            firstRunNote.hidden = false;
+            throw new Error(description + " If this is the first run, change the temporary password in Keycloak first.");
+          }
+
+          throw new Error(description);
         }
 
         const tokenData = await tokenRes.json();
@@ -172,15 +199,16 @@
         location.href = returnTo;
 
       } catch (err) {
-        errorBox.textContent = err.message || "Could not sign in. Please try again.";
-        errorBox.classList.add("visible");
+        showError(err.message || "Could not sign in. Please try again.");
         submitBtn.disabled = false;
         submitBtn.textContent = "Sign in";
       }
     });
 
     // Auto-focus username field.
-    document.getElementById("username").focus();
+    if (!usernameInput.disabled) {
+      usernameInput.focus();
+    }
   </script>
 </body>
 </html>

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -103,8 +104,16 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" })).WithTags("Ops").A
 // path base.
 app.MapGet("/app-config.js", (HttpRequest request, AtlasUrls u) =>
 {
-    var config = new { apiBase = u.ClientApiBase(request), loginPath = u.ClientLoginPath(request) };
-    var js = $"window.__ATLAS__=Object.freeze({JsonSerializer.Serialize(config)});";
+    var oidc = OidcBrowserOptions.FromConfiguration(app.Configuration);
+    var config = new
+    {
+        apiBase = u.ClientApiBase(request),
+        loginPath = u.ClientLoginPath(request),
+        oidcAuthority = oidc?.Authority,
+        oidcClientId = oidc?.ClientId,
+        oidcAccountUrl = oidc?.AccountUrl
+    };
+    var js = $"window.__ATLAS__=Object.freeze({JsonSerializer.Serialize(config, new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull })});";
     return Results.Text(js, "application/javascript");
 }).WithTags("Ops").AllowAnonymous();
 

@@ -44,7 +44,7 @@ so you can act as any tenant with the `X-Tenant-Id` / `X-Principal-Id` / `X-Prin
 
 Prefer a container, or want it running outside your editor? See
 [Run it (self-hosted)](#run-it-self-hosted) for the one-command Docker/Podman path (`./deploy.ps1` on
-Windows), which starts in single-tenant mode on port 8080.
+Windows), which starts in secure-by-default OIDC mode on port 8080.
 
 ## What you get (free, self-hostable)
 
@@ -140,10 +140,10 @@ port 8080 (`./deploy.ps1 -Down` tears it back down).
 Atlas is **secure by default**: every request requires authentication. The bundled Keycloak ships
 with a single admin account that **must change its password on first login**:
 
-1. Open **http://localhost:8080/** in a browser — you'll see the login screen.
+1. Open **http://localhost:8081/realms/atlas/account/**.
 2. Sign in with username `admin` and password `changeme`.
-3. You **must** set a new password before you can access the catalogue.
-4. After changing the password, you're in as an architect with full access.
+3. Keycloak will require you to set a new password before Atlas can issue API tokens.
+4. Then open **http://localhost:8080/** and sign in to Atlas with the new password.
 
 The Keycloak admin console is at **http://localhost:8081** (admin / admin) if you need to manage
 users, create additional accounts, or inspect roles.
