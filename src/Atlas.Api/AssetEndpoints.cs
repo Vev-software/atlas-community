@@ -410,6 +410,7 @@ public static class AssetEndpoints
         lifecycle = asset.Asset.Lifecycle,
         description = asset.Asset.Description,
         tags = asset.Asset.Tags,
+        createdBy = asset.CreatedBy,
         application = asset.Asset.Application,
         server = asset.Asset.Server,
         infrastructure = asset.Asset.Infrastructure,

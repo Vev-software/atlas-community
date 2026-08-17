@@ -11,7 +11,7 @@ namespace Vev.Atlas.Persistence;
 /// </summary>
 public static class AtlasDatabaseMigrator
 {
-    internal const string CurrentMigrationId = "20260817075545_AddAssetNumericId";
+    internal const string CurrentMigrationId = "20260817103803_AddAssetCreatedBy";
     private const string EfProductVersion = "10.0.11";
 
     public static async Task MigrateAsync(AtlasDbContext db, CancellationToken ct = default)
@@ -64,6 +64,17 @@ public static class AtlasDatabaseMigrator
                     ct);
             }
 
+            var hasCreatedByColumn = await ScalarAsync<long>(
+                connection,
+                "SELECT COUNT(1) FROM pragma_table_info('assets') WHERE name = 'CreatedBy';",
+                ct) > 0;
+            if (!hasCreatedByColumn)
+            {
+                await db.Database.ExecuteSqlRawAsync(
+                    """ALTER TABLE assets ADD COLUMN CreatedBy TEXT;""",
+                    ct);
+            }
+
             await db.Database.ExecuteSqlRawAsync(
                 """
                 WITH numbered AS (
@@ -86,8 +97,15 @@ public static class AtlasDatabaseMigrator
             await db.Database.ExecuteSqlRawAsync(
                 """CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" ("MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY, "ProductVersion" TEXT NOT NULL);""",
                 ct);
+            // Insert all migration history entries so EF knows every migration has been applied.
             await db.Database.ExecuteSqlRawAsync(
-                $"""INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('{CurrentMigrationId}', '{EfProductVersion}');""",
+                $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('20260817075545_AddAssetNumericId', '{EfProductVersion}');""",
+                ct);
+            await db.Database.ExecuteSqlRawAsync(
+                $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('20260817082107_AddAiModuleSettings', '{EfProductVersion}');""",
+                ct);
+            await db.Database.ExecuteSqlRawAsync(
+                $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('{CurrentMigrationId}', '{EfProductVersion}');""",
                 ct);
 
             await db.Database.CommitTransactionAsync(ct);

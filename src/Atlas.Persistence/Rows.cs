@@ -16,6 +16,9 @@ internal sealed class AssetRow
 
     /// <summary>The full <c>Vev.Atlas.Contracts.Asset</c> serialised with the canonical options.</summary>
     public required string DocumentJson { get; set; }
+
+    /// <summary>Principal id of the user who created this asset (atlas#76).</summary>
+    public string? CreatedBy { get; set; }
 }
 
 /// <summary>Storage row for a manual relationship. Tenant id is part of the key.</summary>
