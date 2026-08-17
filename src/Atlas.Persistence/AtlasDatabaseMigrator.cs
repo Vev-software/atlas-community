@@ -19,6 +19,28 @@ public static class AtlasDatabaseMigrator
         if (db.Database.IsSqlite())
         {
             await UpgradeLegacySqliteDatabaseIfNeededAsync(db, ct);
+            
+            // For fresh databases, ensure EF can properly track migrations by creating the history
+            // table explicitly before calling Migrate(). This prevents EF from thinking all migrations
+            // are already applied when the history table doesn't exist yet.
+            var connection = db.Database.GetDbConnection();
+            if (connection.State != System.Data.ConnectionState.Open)
+            {
+                await connection.OpenAsync(ct);
+            }
+
+            var hasHistoryTable = await ScalarAsync<long>(
+                connection,
+                "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = '__EFMigrationsHistory';",
+                ct) > 0;
+            
+            if (!hasHistoryTable)
+            {
+                // Create the migrations history table so EF knows this database is under migration control
+                await db.Database.ExecuteSqlRawAsync(
+                    """CREATE TABLE "__EFMigrationsHistory" ("MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY, "ProductVersion" TEXT NOT NULL);""",
+                    ct);
+            }
         }
 
         await db.Database.MigrateAsync(ct);
