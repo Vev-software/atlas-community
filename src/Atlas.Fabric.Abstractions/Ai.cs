@@ -50,6 +50,44 @@ public readonly record struct AiAssistResult(bool Configured, string? Message, s
 }
 
 /// <summary>
+/// Provider-neutral AI module configuration owned by the product and consumed behind the Fabric AI seam.
+/// Community persists this per tenant so a self-hoster can bring their own provider key without exposing it
+/// to Atlas hosting.
+/// </summary>
+public sealed record AiModuleConfiguration(
+    bool Enabled,
+    bool ConsentAccepted,
+    DateTimeOffset? ConsentAcceptedAt,
+    string? ConsentAcceptedBy,
+    string? Provider,
+    string? ApiKey,
+    DateTimeOffset? UpdatedAt)
+{
+    /// <summary>Whether the module is ready to serve requests through the Fabric AI contract.</summary>
+    public bool IsUsable =>
+        Enabled &&
+        ConsentAccepted &&
+        !string.IsNullOrWhiteSpace(Provider) &&
+        !string.IsNullOrWhiteSpace(ApiKey);
+}
+
+/// <summary>
+/// Product-owned store for the current tenant's AI module settings. Fabric implementations consume the
+/// provider-neutral record; products own the admin UX and persistence details.
+/// </summary>
+public interface IAiModuleConfigurationStore
+{
+    /// <summary>Read the tenant's current AI module configuration, or null when nothing has been set up yet.</summary>
+    ValueTask<AiModuleConfiguration?> GetAsync(TenantContext tenant, CancellationToken cancellationToken = default);
+
+    /// <summary>Persist the tenant's AI module configuration.</summary>
+    ValueTask SaveAsync(
+        TenantContext tenant,
+        AiModuleConfiguration configuration,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// Minimal Fabric AI contract seam for grounded product assistance. Products depend on this provider-
 /// neutral contract, never on a provider SDK directly.
 /// </summary>

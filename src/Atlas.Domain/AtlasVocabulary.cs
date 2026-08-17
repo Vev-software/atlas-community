@@ -60,6 +60,9 @@ public static class AtlasCapabilities
     /// <summary>AI-generated draft deliverables over a selected landscape slice (paid Atlas Enterprise).</summary>
     public static readonly CapabilityId AiGenerate = new("atlas.ai.generate");
 
+    /// <summary>Grounded read-only chat over the tenant's own landscape.</summary>
+    public static readonly CapabilityId AiChat = new("atlas.ai.chat");
+
     /// <summary>Grounded setup copilot for first-run onboarding and feature explanation (via the Fabric AI contract).</summary>
     public static readonly CapabilityId SetupAssist = new("atlas.ai.assist.setup");
 

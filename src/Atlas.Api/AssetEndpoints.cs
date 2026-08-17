@@ -115,6 +115,87 @@ public static class AssetEndpoints
             .WithName("GetAiAllowances")
             .WithSummary("Describe the current tenant's visible AI-hook allowances and upgrade states.");
 
+        app.MapGet("/api/v1/ai/module", async (AiModuleService service, AtlasUrls urls, CancellationToken ct) =>
+        {
+            var status = await service.GetStatusAsync(ct);
+            return Results.Ok(new
+            {
+                enabled = status.Enabled,
+                consentAccepted = status.ConsentAccepted,
+                provider = status.Provider,
+                apiKeyConfigured = status.ApiKeyConfigured,
+                ready = status.Ready,
+                canManage = status.CanManage,
+                consentAcceptedAt = status.ConsentAcceptedAt,
+                consentAcceptedBy = status.ConsentAcceptedBy,
+                allowance = ToAiAllowancePayload(status.Allowance,
+                    "Paste supplied notes or images into a draft landscape import bundle for review."),
+                docs = new
+                {
+                    setup = AtlasDocumentationLinks.Resolve(urls, "atlas-ai-setup"),
+                    chat = AtlasDocumentationLinks.Resolve(urls, "atlas-ai-chat")
+                }
+            });
+        })
+            .WithTags("Session")
+            .WithName("GetAiModuleStatus")
+            .WithSummary("Describe the current tenant's AI module setup state without exposing the BYOK secret.");
+
+        app.MapPut("/api/v1/ai/module", async (AiModuleSaveRequest request, AiModuleService service, AtlasUrls urls, CancellationToken ct) =>
+        {
+            var status = await service.SaveAsync(request, ct);
+            return Results.Ok(new
+            {
+                enabled = status.Enabled,
+                consentAccepted = status.ConsentAccepted,
+                provider = status.Provider,
+                apiKeyConfigured = status.ApiKeyConfigured,
+                ready = status.Ready,
+                canManage = status.CanManage,
+                consentAcceptedAt = status.ConsentAcceptedAt,
+                consentAcceptedBy = status.ConsentAcceptedBy,
+                allowance = ToAiAllowancePayload(status.Allowance,
+                    "Paste supplied notes or images into a draft landscape import bundle for review."),
+                docs = new
+                {
+                    setup = AtlasDocumentationLinks.Resolve(urls, "atlas-ai-setup"),
+                    chat = AtlasDocumentationLinks.Resolve(urls, "atlas-ai-chat")
+                }
+            });
+        })
+            .WithTags("Session")
+            .WithName("SaveAiModuleStatus")
+            .WithSummary("Enable Atlas AI for the current tenant, record consent and store the encrypted BYOK provider key.");
+
+        app.MapDelete("/api/v1/ai/module", async (AiModuleService service, CancellationToken ct) =>
+        {
+            await service.DisableAsync(ct);
+            return Results.NoContent();
+        })
+            .WithTags("Session")
+            .WithName("DisableAiModule")
+            .WithSummary("Disable Atlas AI and clear the stored BYOK provider key for the current tenant.");
+
+        app.MapPost("/api/v1/ai/chat", async (LandscapeChatRequest request, LandscapeChatService service, AtlasUrls urls, CancellationToken ct) =>
+        {
+            var reply = await service.AskAsync(request, ct);
+            return Results.Ok(new
+            {
+                status = reply.Status,
+                message = reply.Message,
+                source = reply.Source,
+                selectedAssetIds = reply.SelectedAssetIds,
+                docs = reply.DocLinks.Select(link => new
+                {
+                    label = link.Label,
+                    href = AtlasDocumentationLinks.Resolve(urls, link.Key)
+                })
+            });
+        })
+            .WithTags("Session")
+            .WithName("AskLandscapeChat")
+            .WithSummary("Ask a grounded, read-only question about the current tenant landscape.");
+
         // Read-only landscape surface (atlas#6): the whole tenant map — assets + manual relationships —
         // resolved into one atlas-contracts LandscapeDocument. Backs the browse/visualise UI, which is a
         // pure client of this API (API/SDK-first — the UI is never the only way in, handbook 15 §2).

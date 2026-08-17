@@ -405,6 +405,174 @@
     }
     #toast[hidden] { display: none; }
     #toast.err { background: #7f1d1d; }
+    .toolbar button.action.ai-entry {
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .toolbar button.action.ai-entry:hover {
+      background: #eef2ff;
+    }
+    .ai-panel-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(16, 24, 40, .12);
+      z-index: 55;
+    }
+    .ai-panel-backdrop[hidden] { display: none; }
+    .ai-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: min(440px, 100vw);
+      height: 100vh;
+      background: var(--panel);
+      border-left: 1px solid var(--line);
+      box-shadow: var(--shadow-lg);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      z-index: 56;
+    }
+    .ai-panel[hidden] { display: none; }
+    .ai-panel header {
+      align-items: center;
+      gap: 10px;
+      padding: 16px 18px;
+    }
+    .ai-panel .ai-title {
+      display: grid;
+      gap: 2px;
+    }
+    .ai-panel .ai-title strong { font-size: 15px; }
+    .ai-panel .ai-title span { color: var(--muted); font-size: 12px; }
+    .ai-panel .close {
+      margin-left: auto;
+      font: inherit;
+      font-size: 18px;
+      border: none;
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 8px;
+    }
+    .ai-panel .close:hover { background: #f1f3f7; color: var(--ink); }
+    .ai-body {
+      overflow: auto;
+      padding: 16px 18px;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+      background: #fbfbfd;
+    }
+    .ai-panel footer {
+      border-top: 1px solid var(--line);
+      background: #fff;
+      padding: 14px 18px 18px;
+    }
+    .chat-thread {
+      display: grid;
+      gap: 12px;
+    }
+    .chat-message {
+      display: grid;
+      gap: 5px;
+    }
+    .chat-message .meta {
+      font-size: 11px;
+      letter-spacing: .4px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .chat-bubble {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px 13px;
+      background: #fff;
+      white-space: pre-wrap;
+    }
+    .chat-message.user .chat-bubble {
+      background: #eef2ff;
+      border-color: #c7cbf5;
+    }
+    .ai-actions, .doc-links {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .doc-links a {
+      font-size: 12px;
+      color: var(--accent);
+      text-decoration: none;
+      border: 1px solid #d9defa;
+      background: #fff;
+      border-radius: 999px;
+      padding: 5px 10px;
+    }
+    .doc-links a:hover { background: #eef2ff; }
+    .ai-empty {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+    .ai-form {
+      display: grid;
+      gap: 12px;
+    }
+    .consent-box {
+      display: grid;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 12px;
+    }
+    .consent-box label {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 12.5px;
+      color: #344054;
+    }
+    .consent-box input { margin-top: 2px; }
+    .ai-footer-form {
+      display: grid;
+      gap: 10px;
+    }
+    .ai-footer-form textarea {
+      width: 100%;
+      min-height: 82px;
+      resize: vertical;
+      font: inherit;
+      font-size: 13px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .ai-footer-form textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px #eef2ff;
+    }
+    .ai-footer-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .ai-status-pill {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: #fff;
+    }
 
     @media (max-width: 820px) { main { grid-template-columns: 1fr; } aside { border-left: none; border-top: 1px solid var(--line); } }
   </style>
@@ -434,6 +602,7 @@
     <span class="count" id="count"></span>
     <button class="primary" id="newAsset" hidden title="Add a new asset to the catalogue"><span class="plus">+</span>New asset</button>
     <button class="action" id="contextPack" title="Export a grounded brief for the selected slice" disabled>Context pack</button>
+    <button class="action ai-entry" id="aiChatButton" title="Ask grounded questions about this landscape">✦ Atlas AI</button>
     <button class="action" id="setupCopilot" title="Grounded suggestions for where to start">Getting started</button>
     <button class="action" id="refresh" title="Reload the landscape">Refresh</button>
     <button class="action" id="export" title="Download the landscape as a portable JSON document">Export JSON</button>
@@ -446,6 +615,19 @@
       <div id="detail" class="stack"><p class="placeholder">Select an asset in the map to inspect it.</p></div>
     </aside>
   </main>
+
+  <div class="ai-panel-backdrop" id="aiPanelBackdrop" hidden></div>
+  <section class="ai-panel" id="aiPanel" hidden aria-labelledby="aiPanelTitle" aria-modal="true" role="dialog">
+    <header>
+      <div class="ai-title">
+        <strong id="aiPanelTitle">Atlas AI chat</strong>
+        <span id="aiPanelSubtitle">Grounded Q&A over the current landscape</span>
+      </div>
+      <button class="close" id="closeAiPanel" aria-label="Close Atlas AI">×</button>
+    </header>
+    <div class="ai-body" id="aiPanelBody"></div>
+    <footer id="aiPanelFooter"></footer>
+  </section>
 
   <!-- Asset create/edit form. A single dialog reused for both; kind-specific fields toggle on kind. -->
   <div class="backdrop" id="assetBackdrop" hidden>
@@ -648,6 +830,10 @@
     let editingId = null;       // Non-null while the asset form is editing an existing asset.
     let setupGuide = null;      // Grounded onboarding guide for the current tenant.
     let aiAllowances = [];      // Visible AI-hook allowance state for the current tenant.
+    let aiModule = null;        // Server-side AI setup status (consent, provider, key presence).
+    let aiMessages = [];        // Client-only chat transcript for the current browser session.
+    let aiPanelView = "chat";
+    let aiBusy = false;
     let contextPackAssetIds = new Set();
     let historyOpenId = null;   // Which asset's changelog section is open in the detail panel.
     const assetHistoryCache = new Map();
@@ -686,7 +872,7 @@
         landscape.assets ||= [];
         landscape.relationships ||= [];
         el("toolbar").hidden = false;
-        await Promise.all([loadSetupCopilot(), loadAiAllowances()]);
+        await Promise.all([loadSetupCopilot(), loadAiAllowances(), loadAiModule()]);
         render();
         if (selectedId) showDetail(selectedId);
         else if (searchQuery.trim()) {
@@ -1066,7 +1252,217 @@
       section.appendChild(slot);
       return section;
     }
+    async function loadAiModule() {
+      try {
+        const res = await fetch(api("/v1/ai/module"), { headers: { "Accept": "application/json" } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        aiModule = await res.json();
+      } catch {
+        aiModule = null;
+      }
+    }
 
+    function openAiPanel(view = "chat") {
+      aiPanelView = view;
+      el("aiPanelBackdrop").hidden = false;
+      el("aiPanel").hidden = false;
+      renderAiPanel();
+    }
+
+    function closeAiPanel() {
+      el("aiPanelBackdrop").hidden = true;
+      el("aiPanel").hidden = true;
+    }
+
+    function renderAiPanel() {
+      const body = el("aiPanelBody");
+      const footer = el("aiPanelFooter");
+      const subtitle = el("aiPanelSubtitle");
+      body.innerHTML = "";
+      footer.innerHTML = "";
+
+      if (aiPanelView === "setup") {
+        subtitle.textContent = "Admin / Setup · enable Atlas AI and add your own provider key";
+        renderAiSetup(body, footer);
+        return;
+      }
+
+      subtitle.textContent = "Grounded Q&A over the current landscape";
+      renderAiChat(body, footer);
+    }
+
+    function renderAiChat(body, footer) {
+      const docs = document.createElement("div");
+      docs.className = "doc-links";
+      if (aiModule && aiModule.docs) {
+        docs.innerHTML =
+          `<a href="${escapeHtml(aiModule.docs.chat)}" target="_blank" rel="noreferrer">AI chat docs</a>` +
+          `<a href="${escapeHtml(aiModule.docs.setup)}" target="_blank" rel="noreferrer">Setup docs</a>`;
+      }
+      body.appendChild(docs);
+
+      if (!aiModule || !aiModule.ready) {
+        const empty = document.createElement("div");
+        empty.className = "ai-empty";
+        empty.innerHTML =
+          `<strong>Atlas AI is not set up yet.</strong>` +
+          `<p class="placeholder">Enable the AI module, accept the consent step and save a BYOK provider key before chat can answer grounded questions here.</p>`;
+        const actions = document.createElement("div");
+        actions.className = "ai-actions";
+        const openSetup = document.createElement("button");
+        openSetup.type = "button";
+        openSetup.className = "primary";
+        openSetup.textContent = aiModule && aiModule.canManage ? "Set up Atlas AI" : "View setup";
+        openSetup.addEventListener("click", () => openAiPanel("setup"));
+        actions.appendChild(openSetup);
+        empty.appendChild(actions);
+        body.appendChild(empty);
+        return;
+      }
+
+      if (!aiMessages.length) {
+        const empty = document.createElement("div");
+        empty.className = "ai-empty";
+        empty.innerHTML =
+          `<strong>Ask your architecture questions in plain language.</strong>` +
+          `<p class="placeholder">Try “what depends on this dataset?”, “what has no owner?” or “what sits around the selected asset?”.</p>`;
+        body.appendChild(empty);
+      }
+
+      const thread = document.createElement("div");
+      thread.className = "chat-thread";
+      for (const message of aiMessages) {
+        const node = document.createElement("div");
+        node.className = "chat-message " + (message.role === "user" ? "user" : "assistant");
+        node.innerHTML =
+          `<span class="meta">${escapeHtml(message.role === "user" ? "You" : "Atlas AI")}</span>` +
+          `<div class="chat-bubble">${escapeHtml(message.text)}</div>`;
+        thread.appendChild(node);
+      }
+      body.appendChild(thread);
+
+      const form = document.createElement("form");
+      form.className = "ai-footer-form";
+      form.innerHTML =
+        `<textarea id="aiQuestion" placeholder="Ask a grounded question about the current landscape"></textarea>` +
+        `<div class="ai-footer-row"><span class="ai-status-pill">${escapeHtml(aiModule.provider || "provider")} · ${aiBusy ? "Thinking" : "Ready"}</span><button class="primary" id="sendAiQuestion" ${aiBusy ? "disabled" : ""}>Send</button></div>`;
+      form.addEventListener("submit", submitAiQuestion);
+      footer.appendChild(form);
+    }
+
+    function renderAiSetup(body, footer) {
+      const status = document.createElement("div");
+      status.className = "ai-empty";
+      status.innerHTML =
+        `<strong>Atlas AI setup</strong>` +
+        `<p class="placeholder">Your provider key stays in this Atlas instance and is used only after you explicitly enable the module.</p>`;
+      body.appendChild(status);
+
+      if (aiModule && aiModule.allowance) {
+        aiAllowances = [aiModule.allowance];
+        body.appendChild(renderAllowanceSection());
+      }
+
+      const form = document.createElement("form");
+      form.className = "ai-form";
+      form.innerHTML =
+        `<div class="consent-box">` +
+          `<strong>Consent</strong>` +
+          `<p class="placeholder">Atlas AI sends your grounded question plus selected landscape facts to your own configured provider. The key stays in your own Atlas instance.</p>` +
+          `<label><input id="aiConsent" type="checkbox" ${aiModule && aiModule.consentAccepted ? "checked" : ""} />I accept and start using Atlas AI</label>` +
+        `</div>` +
+        `<div class="field"><label for="aiProvider">Provider</label><select id="aiProvider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option></select></div>` +
+        `<div class="field"><label for="aiApiKey">API key</label><input id="aiApiKey" type="password" autocomplete="off" placeholder="Paste your provider API key" /><div class="hint">${aiModule && aiModule.apiKeyConfigured ? "A key is already stored. Paste a new one to replace it." : "The key is encrypted at rest and never shown back in the UI."}</div></div>`;
+      body.appendChild(form);
+      if (aiModule && aiModule.provider) {
+        form.querySelector("#aiProvider").value = aiModule.provider;
+      }
+
+      const footerForm = document.createElement("form");
+      footerForm.className = "ai-footer-form";
+      footerForm.innerHTML =
+        `<div class="ai-footer-row"><span class="ai-status-pill">${aiModule && aiModule.ready ? "Configured" : "Not configured"}</span><button class="primary" id="saveAiSetup" ${aiBusy ? "disabled" : ""}>Enable Atlas AI</button></div>`;
+      footerForm.addEventListener("submit", submitAiSetup);
+      footer.appendChild(footerForm);
+    }
+
+    async function submitAiSetup(ev) {
+      ev.preventDefault();
+      if (aiBusy) return;
+
+      const consentAccepted = !!el("aiConsent").checked;
+      const provider = el("aiProvider").value;
+      const apiKey = el("aiApiKey").value.trim();
+      if (!consentAccepted) {
+        toast("Accept the Atlas AI consent step before enabling the module.", true);
+        return;
+      }
+      if (!apiKey) {
+        toast("Paste an API key for the selected provider.", true);
+        return;
+      }
+
+      aiBusy = true;
+      renderAiPanel();
+      try {
+        const res = await fetch(api("/v1/ai/module"), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({ enabled: true, consentAccepted, provider, apiKey }),
+        });
+        if (!res.ok) {
+          toast(await apiError(res), true);
+          return;
+        }
+        aiModule = await res.json();
+        aiPanelView = "chat";
+        toast("Atlas AI is enabled and ready.");
+      } catch (err) {
+        toast("Could not save Atlas AI setup (" + err.message + ").", true);
+      } finally {
+        aiBusy = false;
+        renderAiPanel();
+      }
+    }
+
+    async function submitAiQuestion(ev) {
+      ev.preventDefault();
+      if (aiBusy) return;
+
+      const question = el("aiQuestion").value.trim();
+      if (!question) return;
+
+      aiMessages.push({ role: "user", text: question });
+      aiBusy = true;
+      renderAiPanel();
+
+      try {
+        const res = await fetch(api("/v1/ai/chat"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({
+            question,
+            assetIds: selectedId ? [selectedId] : Array.from(contextPackAssetIds)
+          }),
+        });
+        if (!res.ok) {
+          aiMessages.push({ role: "assistant", text: await apiError(res) });
+          return;
+        }
+        const reply = await res.json();
+        if (reply.status === "setup-required") {
+          aiPanelView = "setup";
+          toast("Atlas AI needs setup before chat can answer.", true);
+        } else {
+          aiMessages.push({ role: "assistant", text: reply.message || "No answer returned." });
+        }
+      } catch (err) {
+        aiMessages.push({ role: "assistant", text: "Could not reach Atlas AI (" + err.message + ")." });
+      } finally {
+        aiBusy = false;
+        renderAiPanel();
+      }
+    }
     function renderSetupCopilot() {
       if (!setupGuide) return;
       selectedId = null;
@@ -1105,6 +1501,18 @@
 
       wrap.appendChild(renderSetupSection("Next steps", setupGuide.suggestions));
       wrap.appendChild(renderSetupSection("What each surface does", setupGuide.features));
+      if (canAuthor) {
+        const aiSetup = document.createElement("section");
+        aiSetup.className = "section";
+        aiSetup.innerHTML = `<h3>Atlas AI</h3>`;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "mini";
+        btn.innerHTML = `Set up Atlas AI<span class="meta">Enable the module, accept consent and save your own provider key.</span>`;
+        btn.addEventListener("click", () => openAiPanel("setup"));
+        aiSetup.appendChild(btn);
+        wrap.appendChild(aiSetup);
+      }
       if (aiAllowances.length) {
         wrap.appendChild(renderAllowanceSection());
       }
@@ -2004,7 +2412,10 @@
     el("refresh").addEventListener("click", load);
     el("newAsset").addEventListener("click", () => openAssetForm());
     el("contextPack").addEventListener("click", () => renderContextPack());
+    el("aiChatButton").addEventListener("click", () => openAiPanel("chat"));
     el("setupCopilot").addEventListener("click", renderSetupCopilot);
+    el("closeAiPanel").addEventListener("click", closeAiPanel);
+    el("aiPanelBackdrop").addEventListener("click", closeAiPanel);
     el("export").addEventListener("click", () => {
       const blob = new Blob([JSON.stringify(landscape, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -2038,6 +2449,7 @@
 
     document.addEventListener("keydown", e => {
       if (e.key === "Escape") {
+        if (!el("aiPanel").hidden) closeAiPanel();
         if (!el("assetBackdrop").hidden) closeAssetForm();
         if (!el("relBackdrop").hidden) closeRelForm();
         if (!el("confirmBackdrop").hidden) closeConfirm(false);

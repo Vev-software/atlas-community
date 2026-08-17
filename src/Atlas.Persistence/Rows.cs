@@ -28,3 +28,16 @@ internal sealed class RelationshipRow
     public required string Type { get; set; }
     public string? Description { get; set; }
 }
+
+/// <summary>Tenant-scoped AI module settings including the encrypted BYOK secret.</summary>
+internal sealed class AiModuleSettingsRow
+{
+    public required string TenantId { get; set; }
+    public bool Enabled { get; set; }
+    public bool ConsentAccepted { get; set; }
+    public DateTimeOffset? ConsentAcceptedAt { get; set; }
+    public string? ConsentAcceptedBy { get; set; }
+    public string? Provider { get; set; }
+    public string? EncryptedApiKey { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
+}

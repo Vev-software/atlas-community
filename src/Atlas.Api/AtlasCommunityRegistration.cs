@@ -35,7 +35,6 @@ public static class AtlasCommunityRegistration
         services.AddSingleton<IEntitlementService>(sp => sp.GetRequiredService<CommunityEntitlementService>());
         services.AddSingleton<IEntitlementAllowanceProvider>(sp => sp.GetRequiredService<CommunityEntitlementService>());
         services.AddHostedService<EntitlementSnapshotRefreshService>();
-        services.AddSingleton<IAiAssistService>(CommunityAiAssistService.Unconfigured);
 
         services.AddSingleton<InMemoryAuditSink>();
         services.AddSingleton<IAtlasAuditSink>(sp => sp.GetRequiredService<InMemoryAuditSink>());
@@ -46,6 +45,8 @@ public static class AtlasCommunityRegistration
         // --- Persistence (thin storage behind the repository port) ---
         services.AddDbContext<AtlasDbContext>(options => options.UseSqlite(connectionString));
         services.AddScoped<IAssetRepository, EfAssetRepository>();
+        services.AddScoped<IAiModuleConfigurationStore, EfAiModuleConfigurationStore>();
+        services.AddScoped<IAiAssistService, CommunityAiAssistService>();
 
         // --- Domain ---
         services.AddScoped<AssetService>();
@@ -53,6 +54,8 @@ public static class AtlasCommunityRegistration
         services.AddScoped<StructureDraftService>();
         services.AddScoped<DeliverableDraftService>();
         services.AddScoped<AiAllowanceService>();
+        services.AddScoped<AiModuleService>();
+        services.AddScoped<LandscapeChatService>();
         services.AddScoped<McpReadService>();
         services.AddScoped<PaidCapabilityGate>();
         services.AddScoped<SetupCopilotService>();
