@@ -37,5 +37,6 @@ public sealed class DataArchitectureSeamTests
     {
         public TenantContext Tenant { get; } = new("t-paid");
         public PrincipalContext Principal { get; } = new("arch", "Architect", [AtlasRoles.Architect]);
+        public string CorrelationId { get; } = "test-correlation";
     }
 }

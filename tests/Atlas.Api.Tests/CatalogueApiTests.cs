@@ -44,6 +44,24 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
     }
 
     [Fact]
+    public async Task Asset_api_and_landscape_surface_the_stable_numeric_id()
+    {
+        var client = Client(tenant: "t-numeric-id");
+
+        var created = await (await client.PostAsJsonAsync("/api/v1/assets", SampleApp("app-numeric"), Json))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var numericId = created.GetProperty("numericId").GetInt64();
+        Assert.True(numericId > 0);
+
+        var fetched = await client.GetFromJsonAsync<JsonElement>("/api/v1/assets/app-numeric", Json);
+        Assert.Equal(numericId, fetched.GetProperty("numericId").GetInt64());
+
+        var landscape = await client.GetFromJsonAsync<JsonElement>("/api/v1/landscape", Json);
+        var asset = landscape.GetProperty("assets").EnumerateArray().Single(a => a.GetProperty("id").GetString() == "app-numeric");
+        Assert.Equal(numericId, asset.GetProperty("numericId").GetInt64());
+    }
+
+    [Fact]
     public async Task Listing_can_filter_by_kind()
     {
         var client = Client(tenant: "t-filter");
@@ -147,8 +165,8 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
         var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
         Assert.Contains(audit.Events, e =>
             e.Action == "atlas.relationship.deleted" &&
-            e.TenantId == "t-cascade" &&
-            e.Resource == "atlas:relationship/r1");
+            e.Tenant.TenantId == "t-cascade" &&
+            e.Resource.Value == "atlas:relationship/r1");
     }
 
     [Fact]
@@ -280,8 +298,8 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
 
         Assert.Contains(audit.Events, e =>
             e.Action == "atlas.asset.created" &&
-            e.TenantId == "t-audit" &&
-            e.Resource == "atlas:asset/app-audit");
+            e.Tenant.TenantId == "t-audit" &&
+            e.Resource.Value == "atlas:asset/app-audit");
     }
 
     [Fact]

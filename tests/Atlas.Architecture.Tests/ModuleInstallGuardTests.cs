@@ -47,8 +47,8 @@ public sealed class ModuleInstallGuardTests
             Assert.Contains(reserved, ex.ReservedCapabilities);
             var rejection = Assert.Single(audit.Events);
             Assert.Equal("atlas.module.rejected", rejection.Action);
-            Assert.Equal("t-guard", rejection.TenantId);
-            Assert.Contains(reserved.Value, rejection.Resource);
+            Assert.Equal("t-guard", rejection.Tenant.TenantId);
+            Assert.Contains(reserved.Value, rejection.Resource.Value);
         }
     }
 
@@ -69,9 +69,10 @@ public sealed class ModuleInstallGuardTests
     {
         public TenantContext Tenant { get; } = new(tenant);
         public PrincipalContext Principal { get; } = new("installer", "Installer", ["AtlasArchitect"]);
+        public string CorrelationId { get; } = "test-correlation";
     }
 
-    private sealed class CollectingAuditSink : IAuditSink
+    private sealed class CollectingAuditSink : IAtlasAuditSink
     {
         public List<AuditEvent> Events { get; } = [];
 

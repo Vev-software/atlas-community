@@ -36,11 +36,15 @@ public sealed class AiAllowanceTests(AtlasApiFactory factory) : IClassFixture<At
     {
         var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
         await audit.WriteAsync(new AuditEvent(
-            TenantId: "t-allowance-limited",
-            ActorPrincipalId: "viewer",
-            Action: AtlasCapabilities.AiStructure.Value,
-            Resource: "atlas:structure-draft",
+            EventId: Guid.NewGuid().ToString("N"),
             OccurredAt: TimeProvider.System.GetUtcNow(),
+            Tenant: new TenantContext("t-allowance-limited"),
+            Actor: new AuditActor("viewer"),
+            Source: "atlas",
+            Action: AtlasCapabilities.AiStructure.Value,
+            Resource: new AuditResource("atlas:structure-draft"),
+            Category: AuditCategory.Data,
+            Outcome: AuditOutcome.Success,
             CorrelationId: Guid.NewGuid().ToString("N")));
 
         var response = await Client(tenant: "t-allowance-limited").GetAsync("/api/v1/ai/allowances");

@@ -14,7 +14,7 @@ namespace Vev.Atlas.Domain;
 public sealed class AssetService(
     IRequestContextAccessor context,
     IAuthorizer authorizer,
-    IAuditSink audit,
+    IAtlasAuditSink audit,
     IAuditQueryService auditQuery,
     IAssetRepository repository,
     TimeProvider clock)
@@ -38,6 +38,13 @@ public sealed class AssetService(
     {
         AuthorizeRead(AssetResource("*"));
         return repository.ListAssetsAsync(context.Tenant, kind, ct);
+    }
+
+    /// <summary>List assets in the current tenant, including their stable numeric ids.</summary>
+    public Task<ImmutableArray<CataloguedAsset>> ListCataloguedAssetsAsync(AssetKind? kind, CancellationToken ct = default)
+    {
+        AuthorizeRead(AssetResource("*"));
+        return repository.ListCataloguedAssetsAsync(context.Tenant, kind, ct);
     }
 
     /// <summary>Get a single asset, or null if it does not exist in the current tenant.</summary>
@@ -67,7 +74,7 @@ public sealed class AssetService(
 
         var entries = AssetAuditActions
             .SelectMany(action => auditQuery.Query(tenantId, action, fromInclusive, toExclusive))
-            .Where(evt => string.Equals(evt.Resource, resource.Value, StringComparison.Ordinal))
+            .Where(evt => string.Equals(evt.Resource.Value, resource.Value, StringComparison.Ordinal))
             .OrderByDescending(evt => evt.OccurredAt)
             .Select(ToHistoryEntry)
             .ToImmutableArray();
@@ -91,8 +98,15 @@ public sealed class AssetService(
             Entries: entries);
     }
 
+    /// <summary>Get a single asset together with its stable numeric id.</summary>
+    public Task<CataloguedAsset?> GetCataloguedAssetAsync(string id, CancellationToken ct = default)
+    {
+        AuthorizeRead(AssetResource(id));
+        return repository.GetCataloguedAssetAsync(context.Tenant, id, ct);
+    }
+
     /// <summary>Create a new asset. Requires write authorization; emits an audit event.</summary>
-    public async Task<Asset> CreateAssetAsync(Asset asset, CancellationToken ct = default)
+    public async Task<CataloguedAsset> CreateAssetAsync(Asset asset, CancellationToken ct = default)
     {
         var resource = AssetResource(asset.Id);
         AuthorizeWrite(resource);
@@ -102,9 +116,10 @@ public sealed class AssetService(
             throw new CatalogueConflictException($"Asset '{asset.Id}' already exists.");
         }
 
-        await repository.AddAssetAsync(context.Tenant, asset, ct);
+        var numericId = await repository.AllocateAssetNumericIdAsync(context.Tenant, ct);
+        await repository.AddAssetAsync(context.Tenant, asset, numericId, ct);
         await EmitAsync("atlas.asset.created", resource, ct);
-        return asset;
+        return new CataloguedAsset(asset, numericId);
     }
 
     /// <summary>Replace an existing asset. Requires write authorization; emits an audit event.</summary>
@@ -306,7 +321,8 @@ public sealed class AssetService(
             }
             else
             {
-                await repository.AddAssetAsync(tenant, asset, ct);
+                var numericId = await repository.AllocateAssetNumericIdAsync(tenant, ct);
+                await repository.AddAssetAsync(tenant, asset, numericId, ct);
                 created++;
             }
         }
@@ -411,18 +427,9 @@ public sealed class AssetService(
         }
     }
 
-    private ValueTask EmitAsync(string action, ResourceId resource, CancellationToken ct)
-    {
+    private ValueTask EmitAsync(string action, ResourceId resource, CancellationToken ct) =>
         // No secrets, no customer content — only the actor, action and the resource identifier (E4/E5).
-        var evt = new AuditEvent(
-            TenantId: context.Tenant.TenantId,
-            ActorPrincipalId: context.Principal.PrincipalId,
-            Action: action,
-            Resource: resource.Value,
-            OccurredAt: clock.GetUtcNow(),
-            CorrelationId: Guid.NewGuid().ToString("N"));
-        return audit.WriteAsync(evt, ct);
-    }
+        audit.WriteAsync(AtlasAudit.Event(context, clock, action, resource.Value), ct);
 
     private static ResourceId AssetResource(string id) => new($"atlas:asset/{id}");
 
@@ -440,7 +447,9 @@ public sealed class AssetService(
 
     private static AssetHistoryEntry ToHistoryEntry(AuditEvent auditEvent) => new(
         OccurredAt: auditEvent.OccurredAt,
-        Actor: auditEvent.ActorPrincipalId,
+        Actor: string.IsNullOrWhiteSpace(auditEvent.Actor.DisplayName)
+            ? auditEvent.Actor.PrincipalId
+            : auditEvent.Actor.DisplayName,
         Action: auditEvent.Action,
         Summary: auditEvent.Action switch
         {

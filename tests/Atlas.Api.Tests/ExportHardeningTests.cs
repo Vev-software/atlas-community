@@ -44,13 +44,13 @@ public sealed class ExportHardeningTests(AtlasApiFactory factory) : IClassFixtur
 
         var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
         var exportEvents = audit.Events
-            .Where(e => e.Action == "atlas.landscape.exported" && e.TenantId == "t-export-audit")
+            .Where(e => e.Action == "atlas.landscape.exported" && e.Tenant.TenantId == "t-export-audit")
             .ToList();
 
         var recorded = Assert.Single(exportEvents);
-        Assert.Equal("p", recorded.ActorPrincipalId);
-        Assert.Contains("format=atlas-json", recorded.Resource);   // format captured
-        Assert.Contains("scope=full", recorded.Resource);          // scope captured
+        Assert.Equal("p", recorded.Actor.PrincipalId);
+        Assert.Contains("format=atlas-json", recorded.Resource.Value);   // format captured
+        Assert.Contains("scope=full", recorded.Resource.Value);          // scope captured
         Assert.NotEqual(default, recorded.OccurredAt);             // timestamp captured
     }
 

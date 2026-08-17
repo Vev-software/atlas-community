@@ -11,7 +11,7 @@ namespace Vev.Atlas.Domain;
 public sealed class McpReadService(
     IRequestContextAccessor context,
     IAuthorizer authorizer,
-    IAuditSink audit,
+    IAtlasAuditSink audit,
     IAssetRepository repository,
     ContextPackService contextPackService,
     TimeProvider clock)
@@ -169,13 +169,7 @@ public sealed class McpReadService(
     }
 
     private ValueTask EmitAsync(string action, ResourceId resource, CancellationToken ct) =>
-        audit.WriteAsync(new AuditEvent(
-            TenantId: context.Tenant.TenantId,
-            ActorPrincipalId: context.Principal.PrincipalId,
-            Action: action,
-            Resource: resource.Value,
-            OccurredAt: clock.GetUtcNow(),
-            CorrelationId: Guid.NewGuid().ToString("N")), ct);
+        audit.WriteAsync(AtlasAudit.Event(context, clock, action, resource.Value), ct);
 
     private static bool Matches(Asset asset, string term) =>
         Contains(asset.Id, term) ||

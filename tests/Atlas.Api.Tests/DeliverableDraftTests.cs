@@ -79,8 +79,8 @@ public sealed class DeliverableDraftTests(AtlasApiFactory factory) : IClassFixtu
         var audit = entitledFactory.Services.GetRequiredService<InMemoryAuditSink>();
         Assert.Contains(audit.Events, e =>
             e.Action == "atlas.ai.generate" &&
-            e.TenantId == "t-deliverable-template" &&
-            e.Resource.Contains("format=deck", StringComparison.Ordinal));
+            e.Tenant.TenantId == "t-deliverable-template" &&
+            e.Resource.Value.Contains("format=deck", StringComparison.Ordinal));
     }
 
     [Fact]
