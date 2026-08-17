@@ -19,9 +19,59 @@ public static class AtlasDatabaseMigrator
         if (db.Database.IsSqlite())
         {
             await UpgradeLegacySqliteDatabaseIfNeededAsync(db, ct);
-        }
+            
+            // Verify all required tables exist after migration; if not, this is a broken database state
+            // that needs to be fixed by recreating the schema.
+            var connection = db.Database.GetDbConnection();
+            if (connection.State != System.Data.ConnectionState.Open)
+            {
+                await connection.OpenAsync(ct);
+            }
 
-        await db.Database.MigrateAsync(ct);
+            var requiredTables = new[] { "assets", "relationships", "ai_module_settings" };
+            var missingTables = new List<string>();
+            foreach (var table in requiredTables)
+            {
+                var exists = await ScalarAsync<long>(
+                    connection,
+                    $"SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = '{table}';",
+                    ct) > 0;
+                if (!exists)
+                {
+                    missingTables.Add(table);
+                }
+            }
+
+            if (missingTables.Count > 0)
+            {
+                // Tables are missing: drop everything and let EF recreate the schema from scratch.
+                await db.Database.EnsureDeletedAsync(ct);
+                await db.Database.EnsureCreatedAsync(ct);
+                
+                // Now manually record the migrations in history so future runs know they're applied
+                if (connection.State != System.Data.ConnectionState.Open)
+                {
+                    await connection.OpenAsync(ct);
+                }
+                await db.Database.ExecuteSqlRawAsync(
+                    """CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" ("MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY, "ProductVersion" TEXT NOT NULL);""",
+                    ct);
+                await db.Database.ExecuteSqlRawAsync(
+                    $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('20260817075545_AddAssetNumericId', '{EfProductVersion}');""",
+                    ct);
+                await db.Database.ExecuteSqlRawAsync(
+                    $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('20260817082107_AddAiModuleSettings', '{EfProductVersion}');""",
+                    ct);
+                await db.Database.ExecuteSqlRawAsync(
+                    $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('{CurrentMigrationId}', '{EfProductVersion}');""",
+                    ct);
+            }
+        }
+        else
+        {
+            // For non-SQLite databases, just apply migrations normally
+            await db.Database.MigrateAsync(ct);
+        }
     }
 
     private static async Task UpgradeLegacySqliteDatabaseIfNeededAsync(AtlasDbContext db, CancellationToken ct)
