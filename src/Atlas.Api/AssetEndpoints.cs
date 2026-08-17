@@ -31,6 +31,11 @@ public static class AssetEndpoints
             .WithName("GetAsset")
             .WithSummary("Get a single asset by id.");
 
+        assets.MapGet("/{id}/history", async (string id, AssetService service, CancellationToken ct) =>
+            await service.GetAssetHistoryAsync(id, ct) is { } history ? Results.Ok(history) : Results.NotFound())
+            .WithName("GetAssetHistory")
+            .WithSummary("Read the audit-backed changelog and provenance for one asset.");
+
         assets.MapPost("", async (Asset asset, AssetService service, CancellationToken ct) =>
         {
             var created = await service.CreateAssetAsync(asset, ct);
