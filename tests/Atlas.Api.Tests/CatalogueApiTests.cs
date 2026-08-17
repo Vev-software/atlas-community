@@ -302,6 +302,43 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
             e.Resource.Value == "atlas:asset/app-audit");
     }
 
+    [Fact]
+    public async Task Asset_history_endpoint_returns_created_by_created_at_and_last_updated()
+    {
+        var asset = SampleApp("app-history");
+        await Client(tenant: "t-history", principal: "alice")
+            .PostAsJsonAsync("/api/v1/assets", asset, Json);
+
+        var updated = asset with { Name = "Checkout v2" };
+        await Client(tenant: "t-history", principal: "bob")
+            .PutAsJsonAsync("/api/v1/assets/app-history", updated, Json);
+
+        var response = await Client(tenant: "t-history", principal: "viewer", roles: "AtlasCustomer")
+            .GetAsync("/api/v1/assets/app-history/history");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("alice", body.GetProperty("createdBy").GetString());
+        Assert.True(body.GetProperty("createdAt").GetDateTimeOffset() <= body.GetProperty("lastUpdatedAt").GetDateTimeOffset());
+
+        var entries = body.GetProperty("entries").EnumerateArray().ToArray();
+        Assert.Equal(2, entries.Length);
+        Assert.Equal("Asset details updated", entries[0].GetProperty("summary").GetString());
+        Assert.Equal("bob", entries[0].GetProperty("actor").GetString());
+        Assert.Equal("Asset created", entries[1].GetProperty("summary").GetString());
+        Assert.Equal("alice", entries[1].GetProperty("actor").GetString());
+    }
+
+    [Fact]
+    public async Task Asset_history_endpoint_is_not_found_for_a_missing_asset()
+    {
+        var response = await Client(tenant: "t-history-missing", principal: "viewer", roles: "AtlasCustomer")
+            .GetAsync("/api/v1/assets/ghost/history");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     // --- Portability surface (issue #12): customer-owned export + import ---
 
     [Fact]

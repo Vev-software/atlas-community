@@ -15,6 +15,7 @@ public sealed class AssetService(
     IRequestContextAccessor context,
     IAuthorizer authorizer,
     IAtlasAuditSink audit,
+    IAuditQueryService auditQuery,
     IAssetRepository repository,
     TimeProvider clock)
 {
@@ -51,6 +52,50 @@ public sealed class AssetService(
     {
         AuthorizeRead(AssetResource(id));
         return repository.GetAssetAsync(context.Tenant, id, ct);
+    }
+
+    /// <summary>
+    /// Read the audit-backed changelog for one asset. Uses the existing Fabric audit trail only; no
+    /// separate product store is introduced.
+    /// </summary>
+    public async Task<AssetHistorySnapshot?> GetAssetHistoryAsync(string id, CancellationToken ct = default)
+    {
+        var resource = AssetResource(id);
+        AuthorizeRead(resource);
+
+        if (!await repository.AssetExistsAsync(context.Tenant, id, ct))
+        {
+            return null;
+        }
+
+        var tenantId = context.Tenant.TenantId;
+        var fromInclusive = DateTimeOffset.UnixEpoch;
+        var toExclusive = DateTimeOffset.MaxValue;
+
+        var entries = AssetAuditActions
+            .SelectMany(action => auditQuery.Query(tenantId, action, fromInclusive, toExclusive))
+            .Where(evt => string.Equals(evt.Resource.Value, resource.Value, StringComparison.Ordinal))
+            .OrderByDescending(evt => evt.OccurredAt)
+            .Select(ToHistoryEntry)
+            .ToImmutableArray();
+
+        var created = entries
+            .Where(entry => string.Equals(entry.Action, AssetCreatedAction, StringComparison.Ordinal))
+            .OrderBy(entry => entry.OccurredAt)
+            .FirstOrDefault();
+
+        var lastUpdated = entries
+            .Where(entry =>
+                string.Equals(entry.Action, AssetCreatedAction, StringComparison.Ordinal) ||
+                string.Equals(entry.Action, AssetUpdatedAction, StringComparison.Ordinal))
+            .OrderByDescending(entry => entry.OccurredAt)
+            .FirstOrDefault();
+
+        return new AssetHistorySnapshot(
+            CreatedAt: created?.OccurredAt,
+            CreatedBy: created?.Actor,
+            LastUpdatedAt: lastUpdated?.OccurredAt,
+            Entries: entries);
     }
 
     /// <summary>Get a single asset together with its stable numeric id.</summary>
@@ -391,9 +436,28 @@ public sealed class AssetService(
     private static ResourceId RelationshipResource(string id) => new($"atlas:relationship/{id}");
 
     private static readonly ResourceId LandscapeResource = new("atlas:landscape");
+    private const string AssetCreatedAction = "atlas.asset.created";
+    private const string AssetUpdatedAction = "atlas.asset.updated";
+    private const string AssetDeletedAction = "atlas.asset.deleted";
+    private static readonly ImmutableArray<string> AssetAuditActions =
+        [AssetCreatedAction, AssetUpdatedAction, AssetDeletedAction];
 
     // Encode the export scope + format into the audited resource id — metadata, not customer content (E4/E5).
     private static ResourceId ExportResource(string format) => new($"atlas:landscape/export?format={format}&scope=full");
+
+    private static AssetHistoryEntry ToHistoryEntry(AuditEvent auditEvent) => new(
+        OccurredAt: auditEvent.OccurredAt,
+        Actor: string.IsNullOrWhiteSpace(auditEvent.Actor.DisplayName)
+            ? auditEvent.Actor.PrincipalId
+            : auditEvent.Actor.DisplayName,
+        Action: auditEvent.Action,
+        Summary: auditEvent.Action switch
+        {
+            AssetCreatedAction => "Asset created",
+            AssetUpdatedAction => "Asset details updated",
+            AssetDeletedAction => "Asset deleted",
+            _ => auditEvent.Action
+        });
 }
 
 /// <summary>
@@ -403,3 +467,17 @@ public sealed class AssetService(
 /// </summary>
 /// <param name="CanAuthor">Whether the principal may create, edit or delete catalogue entries.</param>
 public sealed record CatalogueCapabilities(bool CanAuthor);
+
+/// <summary>Audit-backed provenance and changelog for one asset.</summary>
+public sealed record AssetHistorySnapshot(
+    DateTimeOffset? CreatedAt,
+    string? CreatedBy,
+    DateTimeOffset? LastUpdatedAt,
+    ImmutableArray<AssetHistoryEntry> Entries);
+
+/// <summary>One user-facing changelog row derived from an audit event.</summary>
+public sealed record AssetHistoryEntry(
+    DateTimeOffset OccurredAt,
+    string Actor,
+    string Action,
+    string Summary);

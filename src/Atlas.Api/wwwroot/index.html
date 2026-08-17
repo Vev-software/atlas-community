@@ -153,7 +153,18 @@
     aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0 0 10px; }
     .detail .dname { font-size: 16px; font-weight: 650; margin: 0 0 2px; }
     .detail .dkind { color: var(--muted); font-size: 12.5px; text-transform: capitalize; margin-bottom: 14px; }
+    .detail .dmeta { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; }
     .detail-actions { display: flex; gap: 8px; margin: 0 0 16px; }
+    .link-btn {
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--accent);
+      background: none;
+      border: none;
+      padding: 0;
+    }
+    .link-btn:hover { text-decoration: underline; }
     .btn-sm {
       font: inherit; font-size: 12px; cursor: pointer;
       border: 1px solid var(--line); background: #fff; color: var(--ink);
@@ -184,6 +195,17 @@
     }
     .rel-list .rel-del:hover { color: var(--danger); background: var(--danger-soft); }
     .placeholder { color: var(--muted); font-size: 13px; }
+    .history-list { list-style: none; margin: 0; padding: 0; }
+    .history-item { padding: 10px 0; border-top: 1px solid var(--line); }
+    .history-item:first-child { border-top: none; padding-top: 0; }
+    .history-item strong { display: block; font-size: 12.5px; margin-bottom: 2px; }
+    .history-item .meta { color: var(--muted); font-size: 12px; }
+    .future-slot {
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      background: #fbfbfc;
+    }
     .pack-box {
       font-size: 12.5px;
       background: #f8fafc;
@@ -627,6 +649,9 @@
     let setupGuide = null;      // Grounded onboarding guide for the current tenant.
     let aiAllowances = [];      // Visible AI-hook allowance state for the current tenant.
     let contextPackAssetIds = new Set();
+    let historyOpenId = null;   // Which asset's changelog section is open in the detail panel.
+    const assetHistoryCache = new Map();
+    const assetHistoryPending = new Map();
     let pendingConfirm = null;
 
     const el = (id) => document.getElementById(id);
@@ -937,6 +962,111 @@
       }
     }
 
+    async function ensureAssetHistory(id) {
+      if (!id || assetHistoryCache.has(id) || assetHistoryPending.has(id)) return;
+      const pending = fetch(api(`/v1/assets/${encodeURIComponent(id)}/history`), { headers: { "Accept": "application/json" } })
+        .then(async res => {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return await res.json();
+        })
+        .then(history => {
+          assetHistoryCache.set(id, history);
+          return history;
+        })
+        .finally(() => {
+          assetHistoryPending.delete(id);
+        });
+      assetHistoryPending.set(id, pending);
+
+      try {
+        await pending;
+        if (selectedId === id) showDetail(id);
+      } catch {
+        if (selectedId === id) showDetail(id);
+      }
+    }
+
+    function toggleHistory(id) {
+      historyOpenId = historyOpenId === id ? null : id;
+      showDetail(id);
+    }
+
+    function formatStamp(value) {
+      if (!value) return "—";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime())
+        ? "—"
+        : date.toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    }
+
+    function renderHistorySection(asset, history) {
+      const section = document.createElement("section");
+      section.className = "section";
+      section.innerHTML = "<h3>History</h3>";
+
+      if (historyOpenId !== asset.id) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "link-btn";
+        btn.textContent = "Open changelog";
+        btn.addEventListener("click", () => toggleHistory(asset.id));
+        section.appendChild(btn);
+        return section;
+      }
+
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "link-btn";
+      close.textContent = "Hide changelog";
+      close.addEventListener("click", () => toggleHistory(asset.id));
+      section.appendChild(close);
+
+      if (assetHistoryPending.has(asset.id) && !history) {
+        const p = document.createElement("p");
+        p.className = "placeholder";
+        p.textContent = "Loading changelog…";
+        section.appendChild(p);
+        return section;
+      }
+
+      if (!history || !Array.isArray(history.entries) || history.entries.length === 0) {
+        const p = document.createElement("p");
+        p.className = "placeholder";
+        p.textContent = "No audit events have been recorded for this asset yet.";
+        section.appendChild(p);
+        return section;
+      }
+
+      const list = document.createElement("ul");
+      list.className = "history-list";
+      for (const entry of history.entries) {
+        const item = document.createElement("li");
+        item.className = "history-item";
+
+        const title = document.createElement("strong");
+        title.textContent = entry.summary || entry.action || "Change recorded";
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = `${entry.actor || "unknown"} · ${formatStamp(entry.occurredAt)}`;
+
+        item.append(title, meta);
+        list.appendChild(item);
+      }
+      section.appendChild(list);
+      return section;
+    }
+
+    function renderPlannedVersionsSection() {
+      const section = document.createElement("section");
+      section.className = "section";
+      section.innerHTML = "<h3>Planned versions</h3>";
+      const slot = document.createElement("div");
+      slot.className = "future-slot";
+      slot.textContent = "Reserved layout space for planned versions. No future-state items are shown here yet.";
+      section.appendChild(slot);
+      return section;
+    }
+
     function renderSetupCopilot() {
       if (!setupGuide) return;
       selectedId = null;
@@ -1221,8 +1351,12 @@
     function showDetail(id) {
       const a = landscape.assets.find(x => x.id === id);
       if (!a) return;
+      if (!assetHistoryCache.has(id) && !assetHistoryPending.has(id)) {
+        void ensureAssetHistory(id);
+      }
       const rels = landscape.relationships.filter(r => r.fromId === id || r.toId === id);
       const d = a.application || a.server || a.infrastructure || a.dataArea || a.dataset || a.column || null;
+      const history = assetHistoryCache.get(id);
       const detail = el("detail");
       detail.innerHTML = "";
 
@@ -1238,6 +1372,19 @@
       dkind.className = "dkind";
       dkind.textContent = `${a.kind} · ${a.lifecycle || "—"}`;
       wrap.appendChild(dkind);
+
+      const meta = document.createElement("p");
+      meta.className = "dmeta";
+      const createdStamp = history && history.createdAt
+        ? `Created ${formatStamp(history.createdAt)} · by ${history.createdBy || "unknown"}`
+        : assetHistoryPending.has(id)
+          ? "Loading created-by and history…"
+          : "Created provenance not recorded yet.";
+      const updatedStamp = history && history.lastUpdatedAt
+        ? `Last updated ${formatStamp(history.lastUpdatedAt)}`
+        : "Last updated —";
+      meta.textContent = `${createdStamp} · ${updatedStamp}`;
+      wrap.appendChild(meta);
 
       const actions = document.createElement("div");
       actions.className = "detail-actions";
@@ -1333,6 +1480,9 @@
         p.textContent = "No manual relationships.";
         wrap.appendChild(p);
       }
+
+      wrap.appendChild(renderHistorySection(a, history));
+      wrap.appendChild(renderPlannedVersionsSection());
 
       detail.appendChild(wrap);
       renderHierarchy(a, detail);

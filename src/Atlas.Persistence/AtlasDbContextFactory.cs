@@ -21,5 +21,7 @@ public sealed class AtlasDbContextFactory : IDesignTimeDbContextFactory<AtlasDbC
         public TenantContext Tenant => new("design-time");
 
         public PrincipalContext Principal => new("design-time", "Design time", ["AtlasArchitect"]);
+
+        public string CorrelationId => "design-time";
     }
 }
