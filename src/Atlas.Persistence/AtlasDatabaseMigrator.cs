@@ -19,9 +19,68 @@ public static class AtlasDatabaseMigrator
         if (db.Database.IsSqlite())
         {
             await UpgradeLegacySqliteDatabaseIfNeededAsync(db, ct);
+
+            // Check if we have a corrupted database (migration history but missing tables)
+            var needsFreshStart = await NeedsFreshDatabaseAsync(db, ct);
+            if (needsFreshStart)
+            {
+                // Don't try to delete - just recreate using EnsureCreated
+                await db.Database.EnsureCreatedAsync(ct);
+                await RecordMigrationHistoryAsync(db, ct);
+                return;
+            }
         }
 
         await db.Database.MigrateAsync(ct);
+    }
+
+    private static async Task<bool> NeedsFreshDatabaseAsync(AtlasDbContext db, CancellationToken ct)
+    {
+        try
+        {
+            var connection = db.Database.GetDbConnection();
+            if (connection.State != System.Data.ConnectionState.Open)
+            {
+                await connection.OpenAsync(ct);
+            }
+
+            var aiModuleTableExists = await ScalarAsync<long>(
+                connection,
+                "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'ai_module_settings';",
+                ct) > 0;
+
+            var historyExists = await ScalarAsync<long>(
+                connection,
+                "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = '__EFMigrationsHistory';",
+                ct) > 0;
+
+            return historyExists && !aiModuleTableExists;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static async Task RecordMigrationHistoryAsync(AtlasDbContext db, CancellationToken ct)
+    {
+        var connection = db.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+        {
+            await connection.OpenAsync(ct);
+        }
+
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" ("MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY, "ProductVersion" TEXT NOT NULL);""",
+            ct);
+        
+        var migrations = new[] { "20260817075545_AddAssetNumericId", "20260817082107_AddAiModuleSettings", CurrentMigrationId };
+        foreach (var migration in migrations)
+        {
+            await db.Database.ExecuteSqlAsync(
+                $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ({migration}, {EfProductVersion});""",
+                ct);
+        }
     }
 
     private static async Task UpgradeLegacySqliteDatabaseIfNeededAsync(AtlasDbContext db, CancellationToken ct)
@@ -97,16 +156,14 @@ public static class AtlasDatabaseMigrator
             await db.Database.ExecuteSqlRawAsync(
                 """CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" ("MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY, "ProductVersion" TEXT NOT NULL);""",
                 ct);
-            // Insert all migration history entries so EF knows every migration has been applied.
-            await db.Database.ExecuteSqlRawAsync(
-                $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('20260817075545_AddAssetNumericId', '{EfProductVersion}');""",
-                ct);
-            await db.Database.ExecuteSqlRawAsync(
-                $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('20260817082107_AddAiModuleSettings', '{EfProductVersion}');""",
-                ct);
-            await db.Database.ExecuteSqlRawAsync(
-                $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('{CurrentMigrationId}', '{EfProductVersion}');""",
-                ct);
+            
+            var migrations = new[] { "20260817075545_AddAssetNumericId", "20260817082107_AddAiModuleSettings", CurrentMigrationId };
+            foreach (var migration in migrations)
+            {
+                await db.Database.ExecuteSqlAsync(
+                    $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ({migration}, {EfProductVersion});""",
+                    ct);
+            }
 
             await db.Database.CommitTransactionAsync(ct);
         }

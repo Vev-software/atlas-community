@@ -27,7 +27,22 @@ public sealed class AtlasDbContext(DbContextOptions<AtlasDbContext> options, IRe
     /// any request scope (schema creation), and that path runs no tenant-scoped query, so it never
     /// touches this member.
     /// </summary>
-    private string CurrentTenantId => requestContext.Tenant.TenantId;
+    private string CurrentTenantId
+    {
+        get
+        {
+            try
+            {
+                return requestContext.Tenant.TenantId;
+            }
+            catch (InvalidOperationException)
+            {
+                // No request context bound (e.g., during migrations or startup setup).
+                // Return a sentinel that will never match any real tenant, ensuring safe isolation.
+                return "___no_request_context___";
+            }
+        }
+    }
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
