@@ -98,6 +98,16 @@
       text-decoration: none;
     }
     header .user a:hover { text-decoration: underline; }
+    header .docs-link {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--accent);
+      text-decoration: none;
+      padding: 3px 10px;
+      border: 1px solid #d9defa;
+      border-radius: 999px;
+    }
+    header .docs-link:hover { background: #eef2ff; }
     .toolbar {
       display: flex;
       align-items: center;
@@ -611,8 +621,9 @@
 </head>
 <body>
   <header>
-    <h1>Atlas · Community</h1>
+    <h1 id="brandName">Atlas · Community</h1>
     <span class="sub">Landscape</span>
+    <a class="docs-link" id="docsLink" href="https://github.com/Vev-software/docs/blob/main/docs" target="_blank" rel="noreferrer" title="Documentation">Docs</a>
     <span class="badge" id="capBadge">Read-only</span>
     <div class="user" id="userInfo" hidden>
       <span class="avatar" id="userAvatar"></span>
@@ -855,8 +866,17 @@
     // Runtime deployment config (atlas#19): the API base (path base included) comes from
     // app-config.js, so the UI is not hard-coded to "/api" and works under a reverse-proxy
     // sub-path. The fallback keeps the one-host default working if the config script is absent.
-    const ATLAS = window.__ATLAS__ || { apiBase: "/api", loginPath: "/login" };
+    const ATLAS = window.__ATLAS__ || { apiBase: "/api", loginPath: "/login", brandName: "Atlas · Community", docsBaseUrl: "https://github.com/Vev-software/docs/blob/main/docs" };
     const api = (path) => ATLAS.apiBase + path;
+
+    // Apply runtime branding (issue #81)
+    if (ATLAS.brandName) {
+      el("brandName").textContent = ATLAS.brandName;
+      document.title = ATLAS.brandName + " — Landscape";
+    }
+    if (ATLAS.docsBaseUrl) {
+      el("docsLink").href = ATLAS.docsBaseUrl;
+    }
 
     // --- Auth helpers (issue #78): inject bearer token, redirect to login on 401 ---
     function getToken() { return sessionStorage.getItem("atlas_token"); }
