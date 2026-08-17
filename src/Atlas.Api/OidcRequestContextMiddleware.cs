@@ -57,7 +57,7 @@ public sealed class OidcRequestContextMiddleware(RequestDelegate next, OidcIdent
         var tenant = new TenantContext(tenantId);
         var principal = new PrincipalContext(principalId, displayName, roles);
 
-        using (AmbientRequestContextAccessor.BeginScope(tenant, principal))
+        using (AmbientRequestContextAccessor.BeginScope(tenant, principal, CorrelationId.For(http)))
         {
             await next(http);
         }

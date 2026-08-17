@@ -22,7 +22,7 @@ public sealed class RequestContextMiddleware(RequestDelegate next)
         var tenant = new TenantContext(tenantId);
         var principal = new PrincipalContext(principalId, principalId, roles);
 
-        using (AmbientRequestContextAccessor.BeginScope(tenant, principal))
+        using (AmbientRequestContextAccessor.BeginScope(tenant, principal, CorrelationId.For(http)))
         {
             await next(http);
         }

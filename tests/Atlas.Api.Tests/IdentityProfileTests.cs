@@ -33,7 +33,7 @@ public sealed class IdentityProfileTests
 
         // The write is attributed to the header-asserted tenant — proof the shim is the identity source in dev.
         var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
-        Assert.Contains(audit.Events, e => e.TenantId == "t-dev-identity");
+        Assert.Contains(audit.Events, e => e.Tenant.TenantId == "t-dev-identity");
     }
 
     [Fact]
@@ -71,8 +71,8 @@ public sealed class IdentityProfileTests
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
         var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
-        Assert.Contains(audit.Events, e => e.TenantId == "community");
-        Assert.DoesNotContain(audit.Events, e => e.TenantId == "attacker-tenant");
+        Assert.Contains(audit.Events, e => e.Tenant.TenantId == "community");
+        Assert.DoesNotContain(audit.Events, e => e.Tenant.TenantId == "attacker-tenant");
     }
 
     [Fact]

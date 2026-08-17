@@ -34,7 +34,7 @@ public sealed class OidcIdentityTests
 
         // The write is attributed to the token's tenant — proof the verified token is the identity source.
         var audit = host.Services.GetRequiredService<InMemoryAuditSink>();
-        Assert.Contains(audit.Events, e => e.TenantId == "t-oidc");
+        Assert.Contains(audit.Events, e => e.Tenant.TenantId == "t-oidc");
     }
 
     [Fact]
@@ -95,10 +95,10 @@ public sealed class OidcIdentityTests
         var audit = host.Services.GetRequiredService<InMemoryAuditSink>();
         Assert.Contains(audit.Events, e =>
             e.Action == "atlas.asset.created" &&
-            e.TenantId == "t-token" &&
-            e.ActorPrincipalId == "u-oidc");
-        Assert.DoesNotContain(audit.Events, e => e.TenantId == "attacker-tenant");
-        Assert.DoesNotContain(audit.Events, e => e.ActorPrincipalId == "attacker-user");
+            e.Tenant.TenantId == "t-token" &&
+            e.Actor.PrincipalId == "u-oidc");
+        Assert.DoesNotContain(audit.Events, e => e.Tenant.TenantId == "attacker-tenant");
+        Assert.DoesNotContain(audit.Events, e => e.Actor.PrincipalId == "attacker-user");
     }
 
     [Fact]

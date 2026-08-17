@@ -38,7 +38,7 @@ public static class AtlasCommunityRegistration
         services.AddSingleton<IAiAssistService>(CommunityAiAssistService.Unconfigured);
 
         services.AddSingleton<InMemoryAuditSink>();
-        services.AddSingleton<IAuditSink>(sp => sp.GetRequiredService<InMemoryAuditSink>());
+        services.AddSingleton<IAtlasAuditSink>(sp => sp.GetRequiredService<InMemoryAuditSink>());
         services.AddSingleton<IAuditQueryService>(sp => sp.GetRequiredService<InMemoryAuditSink>());
 
         services.AddSingleton(TimeProvider.System);

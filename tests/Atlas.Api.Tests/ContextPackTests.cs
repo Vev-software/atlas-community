@@ -54,8 +54,8 @@ public sealed class ContextPackTests(AtlasApiFactory factory) : IClassFixture<At
         var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
         Assert.Contains(audit.Events, e =>
             e.Action == "atlas.context.export" &&
-            e.TenantId == "t-pack-path" &&
-            e.Resource.Contains("mode=deterministic", StringComparison.Ordinal));
+            e.Tenant.TenantId == "t-pack-path" &&
+            e.Resource.Value.Contains("mode=deterministic", StringComparison.Ordinal));
     }
 
     [Fact]

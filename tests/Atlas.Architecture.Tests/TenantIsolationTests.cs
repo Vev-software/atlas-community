@@ -209,5 +209,6 @@ public sealed class TenantIsolationTests
         public string TenantId { get; set; } = "unset";
         public TenantContext Tenant => new(TenantId);
         public PrincipalContext Principal => new("test", "Test", ["AtlasArchitect"]);
+        public string CorrelationId => "test-correlation";
     }
 }

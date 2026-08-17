@@ -165,8 +165,8 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
         var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
         Assert.Contains(audit.Events, e =>
             e.Action == "atlas.relationship.deleted" &&
-            e.TenantId == "t-cascade" &&
-            e.Resource == "atlas:relationship/r1");
+            e.Tenant.TenantId == "t-cascade" &&
+            e.Resource.Value == "atlas:relationship/r1");
     }
 
     [Fact]
@@ -298,8 +298,8 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
 
         Assert.Contains(audit.Events, e =>
             e.Action == "atlas.asset.created" &&
-            e.TenantId == "t-audit" &&
-            e.Resource == "atlas:asset/app-audit");
+            e.Tenant.TenantId == "t-audit" &&
+            e.Resource.Value == "atlas:asset/app-audit");
     }
 
     // --- Portability surface (issue #12): customer-owned export + import ---

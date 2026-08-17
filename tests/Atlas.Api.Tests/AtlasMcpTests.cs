@@ -90,9 +90,9 @@ public sealed class AtlasMcpTests(AtlasApiFactory factory) : IClassFixture<Atlas
         Assert.Equal("app-a", asset.GetProperty("id").GetString());
 
         var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
-        Assert.Contains(audit.Events, e => e.TenantId == "mcp-tenant-a" && e.Action == "atlas.mcp.assets.list");
-        Assert.Contains(audit.Events, e => e.TenantId == "mcp-tenant-a" && e.Action == "atlas.mcp.asset.get");
-        Assert.DoesNotContain(audit.Events, e => e.TenantId == "mcp-tenant-a" && e.Resource.Contains("app-b", StringComparison.Ordinal));
+        Assert.Contains(audit.Events, e => e.Tenant.TenantId == "mcp-tenant-a" && e.Action == "atlas.mcp.assets.list");
+        Assert.Contains(audit.Events, e => e.Tenant.TenantId == "mcp-tenant-a" && e.Action == "atlas.mcp.asset.get");
+        Assert.DoesNotContain(audit.Events, e => e.Tenant.TenantId == "mcp-tenant-a" && e.Resource.Value.Contains("app-b", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -133,8 +133,8 @@ public sealed class AtlasMcpTests(AtlasApiFactory factory) : IClassFixture<Atlas
         Assert.Contains("App", pack.GetProperty("markdown").GetString()!);
 
         var audit = factory.Services.GetRequiredService<InMemoryAuditSink>();
-        Assert.Contains(audit.Events, e => e.TenantId == "mcp-tenant-pack" && e.Action == "atlas.mcp.relationships.traverse");
-        Assert.Contains(audit.Events, e => e.TenantId == "mcp-tenant-pack" && e.Action == "atlas.mcp.context-pack.exported");
+        Assert.Contains(audit.Events, e => e.Tenant.TenantId == "mcp-tenant-pack" && e.Action == "atlas.mcp.relationships.traverse");
+        Assert.Contains(audit.Events, e => e.Tenant.TenantId == "mcp-tenant-pack" && e.Action == "atlas.mcp.context-pack.exported");
     }
 
     private HttpClient AuthorClient(string tenant) => Client(tenant, "arch", "AtlasArchitect");
