@@ -18,7 +18,7 @@ public sealed class SingleTenantContextMiddleware(RequestDelegate next, TenantCo
 {
     public async Task InvokeAsync(HttpContext http)
     {
-        using (AmbientRequestContextAccessor.BeginScope(tenant, principal))
+        using (AmbientRequestContextAccessor.BeginScope(tenant, principal, CorrelationId.For(http)))
         {
             await next(http);
         }

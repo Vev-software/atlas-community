@@ -14,7 +14,7 @@ namespace Vev.Atlas.Domain;
 public sealed class AssetService(
     IRequestContextAccessor context,
     IAuthorizer authorizer,
-    IAuditSink audit,
+    IAtlasAuditSink audit,
     IAssetRepository repository,
     TimeProvider clock)
 {
@@ -366,18 +366,9 @@ public sealed class AssetService(
         }
     }
 
-    private ValueTask EmitAsync(string action, ResourceId resource, CancellationToken ct)
-    {
+    private ValueTask EmitAsync(string action, ResourceId resource, CancellationToken ct) =>
         // No secrets, no customer content — only the actor, action and the resource identifier (E4/E5).
-        var evt = new AuditEvent(
-            TenantId: context.Tenant.TenantId,
-            ActorPrincipalId: context.Principal.PrincipalId,
-            Action: action,
-            Resource: resource.Value,
-            OccurredAt: clock.GetUtcNow(),
-            CorrelationId: Guid.NewGuid().ToString("N"));
-        return audit.WriteAsync(evt, ct);
-    }
+        audit.WriteAsync(AtlasAudit.Event(context, clock, action, resource.Value), ct);
 
     private static ResourceId AssetResource(string id) => new($"atlas:asset/{id}");
 

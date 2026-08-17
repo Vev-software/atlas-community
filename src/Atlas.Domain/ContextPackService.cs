@@ -13,7 +13,7 @@ namespace Vev.Atlas.Domain;
 public sealed class ContextPackService(
     IRequestContextAccessor context,
     IAuthorizer authorizer,
-    IAuditSink audit,
+    IAtlasAuditSink audit,
     IAssetRepository repository,
     IAiAssistService aiAssist,
     TimeProvider clock)
@@ -61,13 +61,8 @@ public sealed class ContextPackService(
             }
         }
 
-        await audit.WriteAsync(new AuditEvent(
-            TenantId: context.Tenant.TenantId,
-            ActorPrincipalId: context.Principal.PrincipalId,
-            Action: action,
-            Resource: ContextPackAuditResource(mode, pack.Selection, pack.Assets.Count, pack.Relationships.Count).Value,
-            OccurredAt: clock.GetUtcNow(),
-            CorrelationId: Guid.NewGuid().ToString("N")), ct);
+        await audit.WriteAsync(
+            AtlasAudit.Event(context, clock, action, ContextPackAuditResource(mode, pack.Selection, pack.Assets.Count, pack.Relationships.Count).Value), ct);
 
         return pack with
         {

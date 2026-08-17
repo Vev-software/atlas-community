@@ -8,4 +8,10 @@ public interface IRequestContextAccessor
 
     /// <summary>The principal bound to the current request.</summary>
     PrincipalContext Principal { get; }
+
+    /// <summary>
+    /// Correlation id shared by every event emitted while handling the current request, so product
+    /// and substrate audit events stitch into one request story (fabric#6, 05 §2 Events).
+    /// </summary>
+    string CorrelationId { get; }
 }
