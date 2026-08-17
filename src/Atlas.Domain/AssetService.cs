@@ -39,6 +39,13 @@ public sealed class AssetService(
         return repository.ListAssetsAsync(context.Tenant, kind, ct);
     }
 
+    /// <summary>List assets in the current tenant, including their stable numeric ids.</summary>
+    public Task<ImmutableArray<CataloguedAsset>> ListCataloguedAssetsAsync(AssetKind? kind, CancellationToken ct = default)
+    {
+        AuthorizeRead(AssetResource("*"));
+        return repository.ListCataloguedAssetsAsync(context.Tenant, kind, ct);
+    }
+
     /// <summary>Get a single asset, or null if it does not exist in the current tenant.</summary>
     public Task<Asset?> GetAssetAsync(string id, CancellationToken ct = default)
     {
@@ -46,8 +53,15 @@ public sealed class AssetService(
         return repository.GetAssetAsync(context.Tenant, id, ct);
     }
 
+    /// <summary>Get a single asset together with its stable numeric id.</summary>
+    public Task<CataloguedAsset?> GetCataloguedAssetAsync(string id, CancellationToken ct = default)
+    {
+        AuthorizeRead(AssetResource(id));
+        return repository.GetCataloguedAssetAsync(context.Tenant, id, ct);
+    }
+
     /// <summary>Create a new asset. Requires write authorization; emits an audit event.</summary>
-    public async Task<Asset> CreateAssetAsync(Asset asset, CancellationToken ct = default)
+    public async Task<CataloguedAsset> CreateAssetAsync(Asset asset, CancellationToken ct = default)
     {
         var resource = AssetResource(asset.Id);
         AuthorizeWrite(resource);
@@ -57,9 +71,10 @@ public sealed class AssetService(
             throw new CatalogueConflictException($"Asset '{asset.Id}' already exists.");
         }
 
-        await repository.AddAssetAsync(context.Tenant, asset, ct);
+        var numericId = await repository.AllocateAssetNumericIdAsync(context.Tenant, ct);
+        await repository.AddAssetAsync(context.Tenant, asset, numericId, ct);
         await EmitAsync("atlas.asset.created", resource, ct);
-        return asset;
+        return new CataloguedAsset(asset, numericId);
     }
 
     /// <summary>Replace an existing asset. Requires write authorization; emits an audit event.</summary>
@@ -261,7 +276,8 @@ public sealed class AssetService(
             }
             else
             {
-                await repository.AddAssetAsync(tenant, asset, ct);
+                var numericId = await repository.AllocateAssetNumericIdAsync(tenant, ct);
+                await repository.AddAssetAsync(tenant, asset, numericId, ct);
                 created++;
             }
         }

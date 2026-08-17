@@ -1216,6 +1216,7 @@
         kv.append(dt, dd);
       };
       addKv("ID", a.id);
+      if (a.numericId != null) addKv("Numeric ID", String(a.numericId));
       if (a.description) addKv("Notes", a.description);
       if (d) for (const [k, v] of Object.entries(d)) {
         if (v == null || v === "") continue;

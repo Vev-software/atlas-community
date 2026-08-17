@@ -73,7 +73,7 @@ if (urls.PathBase.Length > 0)
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AtlasDbContext>();
-    await db.Database.EnsureCreatedAsync();
+    await AtlasDatabaseMigrator.MigrateAsync(db);
 }
 
 app.UseExceptionHandler();
