@@ -604,6 +604,63 @@
       background: #fff;
     }
 
+    /* --- Table view --- */
+    .asset-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .asset-table th,
+    .asset-table td {
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .asset-table th {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      color: var(--muted);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      background: var(--panel);
+      cursor: pointer;
+      user-select: none;
+    }
+    .asset-table th:hover { color: var(--accent); }
+    .asset-table th .sort-arrow { margin-left: 4px; font-size: 10px; }
+    .asset-table tbody tr { cursor: pointer; }
+    .asset-table tbody tr:hover { background: #f8fafc; }
+    .asset-table tbody tr.selected { background: #eef2ff; }
+    .asset-table .kind-dot {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .view-toggle {
+      display: flex;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-left: auto;
+    }
+    .view-toggle button {
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      border: none;
+      background: #fff;
+      color: var(--muted);
+      padding: 4px 10px;
+      border-right: 1px solid var(--line);
+    }
+    .view-toggle button:last-child { border-right: none; }
+    .view-toggle button[aria-pressed="true"] { background: #eef2ff; color: var(--accent); }
+    .table-container { overflow: auto; max-height: calc(100vh - 160px); }
     @media (max-width: 820px) { main { grid-template-columns: 1fr; } aside { border-left: none; border-top: 1px solid var(--line); } }
   </style>
   <!-- Runtime deployment config (atlas#19): sets window.__ATLAS__ (API base incl. path base). -->
@@ -636,6 +693,10 @@
       <span class="hint">Column-level search</span>
     </label>
     <span class="count" id="count"></span>
+    <div class="view-toggle" id="viewToggle">
+      <button aria-pressed="true" data-view="graph" title="Graph view">Graph</button>
+      <button aria-pressed="false" data-view="table" title="Table view">Table</button>
+    </div>
     <button class="primary" id="newAsset" hidden title="Add a new asset to the catalogue"><span class="plus">+</span>New asset</button>
     <button class="action" id="contextPack" title="Export a grounded brief for the selected slice" disabled>Context pack</button>
     <button class="action ai-entry" id="aiChatButton" title="Ask grounded questions about this landscape">✦ Atlas AI</button>
@@ -883,6 +944,8 @@
     let filter = "all";
     let selectedId = null;
     let searchQuery = "";
+    let currentView = "graph";  // "graph" or "table" (issue #87)
+    let tableSort = { key: "name", dir: "asc" };
     let canAuthor = false;      // Set from GET /api/v1/capabilities — never assumed.
     let editingId = null;       // Non-null while the asset form is editing an existing asset.
     let setupGuide = null;      // Grounded onboarding guide for the current tenant.
@@ -1062,7 +1125,11 @@
         el("detail").innerHTML = '<p class="placeholder">Select an asset in the map to inspect it.</p>';
         return;
       }
-      drawGraph(assets);
+      if (currentView === "table") {
+        drawTable(assets);
+      } else {
+        drawGraph(assets);
+      }
     }
 
     function renderDefaultDetail() {
@@ -1172,6 +1239,88 @@
       canvas.innerHTML = "";
       canvas.appendChild(svg);
       if (selectedId && visibleIds.has(selectedId)) applySelection(); else clearSelection();
+    }
+
+    // Table view (issue #87): sortable, selectable list of assets
+    function drawTable(assets) {
+      const sorted = sortAssets(assets);
+      const container = document.createElement("div");
+      container.className = "table-container";
+
+      const table = document.createElement("table");
+      table.className = "asset-table";
+
+      const thead = document.createElement("thead");
+      const headerRow = document.createElement("tr");
+      const cols = [
+        { key: "name", label: "Name" },
+        { key: "kind", label: "Kind" },
+        { key: "lifecycle", label: "Lifecycle" },
+        { key: "id", label: "ID" },
+      ];
+      for (const col of cols) {
+        const th = document.createElement("th");
+        th.textContent = col.label;
+        if (tableSort.key === col.key) {
+          th.innerHTML += `<span class="sort-arrow">${tableSort.dir === "asc" ? "▲" : "▼"}</span>`;
+        }
+        const ck = col.key;
+        th.addEventListener("click", () => {
+          tableSort = { key: ck, dir: tableSort.key === ck && tableSort.dir === "asc" ? "desc" : "asc" };
+          render();
+        });
+        headerRow.appendChild(th);
+      }
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement("tbody");
+      for (const a of sorted) {
+        const tr = document.createElement("tr");
+        if (a.id === selectedId) tr.classList.add("selected");
+
+        const tdName = document.createElement("td");
+        const dot = document.createElement("span");
+        dot.className = "kind-dot";
+        dot.style.background = KIND_COLOR[a.kind] || "#888";
+        tdName.append(dot, document.createTextNode(a.name || a.id));
+        tr.appendChild(tdName);
+
+        const tdKind = document.createElement("td");
+        tdKind.textContent = a.kind;
+        tdKind.style.textTransform = "capitalize";
+        tr.appendChild(tdKind);
+
+        const tdLifecycle = document.createElement("td");
+        tdLifecycle.textContent = a.lifecycle || "—";
+        tr.appendChild(tdLifecycle);
+
+        const tdId = document.createElement("td");
+        const code = document.createElement("code");
+        code.textContent = a.id;
+        tdId.appendChild(code);
+        tr.appendChild(tdId);
+
+        tr.addEventListener("click", () => select(a.id));
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      container.appendChild(table);
+
+      canvas.innerHTML = "";
+      canvas.appendChild(container);
+    }
+
+    function sortAssets(assets) {
+      return [...assets].sort((a, b) => {
+        let va, vb;
+        if (tableSort.key === "name") { va = a.name || a.id; vb = b.name || b.id; }
+        else if (tableSort.key === "kind") { va = a.kind; vb = b.kind; }
+        else if (tableSort.key === "lifecycle") { va = a.lifecycle || ""; vb = b.lifecycle || ""; }
+        else { va = a.id; vb = b.id; }
+        const cmp = va.localeCompare(vb);
+        return tableSort.dir === "asc" ? cmp : -cmp;
+      });
     }
 
     function select(id) {
@@ -2488,6 +2637,13 @@
     });
     el("refresh").addEventListener("click", load);
     el("newAsset").addEventListener("click", () => openAssetForm());
+    el("viewToggle").querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        currentView = btn.dataset.view;
+        el("viewToggle").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === btn)));
+        render();
+      });
+    });
     el("contextPack").addEventListener("click", () => renderContextPack());
     el("aiChatButton").addEventListener("click", () => openAiPanel("chat"));
     el("setupCopilot").addEventListener("click", renderSetupCopilot);
