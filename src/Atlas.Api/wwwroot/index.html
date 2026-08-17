@@ -33,6 +33,7 @@
       --kind-data-area: #b45309;
       --kind-dataset: #0f766e;
       --kind-column: #7c3aed;
+      --focus-ring: 0 0 0 3px rgba(79, 70, 229, .22);
       --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .10);
       --shadow-lg: 0 10px 25px rgba(16, 24, 40, .12), 0 4px 10px rgba(16, 24, 40, .08);
     }
@@ -126,6 +127,8 @@
       border-radius: 8px; padding: 6px 13px; display: inline-flex; align-items: center; gap: 6px;
     }
     button.primary:hover { background: #4338ca; border-color: #4338ca; }
+    button.primary.danger-primary { border-color: var(--danger); background: var(--danger); }
+    button.primary.danger-primary:hover { border-color: #b91c1c; background: #b91c1c; }
     button.primary .plus { font-size: 15px; line-height: 1; margin-top: -1px; }
     main { flex: 1; display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
     #canvas { position: relative; overflow: auto; background:
@@ -314,6 +317,12 @@
       border-top: 1px solid var(--line); background: #fbfbfc;
     }
     .modal footer .spacer { flex: 1; }
+    .modal button.secondary {
+      font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+      border: 1px solid #cdd5df; background: transparent; color: #344054;
+      border-radius: 8px; padding: 6px 13px; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .modal button.secondary:hover { border-color: #98a2b3; background: #f8fafc; color: #101828; }
     .field { margin-bottom: 14px; }
     .field:last-child { margin-bottom: 0; }
     .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 600; }
@@ -349,6 +358,22 @@
     }
     .form-error[hidden] { display: none; }
     button.primary[disabled] { opacity: .6; cursor: default; }
+    button.primary:focus-visible,
+    button.secondary:focus-visible,
+    .toolbar button.action:focus-visible,
+    .btn-sm:focus-visible,
+    .chip:focus-visible,
+    .crumb:focus-visible,
+    .mini:focus-visible,
+    .search-card:focus-visible,
+    .add-tag:focus-visible,
+    .rel-head .add-rel:focus-visible,
+    .rel-list .rel-del:focus-visible,
+    .modal header .close:focus-visible,
+    .tag-row button.remove:focus-visible {
+      outline: none;
+      box-shadow: var(--focus-ring);
+    }
 
     /* --- Toast --- */
     #toast {
@@ -387,7 +412,7 @@
     <span class="count" id="count"></span>
     <button class="primary" id="newAsset" hidden title="Add a new asset to the catalogue"><span class="plus">+</span>New asset</button>
     <button class="action" id="contextPack" title="Export a grounded brief for the selected slice" disabled>Context pack</button>
-    <button class="action" id="setupCopilot" title="Grounded suggestions for where to start">Setup copilot</button>
+    <button class="action" id="setupCopilot" title="Grounded suggestions for where to start">Getting started</button>
     <button class="action" id="refresh" title="Reload the landscape">Refresh</button>
     <button class="action" id="export" title="Download the landscape as a portable JSON document">Export JSON</button>
   </div>
@@ -503,7 +528,7 @@
       </div>
       <footer>
         <span class="spacer"></span>
-        <button class="action" type="button" data-close-asset>Cancel</button>
+        <button class="secondary" type="button" data-close-asset>Cancel</button>
         <button class="primary" type="submit" form="assetForm" id="assetSubmit">Create asset</button>
       </footer>
     </div>
@@ -546,8 +571,25 @@
       </div>
       <footer>
         <span class="spacer"></span>
-        <button class="action" type="button" data-close-rel>Cancel</button>
+        <button class="secondary" type="button" data-close-rel>Cancel</button>
         <button class="primary" type="submit" form="relForm" id="relSubmit">Create link</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="backdrop" id="confirmBackdrop" hidden>
+    <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage" style="max-width: 420px;">
+      <header>
+        <h2 id="confirmTitle">Confirm action</h2>
+        <button class="close" id="confirmClose" type="button" aria-label="Close">×</button>
+      </header>
+      <div class="body">
+        <p id="confirmMessage" style="margin:0;"></p>
+      </div>
+      <footer>
+        <span class="spacer"></span>
+        <button class="secondary" type="button" id="confirmCancel">Cancel</button>
+        <button class="primary danger-primary" type="button" id="confirmAccept">Delete</button>
       </footer>
     </div>
   </div>
@@ -585,6 +627,7 @@
     let setupGuide = null;      // Grounded onboarding guide for the current tenant.
     let aiAllowances = [];      // Visible AI-hook allowance state for the current tenant.
     let contextPackAssetIds = new Set();
+    let pendingConfirm = null;
 
     const el = (id) => document.getElementById(id);
     const canvas = el("canvas");
@@ -732,6 +775,16 @@
         return;
       }
       drawGraph(assets);
+    }
+
+    function renderDefaultDetail() {
+      const detail = el("detail");
+      detail.innerHTML = '<p class="placeholder">Select an asset in the map to inspect it.</p>';
+      if (searchQuery.trim()) {
+        renderSearchResults(detail);
+        return;
+      }
+      if (setupGuide) renderSetupCopilot();
     }
 
     // Deterministic lane layout: one column per asset kind, nodes stacked within the lane. Simple and
@@ -895,7 +948,7 @@
       const wrap = document.createElement("div");
       wrap.className = "detail";
       wrap.innerHTML =
-        `<p class="dname">Setup copilot</p>` +
+        `<p class="dname">Getting started</p>` +
         `<p class="dkind">${escapeHtml(setupGuide.mode === "ai" ? "Grounded AI assist" : "Grounded static onboarding")}</p>`;
 
       const intro = document.createElement("p");
@@ -1586,13 +1639,16 @@
     }
 
     async function deleteAsset(a) {
-      if (!confirm(`Delete "${a.name || a.id}"? This also removes its relationships from the map.`)) return;
+      if (!await confirmDestructiveAction(
+        "Delete asset",
+        `Delete "${a.name || a.id}"? This also removes its relationships from the map.`,
+        "Delete asset")) return;
       try {
         const res = await fetch(api(`/v1/assets/${encodeURIComponent(a.id)}`), { method: "DELETE" });
         if (!res.ok && res.status !== 404) { toast(await apiError(res), true); return; }
         if (selectedId === a.id) selectedId = null;
         await load();
-        el("detail").innerHTML = '<p class="placeholder">Select an asset in the map to inspect it.</p>';
+        renderDefaultDetail();
         toast("Asset deleted.");
       } catch (err) {
         toast("Could not reach the API (" + err.message + ").", true);
@@ -1651,7 +1707,10 @@
     }
 
     async function deleteRelationship(r) {
-      if (!confirm(`Remove the "${REL_LABELS[r.type] || r.type}" link between ${label(r.fromId)} and ${label(r.toId)}?`)) return;
+      if (!await confirmDestructiveAction(
+        "Delete relationship",
+        `Remove the "${REL_LABELS[r.type] || r.type}" link between ${label(r.fromId)} and ${label(r.toId)}?`,
+        "Delete relationship")) return;
       try {
         const res = await fetch(api(`/v1/relationships/${encodeURIComponent(r.id)}`), { method: "DELETE" });
         if (!res.ok && res.status !== 404) { toast(await apiError(res), true); return; }
@@ -1680,6 +1739,26 @@
       }
       if (!detail) detail = "The API rejected the request (HTTP " + res.status + ").";
       return detail;
+    }
+
+    function confirmDestructiveAction(title, message, actionText) {
+      if (pendingConfirm) pendingConfirm(false);
+      el("confirmTitle").textContent = title;
+      el("confirmMessage").textContent = message;
+      el("confirmAccept").textContent = actionText;
+      el("confirmBackdrop").hidden = false;
+      el("confirmCancel").focus();
+      return new Promise(resolve => {
+        pendingConfirm = (result) => {
+          pendingConfirm = null;
+          el("confirmBackdrop").hidden = true;
+          resolve(result);
+        };
+      });
+    }
+
+    function closeConfirm(result) {
+      if (pendingConfirm) pendingConfirm(result);
     }
 
     function showFormError(id, message) {
@@ -1756,8 +1835,10 @@
     document.querySelectorAll(".chip").forEach(chip => {
       chip.addEventListener("click", () => {
         filter = chip.dataset.kind;
+        selectedId = null;
         document.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c === chip)));
         render();
+        renderDefaultDetail();
       });
     });
     el("search").addEventListener("input", e => {
@@ -1799,11 +1880,16 @@
     el("rType").addEventListener("change", populateRelationshipTargets);
     document.querySelectorAll("[data-close-rel]").forEach(b => b.addEventListener("click", closeRelForm));
     el("relBackdrop").addEventListener("click", e => { if (e.target === el("relBackdrop")) closeRelForm(); });
+    el("confirmCancel").addEventListener("click", () => closeConfirm(false));
+    el("confirmAccept").addEventListener("click", () => closeConfirm(true));
+    el("confirmClose").addEventListener("click", () => closeConfirm(false));
+    el("confirmBackdrop").addEventListener("click", e => { if (e.target === el("confirmBackdrop")) closeConfirm(false); });
 
     document.addEventListener("keydown", e => {
       if (e.key === "Escape") {
         if (!el("assetBackdrop").hidden) closeAssetForm();
         if (!el("relBackdrop").hidden) closeRelForm();
+        if (!el("confirmBackdrop").hidden) closeConfirm(false);
       }
     });
     window.addEventListener("resize", () => { if (landscape.assets.length) render(); });
