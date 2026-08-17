@@ -87,6 +87,83 @@ public sealed class TenantIsolationTests
         }
     }
 
+    [Fact]
+    public async Task Legacy_sqlite_database_is_backfilled_with_numeric_ids_before_migrations_continue()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"atlas-legacy-{Guid.NewGuid():N}.db");
+
+        try
+        {
+            await using (var setup = new SqliteConnection($"Data Source={path}"))
+            {
+                await setup.OpenAsync();
+                await ExecuteAsync(setup,
+                    """
+                    CREATE TABLE assets (
+                      TenantId TEXT NOT NULL,
+                      Id TEXT NOT NULL,
+                      Kind TEXT NOT NULL,
+                      Name TEXT NOT NULL,
+                      Lifecycle TEXT NOT NULL,
+                      DocumentJson TEXT NOT NULL,
+                      CONSTRAINT PK_assets PRIMARY KEY (TenantId, Id)
+                    );
+                    CREATE TABLE relationships (
+                      TenantId TEXT NOT NULL,
+                      Id TEXT NOT NULL,
+                      FromId TEXT NOT NULL,
+                      ToId TEXT NOT NULL,
+                      Type TEXT NOT NULL,
+                      Description TEXT NULL,
+                      CONSTRAINT PK_relationships PRIMARY KEY (TenantId, Id)
+                    );
+                    CREATE INDEX IX_assets_TenantId_Kind ON assets (TenantId, Kind);
+                    CREATE INDEX IX_relationships_TenantId_FromId ON relationships (TenantId, FromId);
+                    INSERT INTO assets (TenantId, Id, Kind, Name, Lifecycle, DocumentJson) VALUES
+                      ('tenant-a', 'app-1', 'application', 'App 1', 'active', '{}'),
+                      ('tenant-a', 'app-2', 'application', 'App 2', 'active', '{}'),
+                      ('tenant-b', 'app-3', 'application', 'App 3', 'active', '{}');
+                    """);
+            }
+
+            await using var connection = new SqliteConnection($"Data Source={path}");
+            await connection.OpenAsync();
+
+            var options = new DbContextOptionsBuilder<AtlasDbContext>().UseSqlite(connection).Options;
+            await using (var ctx = new AtlasDbContext(options, new MutableRequestContext { TenantId = "tenant-a" }))
+            {
+                await AtlasDatabaseMigrator.MigrateAsync(ctx);
+            }
+
+            await using (var verify = new AtlasDbContext(options, new MutableRequestContext { TenantId = "tenant-a" }))
+            {
+                var tenantA = verify.Assets.IgnoreQueryFilters()
+                    .Where(a => a.TenantId == "tenant-a")
+                    .OrderBy(a => a.Id)
+                    .Select(a => a.NumericId)
+                    .ToArray();
+
+                Assert.Equal(new long[] { 1, 2 }, tenantA);
+                Assert.True(verify.Assets.IgnoreQueryFilters().Any(a => a.TenantId == "tenant-b" && a.NumericId == 1));
+            }
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                try
+                {
+                    File.Delete(path);
+                }
+                catch (IOException)
+                {
+                    // Best-effort cleanup only: a test failure here must reflect the migration result,
+                    // not a Windows file-handle timing quirk on the temp database.
+                }
+            }
+        }
+    }
+
     private static SqliteConnection OpenSharedInMemory()
     {
         var connection = new SqliteConnection("Filename=:memory:");
@@ -98,6 +175,13 @@ public sealed class TenantIsolationTests
     {
         var options = new DbContextOptionsBuilder<AtlasDbContext>().UseSqlite(connection).Options;
         return new AtlasDbContext(options, requestContext);
+    }
+
+    private static async Task ExecuteAsync(SqliteConnection connection, string sql)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync();
     }
 
     private static AssetRow Asset(string tenantId, string id) => new()

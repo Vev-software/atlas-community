@@ -9,6 +9,7 @@ internal sealed class AssetRow
 {
     public required string TenantId { get; set; }
     public required string Id { get; set; }
+    public long NumericId { get; set; }
     public required string Kind { get; set; }
     public required string Name { get; set; }
     public required string Lifecycle { get; set; }

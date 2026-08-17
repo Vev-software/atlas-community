@@ -22,25 +22,35 @@ public static class AssetEndpoints
         var assets = app.MapGroup($"{v1}/assets").WithTags("Assets");
 
         assets.MapGet("", async (string? kind, AssetService service, CancellationToken ct) =>
-            Results.Ok(await service.ListAssetsAsync(ParseKind(kind), ct)))
+            Results.Ok((await service.ListCataloguedAssetsAsync(ParseKind(kind), ct)).Select(ToAssetPayload)))
             .WithName("ListAssets")
             .WithSummary("List catalogued assets, optionally filtered by kind (system|application|server|infrastructure|data-area|dataset|column).");
 
         assets.MapGet("/{id}", async (string id, AssetService service, CancellationToken ct) =>
-            await service.GetAssetAsync(id, ct) is { } asset ? Results.Ok(asset) : Results.NotFound())
+            await service.GetCataloguedAssetAsync(id, ct) is { } asset ? Results.Ok(ToAssetPayload(asset)) : Results.NotFound())
             .WithName("GetAsset")
             .WithSummary("Get a single asset by id.");
 
         assets.MapPost("", async (Asset asset, AssetService service, CancellationToken ct) =>
         {
             var created = await service.CreateAssetAsync(asset, ct);
-            return Results.Created($"{v1}/assets/{created.Id}", created);
+            return Results.Created($"{v1}/assets/{created.Asset.Id}", ToAssetPayload(created));
         })
             .WithName("CreateAsset")
             .WithSummary("Create a new asset (hold it in the catalogue).");
 
         assets.MapPut("/{id}", async (string id, Asset asset, AssetService service, CancellationToken ct) =>
-            await service.UpdateAssetAsync(id, asset, ct) is { } updated ? Results.Ok(updated) : Results.NotFound())
+        {
+            var updated = await service.UpdateAssetAsync(id, asset, ct);
+            if (updated is null)
+            {
+                return Results.NotFound();
+            }
+
+            var reloaded = await service.GetCataloguedAssetAsync(id, ct)
+                ?? throw new InvalidOperationException($"Asset '{id}' was updated but could not be reloaded.");
+            return Results.Ok(ToAssetPayload(reloaded));
+        })
             .WithName("UpdateAsset")
             .WithSummary("Replace an existing asset.");
 
@@ -104,7 +114,11 @@ public static class AssetEndpoints
         // resolved into one atlas-contracts LandscapeDocument. Backs the browse/visualise UI, which is a
         // pure client of this API (API/SDK-first — the UI is never the only way in, handbook 15 §2).
         app.MapGet($"{v1}/landscape", async (AssetService service, CancellationToken ct) =>
-            Results.Ok(await service.GetLandscapeAsync(ct)))
+        {
+            var landscape = await service.GetLandscapeAsync(ct);
+            var assetsWithNumericIds = await service.ListCataloguedAssetsAsync(kind: null, ct);
+            return Results.Ok(ToLandscapePayload(landscape, assetsWithNumericIds));
+        })
             .WithTags("Landscape")
             .WithName("GetLandscape")
             .WithSummary("Read the whole tenant landscape (assets + relationships) as a portable LandscapeDocument.");
@@ -282,4 +296,30 @@ public static class AssetEndpoints
             _ =>
                 "AI-assisted landscape structuring is not enabled for this tenant."
         };
+
+    private static object ToAssetPayload(CataloguedAsset asset) => new
+    {
+        id = asset.Asset.Id,
+        numericId = asset.NumericId,
+        kind = asset.Asset.Kind,
+        name = asset.Asset.Name,
+        lifecycle = asset.Asset.Lifecycle,
+        description = asset.Asset.Description,
+        tags = asset.Asset.Tags,
+        application = asset.Asset.Application,
+        server = asset.Asset.Server,
+        infrastructure = asset.Asset.Infrastructure,
+        dataArea = asset.Asset.DataArea,
+        dataset = asset.Asset.Dataset,
+        column = asset.Asset.Column
+    };
+
+    private static object ToLandscapePayload(LandscapeDocument landscape, IEnumerable<CataloguedAsset> assets) => new
+    {
+        contractVersion = landscape.ContractVersion,
+        exportedAt = landscape.ExportedAt,
+        generator = landscape.Generator,
+        assets = assets.Select(ToAssetPayload),
+        relationships = landscape.Relationships
+    };
 }
