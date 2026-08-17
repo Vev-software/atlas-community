@@ -68,6 +68,7 @@ public static class AtlasCommunityRegistration
         // (ArchiMate/BPMN/report) add themselves by registering more ILandscapeExporter/Importer here.
         services.AddSingleton<ILandscapeExporter, AtlasJsonLandscapeExporter>();
         services.AddSingleton<ILandscapeImporter, AtlasJsonLandscapeImporter>();
+        services.AddSingleton<ILandscapeImporter, AtlasMarkdownLandscapeImporter>();
         services.AddSingleton<LandscapeFormatRegistry>();
 
         return services;
