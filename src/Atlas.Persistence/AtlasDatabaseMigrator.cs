@@ -19,14 +19,22 @@ public static class AtlasDatabaseMigrator
         if (db.Database.IsSqlite())
         {
             await UpgradeLegacySqliteDatabaseIfNeededAsync(db, ct);
+            
+            // Check if we need to create the database from scratch
+            var needsFreshStart = await NeedsFreshDatabaseAsync(db, ct);
+            if (needsFreshStart)
+            {
+                // Delete the corrupted database and start fresh
+                await db.Database.EnsureDeletedAsync(ct);
+            }
         }
 
         await db.Database.MigrateAsync(ct);
-        
-        // After migrations, verify all required tables exist. If any are missing, create the schema
-        // from scratch using EnsureCreated. This handles edge cases where EF's Migrate() doesn't
-        // properly apply migrations on fresh databases.
-        if (db.Database.IsSqlite())
+    }
+    
+    private static async Task<bool> NeedsFreshDatabaseAsync(AtlasDbContext db, CancellationToken ct)
+    {
+        try
         {
             var connection = db.Database.GetDbConnection();
             if (connection.State != System.Data.ConnectionState.Open)
@@ -34,50 +42,24 @@ public static class AtlasDatabaseMigrator
                 await connection.OpenAsync(ct);
             }
 
-            var requiredTables = new[] { "assets", "relationships", "ai_module_settings" };
-            var missingTables = new List<string>();
+            // Check if critical table exists
+            var aiModuleTableExists = await ScalarAsync<long>(
+                connection,
+                "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'ai_module_settings';",
+                ct) > 0;
             
-            foreach (var table in requiredTables)
-            {
-                var tableExists = await ScalarAsync<long>(
-                    connection,
-                    $"SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = '{table}';",
-                    ct) > 0;
-                
-                if (!tableExists)
-                {
-                    missingTables.Add(table);
-                }
-            }
-
-            if (missingTables.Count > 0)
-            {
-                // Tables are missing after migration - use EnsureCreated to build the full schema
-                await db.Database.EnsureCreatedAsync(ct);
-                
-                // Ensure migration history is populated
-                if (connection.State != System.Data.ConnectionState.Open)
-                {
-                    await connection.OpenAsync(ct);
-                }
-                
-                var historyExists = await ScalarAsync<long>(
-                    connection,
-                    "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = '__EFMigrationsHistory';",
-                    ct) > 0;
-                
-                if (historyExists)
-                {
-                    // Record all migrations as applied so future runs don't re-apply them
-                    var migrations = new[] { "20260817075545_AddAssetNumericId", "20260817082107_AddAiModuleSettings", CurrentMigrationId };
-                    foreach (var migration in migrations)
-                    {
-                        await db.Database.ExecuteSqlAsync(
-                            $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ({migration}, {EfProductVersion});""",
-                            ct);
-                    }
-                }
-            }
+            // If migration history exists but critical table doesn't, database is corrupted
+            var historyExists = await ScalarAsync<long>(
+                connection,
+                "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = '__EFMigrationsHistory';",
+                ct) > 0;
+            
+            return historyExists && !aiModuleTableExists;
+        }
+        catch
+        {
+            // If we can't check, assume fresh start is needed
+            return false;
         }
     }
 
