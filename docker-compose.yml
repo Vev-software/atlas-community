@@ -41,6 +41,9 @@ services:
       # Validate real OIDC tokens from the bundled Keycloak realm.
       Atlas__Identity__Mode: "fabric-oidc"
       Atlas__Identity__Oidc__Authority: "http://keycloak:8080/realms/atlas"
+      # Browsers reach the bundled Keycloak through the published host port, not the internal compose DNS name.
+      Atlas__Identity__Oidc__BrowserAuthority: "http://localhost:8081/realms/atlas"
+      Atlas__Identity__Oidc__ClientId: "atlas-api"
       # The bundled Keycloak speaks plain HTTP in self-hosted mode.
       Atlas__Identity__Oidc__RequireHttpsMetadata: "false"
     depends_on:

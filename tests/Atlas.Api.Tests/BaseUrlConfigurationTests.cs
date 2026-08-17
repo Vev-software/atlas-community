@@ -84,6 +84,7 @@ public sealed class BaseUrlConfigurationTests(AtlasApiFactory factory) : IClassF
         Assert.Equal("application/javascript", appConfig.Content.Headers.ContentType?.MediaType);
         var js = await appConfig.Content.ReadAsStringAsync();
         Assert.Contains("\"apiBase\":\"/api\"", js);
+        Assert.Contains("\"loginPath\":\"/login\"", js);
         Assert.DoesNotContain("vev.software", js);
     }
 
@@ -101,6 +102,34 @@ public sealed class BaseUrlConfigurationTests(AtlasApiFactory factory) : IClassF
 
         var js = await (await client.GetAsync("/app-config.js")).Content.ReadAsStringAsync();
         Assert.Contains("\"apiBase\":\"/gateway\"", js);
+    }
+
+    [Fact]
+    public async Task App_config_reports_browser_facing_oidc_settings_without_leaking_internal_authority()
+    {
+        using var custom = factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("Atlas:Identity:Oidc:Authority", "http://keycloak:8080/realms/atlas");
+            b.UseSetting("Atlas:Identity:Oidc:BrowserAuthority", "https://login.example.com/realms/atlas/");
+            b.UseSetting("Atlas:Identity:Oidc:ClientId", "atlas-web");
+        });
+
+        var js = await (await custom.CreateClient().GetAsync("/app-config.js")).Content.ReadAsStringAsync();
+
+        Assert.Contains("\"oidcAuthority\":\"https://login.example.com/realms/atlas\"", js);
+        Assert.Contains("\"oidcClientId\":\"atlas-web\"", js);
+        Assert.Contains("\"oidcAccountUrl\":\"https://login.example.com/realms/atlas/account\"", js);
+        Assert.DoesNotContain("http://keycloak:8080/realms/atlas", js);
+    }
+
+    [Fact]
+    public async Task Login_page_uses_runtime_oidc_configuration_instead_of_a_hard_coded_port()
+    {
+        var html = await Client().GetStringAsync("/login/");
+
+        Assert.Contains("ATLAS.oidcAuthority", html);
+        Assert.DoesNotContain(":8081", html);
+        Assert.DoesNotContain("http://${host}:8081", html);
     }
 
     [Fact]

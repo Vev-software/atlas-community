@@ -281,6 +281,8 @@ refused (`401`); only `/health` is exempt. Configuration keys (env form doubles 
 |---|---|---|
 | `Atlas:Identity:Oidc:Authority` | — (required) | OIDC issuer/authority URL. Without it, the host fails closed. |
 | `Atlas:Identity:Oidc:Audience` | — | Expected token audience (client id). When unset, audience is not validated. |
+| `Atlas:Identity:Oidc:BrowserAuthority` | `Atlas:Identity:Oidc:Authority` | Browser-facing realm base for the built-in login page. Set this when browsers must reach the IdP on a different origin than the API sees. |
+| `Atlas:Identity:Oidc:ClientId` | `atlas-api` | OIDC client id used by the built-in login page when requesting a token. |
 | `Atlas:Identity:Oidc:TenantClaim` | `tenant` | Claim carrying the tenant id. |
 | `Atlas:Identity:Oidc:PrincipalClaim` | `sub` | Claim carrying the stable principal id. |
 | `Atlas:Identity:Oidc:NameClaim` | `name` | Claim carrying the display name. |
@@ -302,15 +304,24 @@ docker compose -f docker-compose.yml -f docker-compose.oidc.yml up --build
 ```
 
 This imports the [`keycloak/atlas-realm.json`](../keycloak/atlas-realm.json) realm: a public client
-`atlas-api`, a seeded user `architect` / `architect` with role `AtlasArchitect` and tenant `community`, and
-the `roles` + `tenant` mappers. Get a token (direct grant) and call the API with it:
+`atlas-api`, a seeded user `admin` / `changeme` with role `AtlasArchitect` and tenant `community`, and
+the `roles` + `tenant` mappers.
+
+Because the seeded password is marked **temporary**, change it once in the Keycloak account console before
+using direct grant:
+
+1. Open `http://localhost:8081/realms/atlas/account/`.
+2. Sign in as `admin` / `changeme`.
+3. Set a new password when Keycloak prompts you.
+
+Then fetch a token with the new password and call the API:
 
 ```bash
 # Fetch an access token for the seeded user (the issuer inside the token is http://keycloak:8080/realms/atlas,
 # which is what Atlas validates against inside the compose network).
 TOKEN=$(curl -s http://localhost:8081/realms/atlas/protocol/openid-connect/token \
   -d grant_type=password -d client_id=atlas-api \
-  -d username=architect -d password=architect | python -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+  -d username=admin -d password='<your-new-password>' | python -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
 
 # Create an asset as the token's tenant (community); no X-* headers are consulted.
 curl -X POST http://localhost:8080/api/v1/assets -H "Authorization: Bearer $TOKEN" \
@@ -323,8 +334,8 @@ curl http://localhost:8080/health                       # → {"status":"ok"} (h
 ```
 
 The Keycloak admin console is at `http://localhost:8081` (admin / admin). This is the swap point for
-real identity: point `Atlas:Identity:Oidc:Authority` at your own OIDC provider in production and drop the
-overlay (handbook `11 §4`).
+real identity: point `Atlas:Identity:Oidc:Authority` at your own OIDC provider in production and set
+`Atlas:Identity:Oidc:BrowserAuthority` if browsers must use a different public origin than the API does.
 
 ## Tenant isolation
 
