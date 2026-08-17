@@ -253,7 +253,8 @@ public sealed class AssetService(
 
             resolvedAssets.Add(new Asset(
                 id, imported.Kind, imported.Name, imported.Lifecycle, imported.Description,
-                imported.Tags, imported.Application, imported.Server, imported.Infrastructure));
+                imported.Tags, imported.Application, imported.Server, imported.Infrastructure,
+                imported.DataArea, imported.Dataset, imported.Column));
         }
 
         // Resolve relationship endpoints against the bundle first, then the existing catalogue. An
