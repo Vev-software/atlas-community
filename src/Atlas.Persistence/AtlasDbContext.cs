@@ -40,6 +40,7 @@ public sealed class AtlasDbContext(DbContextOptions<AtlasDbContext> options, IRe
             e.Property(a => a.Kind).HasMaxLength(32);
             e.Property(a => a.Name).HasMaxLength(256);
             e.Property(a => a.Lifecycle).HasMaxLength(16);
+            e.Property(a => a.CreatedBy).HasMaxLength(128);
             e.HasIndex(a => new { a.TenantId, a.Kind });
             e.HasIndex(a => new { a.TenantId, a.NumericId }).IsUnique();
             e.HasQueryFilter(a => a.TenantId == CurrentTenantId);

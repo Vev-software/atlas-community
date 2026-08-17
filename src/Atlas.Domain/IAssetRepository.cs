@@ -29,8 +29,8 @@ public interface IAssetRepository
     /// <summary>Reserve the next stable numeric id for a new asset in the tenant.</summary>
     Task<long> AllocateAssetNumericIdAsync(TenantContext tenant, CancellationToken ct = default);
 
-    /// <summary>Insert a new asset.</summary>
-    Task AddAssetAsync(TenantContext tenant, Asset asset, long numericId, CancellationToken ct = default);
+    /// <summary>Insert a new asset. <paramref name="createdBy"/> is the principal id of the creator (atlas#76).</summary>
+    Task AddAssetAsync(TenantContext tenant, Asset asset, long numericId, string? createdBy, CancellationToken ct = default);
 
     /// <summary>Replace an existing asset.</summary>
     Task UpdateAssetAsync(TenantContext tenant, Asset asset, CancellationToken ct = default);
@@ -55,4 +55,4 @@ public interface IAssetRepository
 }
 
 /// <summary>One catalogued asset plus the stable numeric id assigned when it was created.</summary>
-public sealed record CataloguedAsset(Asset Asset, long NumericId);
+public sealed record CataloguedAsset(Asset Asset, long NumericId, string? CreatedBy);

@@ -117,12 +117,16 @@ public sealed class AssetService(
         }
 
         var numericId = await repository.AllocateAssetNumericIdAsync(context.Tenant, ct);
-        await repository.AddAssetAsync(context.Tenant, asset, numericId, ct);
+        var createdBy = context.Principal.PrincipalId;
+        await repository.AddAssetAsync(context.Tenant, asset, numericId, createdBy, ct);
         await EmitAsync("atlas.asset.created", resource, ct);
-        return new CataloguedAsset(asset, numericId);
+        return new CataloguedAsset(asset, numericId, createdBy);
     }
 
-    /// <summary>Replace an existing asset. Requires write authorization; emits an audit event.</summary>
+    /// <summary>
+    /// Replace an existing asset. Requires write authorization OR the principal is the asset's creator
+    /// (atlas#76). Emits an audit event.
+    /// </summary>
     public async Task<Asset?> UpdateAssetAsync(string id, Asset asset, CancellationToken ct = default)
     {
         if (!string.Equals(id, asset.Id, StringComparison.Ordinal))
@@ -131,7 +135,7 @@ public sealed class AssetService(
         }
 
         var resource = AssetResource(id);
-        AuthorizeWrite(resource);
+        await AuthorizeWriteOrCreatorAsync(resource, id, ct);
 
         if (!await repository.AssetExistsAsync(context.Tenant, id, ct))
         {
@@ -322,7 +326,7 @@ public sealed class AssetService(
             else
             {
                 var numericId = await repository.AllocateAssetNumericIdAsync(tenant, ct);
-                await repository.AddAssetAsync(tenant, asset, numericId, ct);
+                await repository.AddAssetAsync(tenant, asset, numericId, null, ct);
                 created++;
             }
         }
@@ -417,6 +421,26 @@ public sealed class AssetService(
     private void AuthorizeRead(ResourceId resource) => Authorize(AtlasActions.AssetRead, resource);
 
     private void AuthorizeWrite(ResourceId resource) => Authorize(AtlasActions.AssetWrite, resource);
+
+    /// <summary>
+    /// Authorize write: allow if the principal has the write role OR is the asset's creator (atlas#76).
+    /// </summary>
+    private async Task AuthorizeWriteOrCreatorAsync(ResourceId resource, string assetId, CancellationToken ct = default)
+    {
+        var decision = authorizer.Authorize(context.Tenant, context.Principal, AtlasActions.AssetWrite, resource);
+        if (decision.Allowed)
+        {
+            return;
+        }
+
+        var existing = await repository.GetCataloguedAssetAsync(context.Tenant, assetId, ct);
+        if (existing is not null && string.Equals(existing.CreatedBy, context.Principal.PrincipalId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        throw AccessDeniedException.FromAuthorization(decision, $"'{AtlasActions.AssetWrite}' denied ({decision.ReasonCode}).");
+    }
 
     private void Authorize(string action, ResourceId resource)
     {

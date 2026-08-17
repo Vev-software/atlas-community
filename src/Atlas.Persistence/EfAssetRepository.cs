@@ -51,9 +51,9 @@ public sealed class EfAssetRepository(AtlasDbContext db) : IAssetRepository
         return (current ?? 0) + 1;
     }
 
-    public async Task AddAssetAsync(TenantContext tenant, Asset asset, long numericId, CancellationToken ct = default)
+    public async Task AddAssetAsync(TenantContext tenant, Asset asset, long numericId, string? createdBy, CancellationToken ct = default)
     {
-        db.Assets.Add(ToRow(tenant, asset, numericId));
+        db.Assets.Add(ToRow(tenant, asset, numericId, createdBy));
         await db.SaveChangesAsync(ct);
     }
 
@@ -125,7 +125,7 @@ public sealed class EfAssetRepository(AtlasDbContext db) : IAssetRepository
         return [.. ids];
     }
 
-    private static AssetRow ToRow(TenantContext tenant, Asset asset, long numericId) => new()
+    private static AssetRow ToRow(TenantContext tenant, Asset asset, long numericId, string? createdBy) => new()
     {
         TenantId = tenant.TenantId,
         Id = asset.Id,
@@ -133,7 +133,8 @@ public sealed class EfAssetRepository(AtlasDbContext db) : IAssetRepository
         Kind = Wire(asset.Kind),
         Name = asset.Name,
         Lifecycle = Wire(asset.Lifecycle),
-        DocumentJson = JsonSerializer.Serialize(asset, Json)
+        DocumentJson = JsonSerializer.Serialize(asset, Json),
+        CreatedBy = createdBy
     };
 
     private static Asset FromRow(AssetRow row) =>
@@ -141,7 +142,7 @@ public sealed class EfAssetRepository(AtlasDbContext db) : IAssetRepository
         ?? throw new InvalidOperationException($"Corrupt asset document for '{row.Id}'.");
 
     private static CataloguedAsset FromRowWithNumericId(AssetRow row) =>
-        new(FromRow(row), row.NumericId);
+        new(FromRow(row), row.NumericId, row.CreatedBy);
 
     private static Relationship FromRow(RelationshipRow row) =>
         new(row.Id, row.FromId, row.ToId, WireToRelationshipType(row.Type), row.Description);

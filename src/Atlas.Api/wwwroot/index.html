@@ -904,6 +904,7 @@
     let selectedId = null;
     let searchQuery = "";
     let canAuthor = false;      // Set from GET /api/v1/capabilities — never assumed.
+    let principalId = "";       // Current user's principal id (atlas#76).
     let editingId = null;       // Non-null while the asset form is editing an existing asset.
     let setupGuide = null;      // Grounded onboarding guide for the current tenant.
     let aiAllowances = [];      // Visible AI-hook allowance state for the current tenant.
@@ -946,6 +947,7 @@
         const res = await fetch(api("/v1/session"), { headers: { "Accept": "application/json" } });
         if (res.ok) {
           const session = await res.json();
+          principalId = session.principalId || "";
           const avatar = el("userAvatar");
           const name = el("userName");
           const roles = el("userRoles");
@@ -1899,15 +1901,26 @@
       pack.addEventListener("click", () => toggleContextPackAsset(a.id));
       actions.appendChild(pack);
 
-      // Author actions — shown only to an author-capable principal (atlas#17).
-      if (canAuthor) {
+      // Per-asset edit authorization (atlas#76): allow if the principal has the write role OR is the creator.
+      const canEditAsset = canAuthor || (a.createdBy === principalId);
+      if (canEditAsset) {
         const edit = document.createElement("button");
         edit.className = "btn-sm"; edit.textContent = "Edit";
         edit.addEventListener("click", () => openAssetForm(a));
+        actions.appendChild(edit);
+      } else if (!canAuthor && a.createdBy) {
+        const editDisabled = document.createElement("button");
+        editDisabled.className = "btn-sm"; editDisabled.textContent = "Edit";
+        editDisabled.disabled = true;
+        editDisabled.title = "Only the creator or an author can edit this asset";
+        actions.appendChild(editDisabled);
+      }
+      // Delete is still role-gated (not creator-only).
+      if (canAuthor) {
         const del = document.createElement("button");
         del.className = "btn-sm danger"; del.textContent = "Delete";
         del.addEventListener("click", () => deleteAsset(a));
-        actions.append(edit, del);
+        actions.appendChild(del);
       }
       wrap.appendChild(actions);
 
