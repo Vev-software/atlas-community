@@ -10,6 +10,7 @@ using Vev.Atlas.Persistence;
 var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = builder.Configuration.GetConnectionString("Atlas") ?? "Data Source=atlas.db";
+builder.Services.AddDataProtection();
 builder.Services.Configure<AtlasEntitlementOptions>(builder.Configuration.GetSection(AtlasEntitlementOptions.SectionName));
 builder.Services.AddAtlasCommunity(connectionString);
 builder.Services.AddMcpServer()
