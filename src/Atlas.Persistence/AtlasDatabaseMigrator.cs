@@ -19,31 +19,66 @@ public static class AtlasDatabaseMigrator
         if (db.Database.IsSqlite())
         {
             await UpgradeLegacySqliteDatabaseIfNeededAsync(db, ct);
-            
-            // For fresh databases, ensure EF can properly track migrations by creating the history
-            // table explicitly before calling Migrate(). This prevents EF from thinking all migrations
-            // are already applied when the history table doesn't exist yet.
+        }
+
+        await db.Database.MigrateAsync(ct);
+        
+        // After migrations, verify all required tables exist. If any are missing, create the schema
+        // from scratch using EnsureCreated. This handles edge cases where EF's Migrate() doesn't
+        // properly apply migrations on fresh databases.
+        if (db.Database.IsSqlite())
+        {
             var connection = db.Database.GetDbConnection();
             if (connection.State != System.Data.ConnectionState.Open)
             {
                 await connection.OpenAsync(ct);
             }
 
-            var hasHistoryTable = await ScalarAsync<long>(
-                connection,
-                "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = '__EFMigrationsHistory';",
-                ct) > 0;
+            var requiredTables = new[] { "assets", "relationships", "ai_module_settings" };
+            var missingTables = new List<string>();
             
-            if (!hasHistoryTable)
+            foreach (var table in requiredTables)
             {
-                // Create the migrations history table so EF knows this database is under migration control
-                await db.Database.ExecuteSqlRawAsync(
-                    """CREATE TABLE "__EFMigrationsHistory" ("MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY, "ProductVersion" TEXT NOT NULL);""",
-                    ct);
+                var tableExists = await ScalarAsync<long>(
+                    connection,
+                    $"SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = '{table}';",
+                    ct) > 0;
+                
+                if (!tableExists)
+                {
+                    missingTables.Add(table);
+                }
+            }
+
+            if (missingTables.Count > 0)
+            {
+                // Tables are missing after migration - use EnsureCreated to build the full schema
+                await db.Database.EnsureCreatedAsync(ct);
+                
+                // Ensure migration history is populated
+                if (connection.State != System.Data.ConnectionState.Open)
+                {
+                    await connection.OpenAsync(ct);
+                }
+                
+                var historyExists = await ScalarAsync<long>(
+                    connection,
+                    "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = '__EFMigrationsHistory';",
+                    ct) > 0;
+                
+                if (historyExists)
+                {
+                    // Record all migrations as applied so future runs don't re-apply them
+                    var migrations = new[] { "20260817075545_AddAssetNumericId", "20260817082107_AddAiModuleSettings", CurrentMigrationId };
+                    foreach (var migration in migrations)
+                    {
+                        await db.Database.ExecuteSqlRawAsync(
+                            $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('{migration}', '{EfProductVersion}');""",
+                            ct);
+                    }
+                }
             }
         }
-
-        await db.Database.MigrateAsync(ct);
     }
 
     private static async Task UpgradeLegacySqliteDatabaseIfNeededAsync(AtlasDbContext db, CancellationToken ct)
