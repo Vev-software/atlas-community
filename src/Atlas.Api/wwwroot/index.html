@@ -929,6 +929,7 @@
     // sub-path. The fallback keeps the one-host default working if the config script is absent.
     const ATLAS = window.__ATLAS__ || { apiBase: "/api", loginPath: "/login", brandName: "Atlas · Community", docsBaseUrl: "https://github.com/Vev-software/docs/blob/main/docs" };
     const api = (path) => ATLAS.apiBase + path;
+    const el = (id) => document.getElementById(id);
 
     // Apply runtime branding (issue #81)
     if (ATLAS.brandName) {
@@ -981,7 +982,6 @@
     const assetHistoryPending = new Map();
     let pendingConfirm = null;
 
-    const el = (id) => document.getElementById(id);
     const canvas = el("canvas");
 
     // --- Capability probe: decides whether author affordances are shown at all (atlas#17). --------------
