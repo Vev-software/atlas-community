@@ -640,6 +640,27 @@
     const ATLAS = window.__ATLAS__ || { apiBase: "/api", loginPath: "/login" };
     const api = (path) => ATLAS.apiBase + path;
 
+    // --- Auth helpers (issue #78): inject bearer token, redirect to login on 401 ---
+    function getToken() { return sessionStorage.getItem("atlas_token"); }
+
+    async function fetchWithAuth(url, init = {}) {
+      const token = getToken();
+      const headers = { ...init.headers };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      headers["Accept"] = "application/json";
+      const res = await fetch(url, { ...init, headers });
+      if (res.status === 401) {
+        // Token expired or missing — redirect to login.
+        sessionStorage.removeItem("atlas_token");
+        sessionStorage.removeItem("atlas_refresh_token");
+        location.href = ATLAS.loginPath + "/?return_to=" + encodeURIComponent(location.pathname + location.search);
+        throw new Error("Unauthorized");
+      }
+      return res;
+    }
+
     let landscape = { assets: [], relationships: [] };
     let filter = "all";
     let selectedId = null;
@@ -660,7 +681,7 @@
     // --- Capability probe: decides whether author affordances are shown at all (atlas#17). --------------
     async function loadCapabilities() {
       try {
-        const res = await fetch(api("/v1/capabilities"), { headers: { "Accept": "application/json" } });
+        const res = await fetchWithAuth(api("/v1/capabilities"));
         if (res.ok) {
           const caps = await res.json();
           canAuthor = !!caps.canAuthor;
@@ -680,7 +701,7 @@
     async function load() {
       canvas.innerHTML = '<div class="empty"><h3>Loading landscape…</h3></div>';
       try {
-        const res = await fetch(api("/v1/landscape"), { headers: { "Accept": "application/json" } });
+        const res = await fetchWithAuth(api("/v1/landscape"));
         if (!res.ok) throw new Error("HTTP " + res.status);
         landscape = await res.json();
         landscape.assets ||= [];
@@ -943,7 +964,7 @@
 
     async function loadSetupCopilot() {
       try {
-        const res = await fetch(api("/v1/setup-copilot"), { headers: { "Accept": "application/json" } });
+        const res = await fetchWithAuth(api("/v1/setup-copilot"));
         if (!res.ok) throw new Error("HTTP " + res.status);
         setupGuide = await res.json();
       } catch {
@@ -953,7 +974,7 @@
 
     async function loadAiAllowances() {
       try {
-        const res = await fetch(api("/v1/ai/allowances"), { headers: { "Accept": "application/json" } });
+        const res = await fetchWithAuth(api("/v1/ai/allowances"));
         if (!res.ok) throw new Error("HTTP " + res.status);
         const payload = await res.json();
         aiAllowances = Array.isArray(payload.capabilities) ? payload.capabilities : [];
@@ -1256,7 +1277,7 @@
       detail.innerHTML = '<p class="placeholder">Building context pack…</p>';
 
       try {
-        const res = await fetch(`/api/v1/context-pack?${params.toString()}`, { headers: { "Accept": "application/json" } });
+        const res = await fetchWithAuth(`/api/v1/context-pack?${params.toString()}`);
         if (res.status === 402) {
           const problem = await res.json();
           renderContextPackMessage(
@@ -1771,9 +1792,9 @@
       try {
         const editing = editingId !== null;
         const url = editing ? api(`/v1/assets/${encodeURIComponent(editingId)}`) : api("/v1/assets");
-        const res = await fetch(url, {
+        const res = await fetchWithAuth(url, {
           method: editing ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
         if (!res.ok) { showFormError("assetError", await apiError(res)); return; }
@@ -1795,7 +1816,7 @@
         `Delete "${a.name || a.id}"? This also removes its relationships from the map.`,
         "Delete asset")) return;
       try {
-        const res = await fetch(api(`/v1/assets/${encodeURIComponent(a.id)}`), { method: "DELETE" });
+        const res = await fetchWithAuth(api(`/v1/assets/${encodeURIComponent(a.id)}`), { method: "DELETE" });
         if (!res.ok && res.status !== 404) { toast(await apiError(res), true); return; }
         if (selectedId === a.id) selectedId = null;
         await load();
@@ -1840,9 +1861,9 @@
       const submit = el("relSubmit");
       submit.disabled = true;
       try {
-        const res = await fetch(api("/v1/relationships"), {
+        const res = await fetchWithAuth(api("/v1/relationships"), {
           method: "POST",
-          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
         if (!res.ok) { showFormError("relError", await apiError(res)); return; }
@@ -1863,7 +1884,7 @@
         `Remove the "${REL_LABELS[r.type] || r.type}" link between ${label(r.fromId)} and ${label(r.toId)}?`,
         "Delete relationship")) return;
       try {
-        const res = await fetch(api(`/v1/relationships/${encodeURIComponent(r.id)}`), { method: "DELETE" });
+        const res = await fetchWithAuth(api(`/v1/relationships/${encodeURIComponent(r.id)}`), { method: "DELETE" });
         if (!res.ok && res.status !== 404) { toast(await apiError(res), true); return; }
         const keep = selectedId;
         await load();
