@@ -68,6 +68,36 @@
       padding: 3px 10px;
     }
     header .badge.author { color: var(--accent); border-color: #c7cbf5; background: #eef2ff; }
+    header .user {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: 12px;
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+    header .user .avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: var(--accent-ink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    header .user .roles {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    header .user a {
+      font-size: 11px;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    header .user a:hover { text-decoration: underline; }
     .toolbar {
       display: flex;
       align-items: center;
@@ -584,6 +614,12 @@
     <h1>Atlas · Community</h1>
     <span class="sub">Landscape</span>
     <span class="badge" id="capBadge">Read-only</span>
+    <div class="user" id="userInfo" hidden>
+      <span class="avatar" id="userAvatar"></span>
+      <span class="name" id="userName"></span>
+      <span class="roles" id="userRoles"></span>
+      <a href="/login/?action=admin" id="usersLink">Users</a>
+    </div>
   </header>
 
   <div class="toolbar" id="toolbar" hidden>
@@ -861,6 +897,26 @@
         ? "You can create, edit and delete catalogue entries."
         : "You have read-only access to the catalogue.";
       el("newAsset").hidden = !canAuthor;
+    }
+
+    // --- Session identity (atlas#80): shows who is logged in and their roles. --------------------------
+    async function loadSession() {
+      try {
+        const res = await fetch(api("/v1/session"), { headers: { "Accept": "application/json" } });
+        if (res.ok) {
+          const session = await res.json();
+          const avatar = el("userAvatar");
+          const name = el("userName");
+          const roles = el("userRoles");
+          const userInfo = el("userInfo");
+          avatar.textContent = session.displayName.charAt(0).toUpperCase();
+          name.textContent = session.displayName;
+          roles.textContent = session.roles.join(", ");
+          userInfo.hidden = false;
+        }
+      } catch {
+        // Session endpoint unavailable — hide user info gracefully.
+      }
     }
 
     async function load() {
@@ -2457,9 +2513,9 @@
     });
     window.addEventListener("resize", () => { if (landscape.assets.length) render(); });
 
-    // Learn the principal's capability first, then draw — so the first paint already reflects author vs.
-    // read-only and never flashes controls a read-only user may not use.
-    (async () => { await loadCapabilities(); await load(); })();
+    // Learn the principal's capability and identity first, then draw — so the first paint already reflects
+    // author vs. read-only, shows who is logged in, and never flashes controls a read-only user may not use.
+    (async () => { await Promise.all([loadCapabilities(), loadSession()]); await load(); })();
   </script>
 </body>
 </html>
