@@ -102,9 +102,9 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" })).WithTags("Ops").A
 // included), so the UI is never hard-coded to "/api" and works under a reverse-proxy sub-path. Anonymous —
 // the page loads it before any sign-in — and served from a path-relative <script> so it resolves under the
 // path base.
-app.MapGet("/app-config.js", (HttpRequest request, AtlasUrls u) =>
+app.MapGet("/app-config.js", (HttpRequest request, AtlasUrls u, IConfiguration configuration) =>
 {
-    var oidc = OidcBrowserOptions.FromConfiguration(app.Configuration);
+    var oidc = OidcBrowserOptions.FromConfiguration(configuration);
     var config = new
     {
         apiBase = u.ClientApiBase(request),
@@ -115,7 +115,7 @@ app.MapGet("/app-config.js", (HttpRequest request, AtlasUrls u) =>
         oidcClientId = oidc?.ClientId,
         oidcAccountUrl = oidc?.AccountUrl
     };
-    var js = $"window.__ATLAS__=Object.freeze({JsonSerializer.Serialize(config, new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull })});";
+    var js = $"window.__ATLAS__=Object.freeze({JsonSerializer.Serialize(config, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull })});";
     return Results.Text(js, "application/javascript");
 }).WithTags("Ops").AllowAnonymous();
 
