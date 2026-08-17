@@ -95,6 +95,24 @@ public static class AssetEndpoints
             .WithName("GetCapabilities")
             .WithSummary("Describe what the current principal may do in the catalogue (drives the UI's author affordances).");
 
+        // Session identity (atlas#80): returns the current principal's display name and roles so the UI can
+        // show who is logged in and surface user management links. This is not an atlas-contracts portability
+        // type — it describes the live session, not held data.
+        app.MapGet($"{v1}/session", (IRequestContextAccessor context) =>
+        {
+            var principal = context.Principal;
+            return Results.Ok(new
+            {
+                principalId = principal.PrincipalId,
+                displayName = principal.DisplayName,
+                roles = principal.Roles,
+                tenant = context.Tenant.TenantId
+            });
+        })
+            .WithTags("Session")
+            .WithName("GetSession")
+            .WithSummary("Describe the current principal's identity and roles (atlas#80).");
+
         app.MapGet("/api/v1/setup-copilot", async (SetupCopilotService service, CancellationToken ct) =>
             Results.Ok(await service.GetGuideAsync(ct)))
             .WithTags("Session")
