@@ -9,8 +9,8 @@ public static class AtlasDocumentationLinks
     public static string Resolve(AtlasUrls urls, string key) =>
         key switch
         {
-            "atlas-ai-setup" => urls.DocumentationUrl("/atlas/ai#setup"),
-            "atlas-ai-chat" => urls.DocumentationUrl("/atlas/ai#chat"),
-            _ => urls.DocumentationUrl("/atlas")
+            "atlas-ai-setup" => urls.DocumentationUrl("/atlas/ai.md#atlas-ai-setup"),
+            "atlas-ai-chat" => urls.DocumentationUrl("/atlas/ai.md#atlas-ai-chat"),
+            _ => urls.DocumentationUrl("/README.md")
         };
 }

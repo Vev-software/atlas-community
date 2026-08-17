@@ -31,7 +31,7 @@ public sealed class AtlasUrlOptions
     public string ApiBasePath { get; set; } = "/api";
 
     /// <summary>Absolute base URL for product documentation links.</summary>
-    public string DocsBaseUrl { get; set; } = "https://docs.vev.software";
+    public string DocsBaseUrl { get; set; } = "https://github.com/Vev-software/docs/blob/main/docs";
 }
 
 /// <summary>
@@ -52,7 +52,7 @@ public sealed class AtlasUrls
         ApiBasePath = NormalizePath(options.ApiBasePath, fallback: "/api");
         LoginPath = NormalizePath(options.LoginPath, fallback: "/login");
         DocsBaseUrl = string.IsNullOrWhiteSpace(options.DocsBaseUrl)
-            ? "https://docs.vev.software"
+            ? "https://github.com/Vev-software/docs/blob/main/docs"
             : options.DocsBaseUrl.Trim().TrimEnd('/');
         _publicBaseUrl = string.IsNullOrWhiteSpace(options.PublicBaseUrl)
             ? null
