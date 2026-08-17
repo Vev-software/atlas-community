@@ -19,19 +19,37 @@ public static class AtlasDatabaseMigrator
         if (db.Database.IsSqlite())
         {
             await UpgradeLegacySqliteDatabaseIfNeededAsync(db, ct);
-            
-            // Check if we need to create the database from scratch
-            var needsFreshStart = await NeedsFreshDatabaseAsync(db, ct);
-            if (needsFreshStart)
+
+            var connection = db.Database.GetDbConnection();
+            if (connection.State != System.Data.ConnectionState.Open)
             {
-                // Delete the corrupted database and start fresh
-                await db.Database.EnsureDeletedAsync(ct);
+                await connection.OpenAsync(ct);
+            }
+
+            var requiredTables = new[] { "assets", "relationships", "ai_module_settings" };
+            var missingTables = new List<string>();
+            foreach (var table in requiredTables)
+            {
+                var exists = await ScalarAsync<long>(
+                    connection,
+                    $"SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = '{table}';",
+                    ct) > 0;
+                if (!exists)
+                {
+                    missingTables.Add(table);
+                }
+            }
+
+            if (missingTables.Count > 0 || await NeedsFreshDatabaseAsync(db, ct))
+            {
+                await RecreateDatabaseFromScratchAsync(db, ct);
+                return;
             }
         }
 
         await db.Database.MigrateAsync(ct);
     }
-    
+
     private static async Task<bool> NeedsFreshDatabaseAsync(AtlasDbContext db, CancellationToken ct)
     {
         try
@@ -42,24 +60,51 @@ public static class AtlasDatabaseMigrator
                 await connection.OpenAsync(ct);
             }
 
-            // Check if critical table exists
             var aiModuleTableExists = await ScalarAsync<long>(
                 connection,
                 "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'ai_module_settings';",
                 ct) > 0;
-            
-            // If migration history exists but critical table doesn't, database is corrupted
+
             var historyExists = await ScalarAsync<long>(
                 connection,
                 "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = '__EFMigrationsHistory';",
                 ct) > 0;
-            
+
             return historyExists && !aiModuleTableExists;
         }
         catch
         {
-            // If we can't check, assume fresh start is needed
             return false;
+        }
+    }
+
+    private static async Task RecreateDatabaseFromScratchAsync(AtlasDbContext db, CancellationToken ct)
+    {
+        // Close the connection before deleting the database file
+        await db.Database.CloseConnectionAsync();
+        
+        // Delete the corrupted database
+        await db.Database.EnsureDeletedAsync(ct);
+        
+        // Create the database fresh from the model
+        await db.Database.EnsureCreatedAsync(ct);
+
+        var connection = db.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+        {
+            await connection.OpenAsync(ct);
+        }
+
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" ("MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY, "ProductVersion" TEXT NOT NULL);""",
+            ct);
+        
+        var migrations = new[] { "20260817075545_AddAssetNumericId", "20260817082107_AddAiModuleSettings", CurrentMigrationId };
+        foreach (var migration in migrations)
+        {
+            await db.Database.ExecuteSqlAsync(
+                $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ({migration}, {EfProductVersion});""",
+                ct);
         }
     }
 
@@ -136,16 +181,14 @@ public static class AtlasDatabaseMigrator
             await db.Database.ExecuteSqlRawAsync(
                 """CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" ("MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY, "ProductVersion" TEXT NOT NULL);""",
                 ct);
-            // Insert all migration history entries so EF knows every migration has been applied.
-            await db.Database.ExecuteSqlRawAsync(
-                $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('20260817075545_AddAssetNumericId', '{EfProductVersion}');""",
-                ct);
-            await db.Database.ExecuteSqlRawAsync(
-                $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('20260817082107_AddAiModuleSettings', '{EfProductVersion}');""",
-                ct);
-            await db.Database.ExecuteSqlRawAsync(
-                $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('{CurrentMigrationId}', '{EfProductVersion}');""",
-                ct);
+            
+            var migrations = new[] { "20260817075545_AddAssetNumericId", "20260817082107_AddAiModuleSettings", CurrentMigrationId };
+            foreach (var migration in migrations)
+            {
+                await db.Database.ExecuteSqlAsync(
+                    $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ({migration}, {EfProductVersion});""",
+                    ct);
+            }
 
             await db.Database.CommitTransactionAsync(ct);
         }
