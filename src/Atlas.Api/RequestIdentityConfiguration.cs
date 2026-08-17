@@ -1,3 +1,4 @@
+using System.Linq;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Vev.Atlas.Domain;
 using Vev.Atlas.Fabric;
@@ -73,6 +74,15 @@ public static class RequestIdentityConfiguration
 
     /// <summary>Token claim carrying role names (may repeat). Defaults to <c>roles</c>.</summary>
     public const string OidcRolesClaimKey = "Atlas:Identity:Oidc:RolesClaim";
+
+    /// <summary>
+    /// Browser-facing OIDC authority for the static login page. When set, this public URL is exposed
+    /// to the browser instead of the internal <see cref="OidcAuthorityKey"/> authority.
+    /// </summary>
+    public const string OidcBrowserAuthorityKey = "Atlas:Identity:Oidc:BrowserAuthority";
+
+    /// <summary>Browser-facing client id for the static login page.</summary>
+    public const string OidcClientIdKey = "Atlas:Identity:Oidc:ClientId";
 
     /// <summary>
     /// Whether provider metadata must be fetched over HTTPS. Defaults to <c>true</c>; a local dev
