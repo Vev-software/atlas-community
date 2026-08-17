@@ -72,8 +72,8 @@ public static class AtlasDatabaseMigrator
                     var migrations = new[] { "20260817075545_AddAssetNumericId", "20260817082107_AddAiModuleSettings", CurrentMigrationId };
                     foreach (var migration in migrations)
                     {
-                        await db.Database.ExecuteSqlRawAsync(
-                            $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('{migration}', '{EfProductVersion}');""",
+                        await db.Database.ExecuteSqlAsync(
+                            $"""INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ({migration}, {EfProductVersion});""",
                             ct);
                     }
                 }
