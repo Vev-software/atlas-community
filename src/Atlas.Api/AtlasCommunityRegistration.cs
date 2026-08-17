@@ -50,6 +50,7 @@ public static class AtlasCommunityRegistration
         services.AddScoped<McpReadService>();
         services.AddScoped<PaidCapabilityGate>();
         services.AddScoped<SetupCopilotService>();
+        services.AddScoped<ShadowItService>();
         // The open-core install boundary: any module install path runs its manifest through this guard,
         // which refuses a module declaring or satisfying a reserved paid capability (atlas#22).
         services.AddScoped<ModuleInstallGuard>();

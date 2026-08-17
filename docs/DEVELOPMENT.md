@@ -66,6 +66,36 @@ curl http://localhost:5199/api/v1/assets -H "X-Tenant-Id: demo"
 curl http://localhost:5199/api/v1/does-not-exist -H "X-Tenant-Id: demo"
 ```
 
+## Shadow-IT visibility
+
+Atlas Community computes shadow-IT signals from the existing catalogue — no separate model
+is required (issue #25). Three signals are available:
+
+- **Unowned** — assets with no owner (application `businessOwner`, dataset `owner`, or
+  `owner:<value>` tag).
+- **Unsanctioned** — assets without a `sanctioned:true` tag.
+- **Past EOL** — assets with `lifecycle: retired`.
+
+### API endpoints
+
+`GET /api/v1/shadow-it/summary` — ownership coverage and signal counts.
+
+`GET /api/v1/shadow-it/assets?unowned=true&unsanctioned=true&pastEol=true` — filtered
+asset list. Any combination of flags uses OR logic.
+
+```bash
+# Get the shadow-IT summary
+curl http://localhost:5199/api/v1/shadow-it/summary -H "X-Tenant-Id: demo"
+
+# List unowned assets
+curl "http://localhost:5199/api/v1/shadow-it/assets?unowned=true" -H "X-Tenant-Id: demo"
+```
+
+### Tag conventions
+
+The sanctioned convention is a Community Edition heuristic. Formal governance state
+lives in the paid integration mapping capability (`atlas.integration.mapping`).
+
 ## Portability: export & import
 
 Customer-owned portability is a product promise (`README`, handbook `11 §2`), so it lives in the

@@ -109,6 +109,35 @@ public static class AssetEndpoints
             .WithName("GetLandscape")
             .WithSummary("Read the whole tenant landscape (assets + relationships) as a portable LandscapeDocument.");
 
+        // Shadow-IT visibility (issue #25): computed signals over the existing catalogue — no separate model.
+        // Unowned, unsanctioned, and past-EOL assets are surfaced as a Community quick win that drives adoption.
+        var shadowIt = app.MapGroup($"{v1}/shadow-it").WithTags("Shadow-IT");
+
+        shadowIt.MapGet("/summary", async (ShadowItService service, CancellationToken ct) =>
+        {
+            var summary = await service.GetSummaryAsync(ct);
+            return Results.Ok(summary);
+        })
+            .WithName("GetShadowItSummary")
+            .WithSummary("Compute ownership coverage and shadow-IT signal counts for the current tenant.");
+
+        shadowIt.MapGet("/assets", async (
+            bool? unowned,
+            bool? unsanctioned,
+            bool? pastEol,
+            ShadowItService service,
+            CancellationToken ct) =>
+        {
+            var filter = new ShadowItFilter(
+                IncludeUnowned: unowned,
+                IncludeUnsanctioned: unsanctioned,
+                IncludePastEol: pastEol);
+            var flagged = await service.GetFlaggedAssetsAsync(filter, ct);
+            return Results.Ok(flagged.Select(ToAssetPayload));
+        })
+            .WithName("GetShadowItAssets")
+            .WithSummary("Filter assets by shadow-IT signals (unowned, unsanctioned, past-EOL). Flags use OR logic.");
+
         // Portability surface (issue #12): customer-owned export + import in the published contract form.
         // Both endpoints route through the format-adapter seam (LandscapeFormatRegistry), so a future
         // community adapter (ArchiMate/BPMN/report) is added by registering an ILandscapeExporter/Importer,
