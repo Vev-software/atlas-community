@@ -13,9 +13,12 @@ public sealed class AiModuleService(
     IAiModuleConfigurationStore store,
     AiAllowanceService allowances,
     IAtlasAuditSink audit,
-    TimeProvider clock)
+    TimeProvider clock,
+    IEnumerable<IAiProviderExtension> providerExtensions)
 {
     private static readonly ResourceId ModuleResource = new("atlas:ai/module");
+    private readonly IReadOnlyList<string> _extensionProviderIds =
+        providerExtensions.Select(e => e.ProviderId).ToList();
 
     public async Task<AiModuleStatus> GetStatusAsync(CancellationToken ct = default)
     {
@@ -103,6 +106,9 @@ public sealed class AiModuleService(
             ct);
     }
 
+    public IReadOnlyList<string> GetSupportedProviders() =>
+        AiProviders.All.Concat(_extensionProviderIds).ToList();
+
     private void AuthorizeRead()
     {
         var decision = authorizer.Authorize(context.Tenant, context.Principal, AtlasActions.AssetRead, ModuleResource);
@@ -121,15 +127,15 @@ public sealed class AiModuleService(
         }
     }
 
-    private static string? NormalizeProvider(string? provider)
+    private string? NormalizeProvider(string? provider)
     {
         var value = provider?.Trim().ToLowerInvariant();
-        return value switch
+        if (value == AiProviders.OpenAi || value == AiProviders.Anthropic)
         {
-            AiProviders.OpenAi => AiProviders.OpenAi,
-            AiProviders.Anthropic => AiProviders.Anthropic,
-            _ => null
-        };
+            return value;
+        }
+
+        return _extensionProviderIds.Contains(value ?? "") ? value : null;
     }
 }
 
@@ -152,11 +158,12 @@ public sealed record AiModuleSaveRequest(
     string? Provider,
     string? ApiKey);
 
-/// <summary>Stable provider ids exposed to the product UI.</summary>
+/// <summary>Stable built-in provider ids exposed to the product UI. Extension providers are discovered at runtime via <c>IAiProviderExtension</c>.</summary>
 public static class AiProviders
 {
     public const string OpenAi = "openai";
     public const string Anthropic = "anthropic";
 
+    /// <summary>The built-in providers only. Use <c>AiModuleService.GetSupportedProviders()</c> for the full runtime list including extensions.</summary>
     public static readonly IReadOnlyList<string> All = [OpenAi, Anthropic];
 }

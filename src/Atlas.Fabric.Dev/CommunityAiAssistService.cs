@@ -7,19 +7,25 @@ namespace Vev.Atlas.Fabric.Dev;
 /// <summary>
 /// Community default for the Fabric AI contract: no provider configured. The product must therefore
 /// degrade to a deterministic local fallback rather than making setup or browse dependent on AI.
+/// Routes to built-in providers (OpenAI, Anthropic) or to a registered <c>IAiProviderExtension</c>
+/// when the configured provider id does not match a built-in.
 /// </summary>
 public sealed class CommunityAiAssistService(
     IRequestContextAccessor context,
     IAiModuleConfigurationStore moduleStore,
-    IHttpClientFactory httpClientFactory) : IAiAssistService
+    IHttpClientFactory httpClientFactory,
+    IEnumerable<IAiProviderExtension> providerExtensions) : IAiAssistService
 {
     private const string Source = "ai:unconfigured";
+    private readonly Dictionary<string, IAiProviderExtension> _extensions =
+        providerExtensions.ToDictionary(e => e.ProviderId, StringComparer.Ordinal);
 
     /// <summary>Singleton no-provider evaluator for Community.</summary>
     public static CommunityAiAssistService Unconfigured { get; } = new(
         new AmbientRequestContextAccessor(),
         new NullAiModuleConfigurationStore(),
-        new NullHttpClientFactory());
+        new NullHttpClientFactory(),
+        Enumerable.Empty<IAiProviderExtension>());
 
     /// <inheritdoc />
     public AiAssistResult Assist(AiAssistRequest request)
@@ -30,12 +36,22 @@ public sealed class CommunityAiAssistService(
             return AiAssistResult.Unavailable(Source);
         }
 
-        return configuration.Provider switch
+        var provider = configuration.Provider!;
+        var apiKey = configuration.ApiKey!;
+
+        switch (provider)
         {
-            "openai" => SendOpenAiCompatible(configuration.ApiKey!, request),
-            "anthropic" => SendAnthropic(configuration.ApiKey!, request),
-            _ => AiAssistResult.Unavailable(Source)
-        };
+            case "openai":
+                return SendOpenAiCompatible(apiKey, request);
+            case "anthropic":
+                return SendAnthropic(apiKey, request);
+            default:
+                if (_extensions.TryGetValue(provider, out var extension))
+                {
+                    return extension.Assist(request);
+                }
+                return AiAssistResult.Unavailable(Source);
+        }
     }
 
     private AiAssistResult SendOpenAiCompatible(string apiKey, AiAssistRequest request)

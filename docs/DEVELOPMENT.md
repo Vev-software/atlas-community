@@ -462,3 +462,56 @@ An **unsigned image, a tampered image, or one built by anything other than this 
 no matching signature in the transparency log for that identity, so `cosign verify` fails — do not run
 it. Pin deployments to an immutable digest (`ghcr.io/vev-software/atlas-community@sha256:…`), not just a
 moving tag, once you have verified it.
+
+## Portic AI provider extension
+
+Atlas Community supports third-party AI providers through the `IAiProviderExtension` interface. The
+bundled **Portic** adapter (`Atlas.Fabric.Portic`) demonstrates the pattern: it is **opt-in** and has
+zero impact on core when not registered.
+
+### Enabling Portic
+
+Register the provider in your composition root (e.g. `Program.cs`):
+
+```csharp
+using Vev.Atlas.Fabric.Portic;
+
+// Opt-in: without this call, Portic is invisible to the runtime
+builder.Services.AddPorticAiProvider(builder.Configuration);
+```
+
+Configure the gateway under `Atlas:Portic` (env vars use `Atlas__Portic__*`):
+
+| Key | Meaning |
+|---|---|
+| `BaseUrl` | Absolute base URL of the Portic gateway (e.g. `https://gateway.portic.example/v1`). |
+| `Model` | Model identifier for completions (e.g. `gpt-4.1-mini`). Defaults to `gpt-4.1-mini`. |
+| `MaxTokens` | Maximum tokens for the response. Defaults to `1024`. |
+
+Once registered, a tenant can select `provider: "portic"` in the AI module setup. The built-in
+providers (`openai`, `anthropic`) continue to work unchanged alongside Portic.
+
+### Adding a custom provider
+
+Implement `IAiProviderExtension` in an isolated project, register it via DI, and the provider
+becomes available automatically:
+
+```csharp
+public sealed class MyProviderExtension : IAiProviderExtension
+{
+    public string ProviderId => "myprovider";
+    public AiAssistResult Assist(AiAssistRequest request) { /* ... */ }
+}
+
+services.AddSingleton<IAiProviderExtension, MyProviderExtension>();
+```
+
+No core code changes are required. The provider id is validated automatically and routed through
+`CommunityAiAssistService`.
+
+### Data egress
+
+When Portic is enabled, all AI-assist payloads (grounding facts, user questions, optional attachments)
+are sent to the configured `Atlas:Portic:BaseUrl`. The `BaseUrl` is always operator-supplied — Atlas
+never hard-codes a Portic endpoint. See [ADR 0003](./adr/0003-portic-community-module.md) for the
+threat model discussion.

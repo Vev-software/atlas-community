@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Atlas.Api/Atlas.Api.csproj" />
+    <ProjectReference Include="../../src/Atlas.Fabric.Portic/Atlas.Fabric.Portic.csproj" />
   </ItemGroup>
 
 </Project>
