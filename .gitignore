@@ -3,6 +3,9 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+# Local git worktrees (never commit the gitlink)
+.worktrees/
+
 # User-specific files
 *.rsuser
 *.suo
