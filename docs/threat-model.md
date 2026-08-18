@@ -40,6 +40,8 @@ What defends the map today, and where each control lives:
 | The map is read from a stolen disk or volume | Documented **encryption-at-rest** expectation (encrypt the volume, or an encrypted-database option), plus the same care for exports and backups | `atlas#37` · [Encryption at rest](./DEVELOPMENT.md#encryption-at-rest) |
 | Running a tampered or unknown image | Tagged releases publish a **signed** image with an **SBOM** and **SLSA provenance**; an unsigned or tampered image fails `cosign verify` | `atlas#38` · [Supply chain](./DEVELOPMENT.md#supply-chain-sbom--signed-provenance) |
 | Architecture erosion (a boundary or provider leak) | **Architecture fitness tests** fail the build on a dependency-direction violation, a `plan ==` check, or a direct AI-provider call | `Atlas.Architecture.Tests` |
+| AI chat leaks cross-tenant data | Chat grounding is built via the same tenant-scoped repository with the EF Core global query filter — only the caller's own assets appear in the context pack | `atlas#28` · [Tenant isolation](./DEVELOPMENT.md#tenant-isolation) |
+| AI provider receives sensitive catalogue data | The tenant supplies their own provider key (BYOK); data egress is explicit and opt-in. Prompt/response content is not logged by default | `atlas#28` · handbook 10 |
 
 ## Assumptions & residual risks
 
@@ -56,8 +58,11 @@ Scoped to the Community, self-hosted deployment:
   Development environment; it cannot be forced on elsewhere.
 - **Secrets and customer content are kept out of logs and audit by design** (`E4/E5`), but exported
   documents and backups are full plaintext copies of the map and must be protected in kind.
-- **No AI or external-provider calls exist in Community**, so there is no prompt-injection or
-  data-egress-to-a-model surface in this edition.
+- **AI chat is tenant-borne.** The `/api/v1/ai/chat` endpoint routes through the Fabric AI contract
+  with a provider key supplied by the tenant (BYOK). Prompt and response content are not logged by
+  default. The LLM is never the sole mechanism for a security or access decision, and chat never
+  mutates the catalogue. Data egress only occurs when the tenant has enabled AI and configured a
+  provider.
 
 ## Compatibility statement
 
