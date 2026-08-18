@@ -1085,6 +1085,7 @@
     }
 
     async function load() {
+      const hasExisting = landscape.assets && landscape.assets.length > 0;
       canvas.innerHTML = '<div class="empty"><h3>Loading landscape…</h3></div>';
       try {
         const res = await fetchWithAuth(api("/v1/landscape"));
@@ -1105,9 +1106,17 @@
           renderSetupCopilot();
         }
       } catch (err) {
-        canvas.innerHTML =
-          '<div class="empty"><h3>Could not load the landscape</h3>' +
-          '<p>The API responded with an error (' + escapeHtml(err.message) + ').</p></div>';
+        const friendly = err.message === "Failed to fetch"
+          ? "Could not reach the API. Please try again."
+          : "API error (" + escapeHtml(err.message) + ").";
+        if (hasExisting) {
+          render();
+          toast(friendly, true);
+        } else {
+          canvas.innerHTML =
+            '<div class="empty"><h3>Could not load the landscape</h3>' +
+            '<p>' + friendly + '</p></div>';
+        }
       }
     }
 
