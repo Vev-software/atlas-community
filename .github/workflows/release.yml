@@ -1,4 +1,6 @@
-name: release
+# Auto-fires when the `release` workflow (publish.yml) pushes a vX.Y.Z tag. Renamed to
+# `container release` so it is distinct from the `release` button.
+name: container release
 
 # Publish a signed, SBOM-carrying container image for a tagged release (atlas#38).
 # Supply-chain baseline: every published image is pushed to GHCR with a keyless cosign

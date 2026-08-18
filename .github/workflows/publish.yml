@@ -1,0 +1,137 @@
+# One-button release: pick a version bump, we validate main, then you click Approve to publish.
+#
+# atlas-community ships a CONTAINER (not nuget/npm). This workflow is the button; the actual
+# image build/push/sign/SBOM lives in the tag-triggered `github release` workflow (release.yml).
+#
+# Flow (Actions -> release -> Run workflow -> choose bump -> Run):
+#   1. verify  (no gate)  — refuse unless on main; require the latest `ci` run for main's HEAD
+#                            to be green; compute the next version from the last tag + bump.
+#   2. release (environment: release, Required Reviewers) — pauses for your Approve click, then
+#      pushes the tag `vX.Y.Z`, which fires release.yml to build + push the signed, SBOM-carrying
+#      image to GHCR and cut the GitHub Release.
+#   dry_run: smoke-build the image (no push, no tag, no publish) to validate the Dockerfile.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump from the latest tag"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      dry_run:
+        description: "Validate + smoke-build the image, but do NOT tag or publish"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Gate 1 — validate the state of main. No publishing here, no approval needed.
+  verify:
+    name: verify main + compute version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # read ci.yml run conclusions
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      sha: ${{ steps.plan.outputs.sha }}
+    steps:
+      - name: Refuse unless dispatched from main
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Run this from the default branch (main); got ${{ github.ref }}."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Require the latest CI run for this commit to be green
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="$(git rev-parse HEAD)"
+          echo "main HEAD = $SHA"
+          CONCLUSION="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main \
+            --limit 40 --json headSha,status,conclusion \
+            --jq "[.[] | select(.headSha==\"$SHA\")][0] | \"\(.status):\(.conclusion)\"")"
+          echo "ci for $SHA -> ${CONCLUSION:-none}"
+          if [ "$CONCLUSION" != "completed:success" ]; then
+            echo "::error::CI has not completed successfully for main@$SHA (state: ${CONCLUSION:-none}). Wait for CI to go green, then re-run."
+            exit 1
+          fi
+
+      - name: Compute next version
+        id: plan
+        run: |
+          git fetch --tags --force --quiet
+          LATEST="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
+          LATEST="${LATEST:-v0.0.0}"; LATEST="${LATEST#v}"
+          IFS=. read -r MA MI PA <<< "$LATEST"
+          case "${{ inputs.bump }}" in
+            patch) PA=$((PA+1));;
+            minor) MI=$((MI+1)); PA=0;;
+            major) MA=$((MA+1)); MI=0; PA=0;;
+          esac
+          VERSION="$MA.$MI.$PA"; TAG="v$VERSION"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag $TAG already exists."; exit 1
+          fi
+          echo "Next: $LATEST -> $VERSION (${{ inputs.bump }})"
+          {
+            echo "version=$VERSION"
+            echo "tag=$TAG"
+            echo "sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+  # Gate 2 — the "Publish" button. Requires approval via the `release` environment
+  # (enable Required Reviewers on it). Approval pushes the tag, which fires release.yml.
+  release:
+    name: release ${{ needs.verify.outputs.tag }} (container via GHCR)
+    needs: verify
+    if: ${{ !github.event.repository.fork }}
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write # push the version tag
+    env:
+      TAG: ${{ needs.verify.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+          fetch-depth: 0
+
+      # Dry run: validate the image builds (no registry push, no tag). release.yml does the real
+      # build+push+sign on the tag.
+      - name: Set up Buildx
+        if: ${{ inputs.dry_run }}
+        uses: docker/setup-buildx-action@v3
+
+      - name: Smoke-build image (dry run, no push)
+        if: ${{ inputs.dry_run }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+
+      # Real run: push the tag. release.yml (tag-triggered) builds + pushes + signs + SBOMs the
+      # image and cuts the GitHub Release.
+      - name: Tag ${{ env.TAG }} (fires the container release)
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git fetch --tags --force --quiet
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists — skipping create."
+          else
+            git tag "$TAG" "${{ needs.verify.outputs.sha }}"
+            git push origin "$TAG"
+          fi
