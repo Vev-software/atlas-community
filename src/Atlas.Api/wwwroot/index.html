@@ -733,6 +733,7 @@
     <button class="action" id="refresh" title="Reload the landscape">Refresh</button>
     <button class="action" id="export" title="Download the landscape as a portable JSON document">Export JSON</button>
     <button class="action" id="import" hidden title="Import a landscape from a JSON or Markdown file">Import</button>
+    <button class="action ai-entry" id="pasteLandscape" hidden title="Paste notes or upload images to generate a draft landscape">✦ Paste to landscape</button>
   </div>
 
   <main>
@@ -959,6 +960,65 @@
         <span class="spacer"></span>
         <button class="secondary" type="button" id="importCancel">Cancel</button>
         <button class="primary" type="button" id="importApply">Import</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Paste-to-landscape modal (issue #27): paste notes or upload images to generate a draft landscape.
+       Routes through POST /api/v1/structure/draft. Draft-only — nothing auto-applied without approval. -->
+  <div class="backdrop" id="pasteBackdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pasteFormTitle" style="max-width: 560px;">
+      <header>
+        <h2 id="pasteFormTitle">Paste to landscape</h2>
+        <button class="close" id="pasteClose" type="button" aria-label="Close">×</button>
+      </header>
+      <div class="body">
+        <div class="form-error" id="pasteError" hidden></div>
+        <p class="placeholder">Paste what you already have — a doc, a sheet, an email — and get a first draft of your landscape you can review and accept.</p>
+        <div class="field">
+          <label for="pasteText">Your content</label>
+          <textarea id="pasteText" placeholder="Paste notes, a wiki page, an email thread…" rows="6"></textarea>
+        </div>
+        <div class="field">
+          <label for="pasteImages">Images (optional)</label>
+          <input id="pasteImages" type="file" accept="image/*" multiple />
+          <p class="hint">Whiteboard photos, diagrams, screenshots — anything that helps AI understand your landscape.</p>
+          <div id="pasteImageList" class="crumbs"></div>
+        </div>
+        <div class="note" id="pasteAiNote" hidden></div>
+      </div>
+      <footer>
+        <span class="spacer"></span>
+        <button class="secondary" type="button" id="pasteCancel">Cancel</button>
+        <button class="primary" type="button" id="pasteGenerate">Generate draft</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Draft review modal (issue #27): review AI-proposed assets and relationships before importing. -->
+  <div class="backdrop" id="draftBackdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="draftFormTitle" style="max-width: 640px;">
+      <header>
+        <h2 id="draftFormTitle">Draft landscape</h2>
+        <button class="close" id="draftClose" type="button" aria-label="Close">×</button>
+      </header>
+      <div class="body">
+        <div class="form-error" id="draftError" hidden></div>
+        <p class="placeholder" id="draftSummary"></p>
+        <section class="section" id="draftAssetsSection" style="display:none;">
+          <h3>Proposed assets</h3>
+          <div id="draftAssets" class="mini-list"></div>
+        </section>
+        <section class="section" id="draftRelsSection" style="display:none;">
+          <h3>Proposed relationships</h3>
+          <div id="draftRels" class="mini-list"></div>
+        </section>
+        <div class="note" id="draftGuidance" hidden></div>
+      </div>
+      <footer>
+        <span class="spacer"></span>
+        <button class="secondary" type="button" id="draftDiscard">Discard</button>
+        <button class="primary" type="button" id="draftImport">Accept &amp; Import</button>
       </footer>
     </div>
   </div>
@@ -2853,6 +2913,175 @@
     el("importFile").addEventListener("change", syncImportModeHint);
     el("importApply").addEventListener("click", doImport);
     el("importBackdrop").addEventListener("click", e => { if (e.target === el("importBackdrop")) closeImport(); });
+
+    // --- Paste-to-landscape (issue #27): AI-assisted structuring of unstructured input. ---------------
+    let pasteImages = [];
+    let pendingDraft = null;
+
+    function openPaste() {
+      el("pasteError").hidden = true;
+      el("pasteText").value = "";
+      el("pasteImages").value = "";
+      el("pasteImageList").innerHTML = "";
+      el("pasteAiNote").hidden = true;
+      pasteImages = [];
+      // Show AI config note if AI is not ready
+      if (!aiModule || !aiModule.ready) {
+        el("pasteAiNote").textContent = "AI is not configured yet. You can still paste content — the draft will be generated manually without AI assistance.";
+        el("pasteAiNote").hidden = false;
+      }
+      el("pasteBackdrop").hidden = false;
+      el("pasteText").focus();
+    }
+    function closePaste() { el("pasteBackdrop").hidden = true; }
+
+    el("pasteImages").addEventListener("change", e => {
+      const files = Array.from(e.target.files);
+      pasteImages = [];
+      el("pasteImageList").innerHTML = "";
+      files.forEach(f => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          pasteImages.push({ name: f.name, contentType: f.type, contentBase64: reader.result.split(",")[1] });
+          const chip = document.createElement("span");
+          chip.className = "crumb";
+          chip.textContent = f.name;
+          el("pasteImageList").appendChild(chip);
+        };
+        reader.readAsDataURL(f);
+      });
+    });
+
+    async function generateDraft() {
+      const text = el("pasteText").value.trim();
+      if (!text && pasteImages.length === 0) {
+        showFormError("pasteError", "Paste some text or upload at least one image.");
+        return;
+      }
+      el("pasteError").hidden = true;
+      el("pasteGenerate").disabled = true;
+      el("pasteGenerate").textContent = "Generating…";
+
+      try {
+        const res = await fetchWithAuth(api("/v1/structure/draft"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({ text: text || null, images: pasteImages.length ? pasteImages : null }),
+        });
+
+        if (res.status === 402) {
+          const problem = await res.json();
+          showFormError("pasteError", problem.upgrade || `AI allowance exhausted (${problem.reasonCode}).`);
+          return;
+        }
+        if (!res.ok) throw new Error(await apiError(res));
+
+        const draft = await res.json();
+        pendingDraft = draft;
+        closePaste();
+        renderDraftReview(draft);
+      } catch (err) {
+        showFormError("pasteError", "Could not generate draft (" + err.message + ").");
+      } finally {
+        el("pasteGenerate").disabled = false;
+        el("pasteGenerate").textContent = "Generate draft";
+      }
+    }
+
+    function renderDraftReview(draft) {
+      el("draftError").hidden = true;
+      el("draftSummary").textContent = draft.summary || "";
+
+      const assetsSection = el("draftAssetsSection");
+      const assetsList = el("draftAssets");
+      assetsList.innerHTML = "";
+
+      const assets = draft.proposal && draft.proposal.assets ? draft.proposal.assets : [];
+      if (assets.length > 0) {
+        assetsSection.style.display = "";
+        for (const a of assets) {
+          const card = document.createElement("div");
+          card.className = "mini";
+          card.innerHTML = `<strong>${escapeHtml(a.name || a.id)}</strong><span class="meta">${escapeHtml(a.kind)} · ${escapeHtml(a.id)} · ${escapeHtml(a.lifecycle || "draft")}</span>`;
+          assetsList.appendChild(card);
+        }
+      } else {
+        assetsSection.style.display = "none";
+      }
+
+      const relsSection = el("draftRelsSection");
+      const relsList = el("draftRels");
+      relsList.innerHTML = "";
+
+      const rels = draft.proposal && draft.proposal.relationships ? draft.proposal.relationships : [];
+      if (rels.length > 0) {
+        relsSection.style.display = "";
+        for (const r of rels) {
+          const card = document.createElement("div");
+          card.className = "mini";
+          const fromLabel = label(r.fromId) || r.fromId;
+          const toLabel = label(r.toId) || r.toId;
+          card.innerHTML = `<span class="meta">${escapeHtml(fromLabel)} <span style="color:var(--accent);font-weight:600;">${escapeHtml(r.type)}</span> ${escapeHtml(toLabel)}</span>`;
+          relsList.appendChild(card);
+        }
+      } else {
+        relsSection.style.display = "none";
+      }
+
+      const guidance = el("draftGuidance");
+      if (draft.guidance) {
+        guidance.textContent = draft.guidance;
+        guidance.hidden = false;
+      } else {
+        guidance.hidden = true;
+      }
+
+      el("draftBackdrop").hidden = false;
+    }
+
+    function closeDraftReview() {
+      el("draftBackdrop").hidden = true;
+      pendingDraft = null;
+    }
+
+    async function acceptDraftImport() {
+      if (!pendingDraft || !pendingDraft.proposal) return;
+      el("draftError").hidden = true;
+      el("draftImport").disabled = true;
+      el("draftImport").textContent = "Importing…";
+
+      try {
+        const bundle = { ...pendingDraft.proposal, mode: "merge" };
+        const res = await fetchWithAuth(api("/v1/import?format=atlas-json"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify(bundle),
+        });
+        if (!res.ok) throw new Error(await apiError(res));
+        const r = await res.json();
+        closeDraftReview();
+        selectedId = null;
+        const parts = [`${r.assetsCreated} created`, `${r.assetsUpdated} updated`];
+        parts.push(`${r.relationshipsImported} relationships`);
+        toast("Draft imported: " + parts.join(", ") + ".");
+        await load();
+      } catch (err) {
+        showFormError("draftError", "Could not import draft (" + err.message + ").");
+      } finally {
+        el("draftImport").disabled = false;
+        el("draftImport").textContent = "Accept & Import";
+      }
+    }
+
+    el("pasteLandscape").addEventListener("click", openPaste);
+    el("pasteClose").addEventListener("click", closePaste);
+    el("pasteCancel").addEventListener("click", closePaste);
+    el("pasteGenerate").addEventListener("click", generateDraft);
+    el("pasteBackdrop").addEventListener("click", e => { if (e.target === el("pasteBackdrop")) closePaste(); });
+    el("draftClose").addEventListener("click", closeDraftReview);
+    el("draftDiscard").addEventListener("click", closeDraftReview);
+    el("draftImport").addEventListener("click", acceptDraftImport);
+    el("draftBackdrop").addEventListener("click", e => { if (e.target === el("draftBackdrop")) closeDraftReview(); });
 
     updateContextPackButton();
 
