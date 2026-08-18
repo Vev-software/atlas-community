@@ -73,7 +73,7 @@ public static class AtlasDatabaseMigrator
         await db.Database.ExecuteSqlRawAsync(
             """CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" ("MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY, "ProductVersion" TEXT NOT NULL);""",
             ct);
-        
+
         var migrations = new[] { "20260817075545_AddAssetNumericId", "20260817082107_AddAiModuleSettings", CurrentMigrationId };
         foreach (var migration in migrations)
         {
@@ -156,7 +156,7 @@ public static class AtlasDatabaseMigrator
             await db.Database.ExecuteSqlRawAsync(
                 """CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" ("MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY, "ProductVersion" TEXT NOT NULL);""",
                 ct);
-            
+
             var migrations = new[] { "20260817075545_AddAssetNumericId", "20260817082107_AddAiModuleSettings", CurrentMigrationId };
             foreach (var migration in migrations)
             {
