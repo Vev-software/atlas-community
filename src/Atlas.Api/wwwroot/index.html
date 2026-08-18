@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Atlas · Community — Landscape</title>
+  <!-- Vev brand mark as favicon (issue #109). Inlined as a data URI so the self-hosted app stays
+       fully self-contained and works offline — no external asset request. -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgMTIwIj48ZyBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiPjxwYXRoIGQ9Ik0zMCAzMCBMNjAgOTIiIHN0cm9rZT0iIzE0MTgxRSIgc3Ryb2tlLXdpZHRoPSIxMiIvPjxwYXRoIGQ9Ik0xOCA1MiBMMTAyIDUyIiBzdHJva2U9IiMyRTRBNzMiIHN0cm9rZS13aWR0aD0iNyIvPjxwYXRoIGQ9Ik0yMiA3MiBMOTggNzIiIHN0cm9rZT0iIzJFNEE3MyIgc3Ryb2tlLXdpZHRoPSI3Ii8+PHBhdGggZD0iTTkwIDMwIEw2MCA5MiIgc3Ryb2tlPSIjMTQxODFFIiBzdHJva2Utd2lkdGg9IjEyIi8+PC9nPjwvc3ZnPg==" />
   <!--
     Landscape browser + author surface (atlas#6, #17, #18). A self-contained, dependency-free client of
     the Atlas Community API: it reads GET /api/v1/landscape and draws the map, and — for an author-capable
@@ -57,6 +60,9 @@
     }
     header h1 { font-size: 16px; margin: 0; letter-spacing: .2px; }
     header .sub { color: var(--muted); font-size: 12.5px; }
+    /* Brand mark (issue #109): centre it against the baseline-aligned wordmark, tuck it close to the text. */
+    header .brand-mark { align-self: center; display: inline-flex; margin-right: -4px; }
+    header .brand-mark svg { display: block; }
     header .badge {
       margin-left: auto;
       font-size: 11px;
@@ -678,6 +684,18 @@
 </head>
 <body>
   <header>
+    <!-- Vev brand mark (issue #109): the woven "V", inlined so it themes with the shell and needs no
+         external asset. The wordmark text below carries the accessible name, so the mark is decorative. -->
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 120 120" width="26" height="26" xmlns="http://www.w3.org/2000/svg">
+        <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M30 30 L60 92" stroke="#14181E" stroke-width="12"/>
+          <path d="M18 52 L102 52" stroke="#2E4A73" stroke-width="7"/>
+          <path d="M22 72 L98 72" stroke="#2E4A73" stroke-width="7"/>
+          <path d="M90 30 L60 92" stroke="#14181E" stroke-width="12"/>
+        </g>
+      </svg>
+    </span>
     <h1 id="brandName">Atlas · Community</h1>
     <span class="sub">Landscape</span>
     <a class="docs-link" id="docsLink" href="https://github.com/Vev-software/docs/blob/main/docs" target="_blank" rel="noreferrer" title="Documentation">Docs</a>
@@ -714,6 +732,7 @@
     <button class="action" id="setupCopilot" title="Grounded suggestions for where to start">Getting started</button>
     <button class="action" id="refresh" title="Reload the landscape">Refresh</button>
     <button class="action" id="export" title="Download the landscape as a portable JSON document">Export JSON</button>
+    <button class="action" id="import" hidden title="Import a landscape from a JSON or Markdown file">Import</button>
   </div>
 
   <main>
@@ -906,6 +925,44 @@
     </div>
   </div>
 
+  <!-- Import panel (issue #108 / finishes #92): the UI half of the portability surface. Uploads a
+       .json (atlas-json) or .md (atlas-md) bundle to POST /api/v1/import. Merge upserts; Replace matches
+       the tenant to the file. The mode chosen here is written into the bundle before upload, so the
+       server applies exactly what the user picked. -->
+  <div class="backdrop" id="importBackdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="importFormTitle" style="max-width: 480px;">
+      <header>
+        <h2 id="importFormTitle">Import landscape</h2>
+        <button class="close" id="importClose" type="button" aria-label="Close">×</button>
+      </header>
+      <div class="body">
+        <div class="form-error" id="importError" hidden></div>
+        <div class="field">
+          <label for="importFile">Landscape file <span class="req">*</span></label>
+          <input id="importFile" type="file" accept=".json,.md,application/json,text/markdown" />
+          <p class="hint">A canonical <code>atlas-json</code> bundle (<code>.json</code>) or an Atlas Markdown landscape (<code>.md</code>).</p>
+        </div>
+        <div class="field">
+          <label for="importMode">Mode <span class="req">*</span></label>
+          <select id="importMode">
+            <option value="merge">Merge — upsert into the current landscape</option>
+            <option value="replace">Replace — match the landscape to this file</option>
+          </select>
+          <p class="hint" id="importModeHint">Merge keeps everything you already have and adds/updates from the file. Replace deletes assets that are not in the file.</p>
+        </div>
+        <p class="hint" style="margin-top:2px;">
+          Need something to try? Grab the ready-made demo landscape from
+          <a href="https://github.com/Vev-software/atlas-community/tree/main/demo" target="_blank" rel="noreferrer">the <code>/demo</code> folder on GitHub</a>.
+        </p>
+      </div>
+      <footer>
+        <span class="spacer"></span>
+        <button class="secondary" type="button" id="importCancel">Cancel</button>
+        <button class="primary" type="button" id="importApply">Import</button>
+      </footer>
+    </div>
+  </div>
+
   <div id="toast" hidden></div>
 
   <script>
@@ -1002,6 +1059,8 @@
         ? "You can create, edit and delete catalogue entries."
         : "You have read-only access to the catalogue.";
       el("newAsset").hidden = !canAuthor;
+      // Import writes to the landscape (merge/replace), so it is an author-only affordance (issue #108).
+      el("import").hidden = !canAuthor;
     }
 
     // --- Session identity (atlas#80): shows who is logged in and their roles. --------------------------
@@ -2689,6 +2748,103 @@
       a.href = url; a.download = "atlas-landscape.json"; a.click();
       URL.revokeObjectURL(url);
     });
+
+    // --- Import (issue #108 / finishes #92): the UI half of the portability surface. ------------------
+    // Uploads a file to POST /api/v1/import. The API owns every rule (validation → 400, authz → 403);
+    // this just chooses the format from the extension, writes the picked mode into the bundle, and
+    // reports what changed.
+    let importBusy = false;
+
+    function openImport() {
+      el("importError").hidden = true;
+      el("importFile").value = "";
+      el("importMode").value = "merge";
+      el("importMode").disabled = false;
+      syncImportModeHint();
+      el("importBackdrop").hidden = false;
+      el("importFile").focus();
+    }
+    function closeImport() { el("importBackdrop").hidden = true; }
+
+    function syncImportModeHint() {
+      const f = el("importFile").files[0];
+      const isMd = !!f && /\.md$/i.test(f.name);
+      // A Markdown landscape carries its own "## Mode" section, so the selector doesn't apply to it.
+      el("importMode").disabled = isMd;
+      el("importModeHint").textContent = isMd
+        ? "Markdown files use the mode declared in their own ## Mode section."
+        : "Merge keeps everything you already have and adds/updates from the file. Replace deletes assets that are not in the file.";
+    }
+
+    async function doImport() {
+      if (importBusy) return;
+      const file = el("importFile").files[0];
+      if (!file) { showFormError("importError", "Choose a .json or .md file to import."); return; }
+      el("importError").hidden = true;
+
+      const isMd = /\.md$/i.test(file.name);
+      const format = isMd ? "atlas-md" : "atlas-json";
+      let body, contentType;
+
+      if (isMd) {
+        // Markdown declares its own mode; send the file verbatim.
+        body = await file.text();
+        contentType = "text/markdown";
+      } else {
+        // JSON: parse, stamp the chosen mode into the bundle, re-serialise.
+        let bundle;
+        try {
+          bundle = JSON.parse(await file.text());
+        } catch {
+          showFormError("importError", "That file is not valid JSON. Pick a canonical atlas-json bundle, or a .md landscape.");
+          return;
+        }
+        const mode = el("importMode").value;
+        bundle.mode = mode;
+        // Replacing a non-empty landscape deletes whatever the file omits — confirm before that.
+        if (mode === "replace" && landscape.assets.length > 0) {
+          const ok = await confirmDestructiveAction(
+            "Replace the landscape?",
+            `Replace matches the landscape to this file, deleting assets that are not in it (you currently have ${landscape.assets.length}). This cannot be undone.`,
+            "Replace");
+          if (!ok) return;
+        }
+        body = JSON.stringify(bundle);
+        contentType = "application/json";
+      }
+
+      importBusy = true;
+      el("importApply").disabled = true;
+      try {
+        const res = await fetchWithAuth(api("/v1/import?format=" + encodeURIComponent(format)), {
+          method: "POST",
+          headers: { "Content-Type": contentType },
+          body,
+        });
+        if (!res.ok) { showFormError("importError", await apiError(res)); return; }
+        const r = await res.json();
+        closeImport();
+        selectedId = null;
+        const parts = [`${r.assetsCreated} created`, `${r.assetsUpdated} updated`];
+        if (r.assetsDeleted) parts.push(`${r.assetsDeleted} deleted`);
+        parts.push(`${r.relationshipsImported} relationships`);
+        toast(`Imported (${r.mode}): ` + parts.join(", ") + ".");
+        await load();
+      } catch (err) {
+        showFormError("importError", "The import could not be sent (" + err.message + ").");
+      } finally {
+        importBusy = false;
+        el("importApply").disabled = false;
+      }
+    }
+
+    el("import").addEventListener("click", openImport);
+    el("importClose").addEventListener("click", closeImport);
+    el("importCancel").addEventListener("click", closeImport);
+    el("importFile").addEventListener("change", syncImportModeHint);
+    el("importApply").addEventListener("click", doImport);
+    el("importBackdrop").addEventListener("click", e => { if (e.target === el("importBackdrop")) closeImport(); });
+
     updateContextPackButton();
 
     // Asset form wiring.
@@ -2718,6 +2874,7 @@
         if (!el("aiPanel").hidden) closeAiPanel();
         if (!el("assetBackdrop").hidden) closeAssetForm();
         if (!el("relBackdrop").hidden) closeRelForm();
+        if (!el("importBackdrop").hidden) closeImport();
         if (!el("confirmBackdrop").hidden) closeConfirm(false);
       }
     });
