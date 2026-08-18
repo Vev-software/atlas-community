@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace Vev.Atlas.Fabric;
 
 /// <summary>
@@ -85,6 +87,35 @@ public interface IAiModuleConfigurationStore
         TenantContext tenant,
         AiModuleConfiguration configuration,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Extension point for third-party AI providers. Each implementation declares a stable provider id
+/// (e.g. "portic") and handles <c>AiAssistRequest</c> instances routed to it. The interface lives in
+/// the abstractions layer so extensions do not need to depend on the Community runtime.
+/// </summary>
+public interface IAiProviderExtension
+{
+    /// <summary>Stable, lowercase provider identifier used for configuration and routing (e.g. "portic").</summary>
+    string ProviderId { get; }
+
+    /// <summary>Produce grounded assistance, or return <c>AiAssistResult.Unavailable</c> when the provider cannot serve the request.</summary>
+    AiAssistResult Assist(AiAssistRequest request);
+}
+
+/// <summary>
+/// Helper to discover registered <c>IAiProviderExtension</c> instances from the service provider and
+/// build a lookup by provider id. Used by the assist service and provider validation.
+/// </summary>
+public static class AiProviderExtensions
+{
+    /// <summary>Resolve all registered provider extensions from the service provider.</summary>
+    public static IReadOnlyList<IAiProviderExtension> GetExtensions(IServiceProvider sp) =>
+        (sp.GetService(typeof(IEnumerable<IAiProviderExtension>)) as IEnumerable<IAiProviderExtension>)?.ToList() ?? [];
+
+    /// <summary>Find the extension for the given provider id, or <c>null</c> if none is registered.</summary>
+    public static IAiProviderExtension? FindByProviderId(IServiceProvider sp, string providerId) =>
+        GetExtensions(sp).FirstOrDefault(e => e.ProviderId == providerId);
 }
 
 /// <summary>
