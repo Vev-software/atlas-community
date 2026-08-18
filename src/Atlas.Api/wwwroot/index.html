@@ -1122,6 +1122,8 @@
       el("newAsset").hidden = !canAuthor;
       // Import writes to the landscape (merge/replace), so it is an author-only affordance (issue #108).
       el("import").hidden = !canAuthor;
+      // Paste-to-landscape creates draft assets, so it is also an author-only affordance (issue #27).
+      el("pasteLandscape").hidden = !canAuthor;
     }
 
     // --- Session identity (atlas#80): shows who is logged in and their roles. --------------------------
