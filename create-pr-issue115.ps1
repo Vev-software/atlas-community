@@ -4,14 +4,14 @@
 $ErrorActionPreference = "Stop"
 
 Write-Host "=== Building solution ===" -ForegroundColor Cyan
-dotnet build atlas-community.sln
+dotnet build Atlas.slnx
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Build failed!" -ForegroundColor Red
     exit 1
 }
 
 Write-Host "`n=== Running tests ===" -ForegroundColor Cyan
-dotnet test atlas-community.sln
+dotnet test Atlas.slnx
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Tests failed!" -ForegroundColor Red
     exit 1
