@@ -26,14 +26,14 @@ public sealed class PorticAiProviderExtension(
             return AiAssistResult.Unavailable(Source);
         }
 
-        var endpoint = new Uri(new Uri(opts.BaseUrl.TrimEnd('/')), "/chat/completions");
+        var endpoint = new Uri(new Uri(opts.BaseUrl.TrimEnd('/')), "/v1/messages");
 
         using var message = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
             Content = JsonContent.Create(new
             {
-                model = opts.Model ?? "gpt-4.1-mini",
-                max_tokens = opts.MaxTokens,
+                model = opts.Model ?? "stub-echo",
+                maxTokens = opts.MaxTokens,
                 messages = new object[]
                 {
                     new { role = "system", content = "Answer only from the grounded Atlas facts you are given. Be concise and say when the facts do not support the answer." },
@@ -54,8 +54,8 @@ public sealed class PorticAiProviderExtension(
 
         try
         {
-            responseText = json.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0
-                ? choices[0].TryGetProperty("message", out var msg) ? msg.TryGetProperty("content", out var content) ? content.GetString() : null : null
+            responseText = json.RootElement.TryGetProperty("message", out var msg)
+                ? msg.TryGetProperty("content", out var content) ? content.GetString() : null
                 : null;
         }
         catch
