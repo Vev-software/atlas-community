@@ -194,6 +194,20 @@ public static class AssetEndpoints
             .WithName("DisableAiModule")
             .WithSummary("Disable Atlas AI and clear the stored BYOK provider key for the current tenant.");
 
+        app.MapGet("/api/v1/ai/providers", (AiModuleService service) =>
+        {
+            var providers = service.GetProviderInfos();
+            return Results.Ok(providers.Select(p => new
+            {
+                id = p.Id,
+                label = p.Label,
+                requiresApiKey = p.RequiresApiKey
+            }));
+        })
+            .WithTags("Session")
+            .WithName("GetAiProviders")
+            .WithSummary("List all supported AI providers and whether each requires an API key.");
+
         app.MapPost("/api/v1/ai/chat", async (LandscapeChatRequest request, LandscapeChatService service, AtlasUrls urls, CancellationToken ct) =>
         {
             var reply = await service.AskAsync(request, ct);

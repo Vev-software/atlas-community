@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vev.Atlas.Contracts;
+using Vev.Fabric.Contracts.Entitlements;
 using Vev.Atlas.Fabric;
 using Vev.Atlas.Persistence;
 using Xunit;
@@ -154,6 +155,10 @@ public sealed class AiModuleTests(AtlasApiFactory factory) : IClassFixture<Atlas
                 services.AddDbContext<AtlasDbContext>(options => options.UseSqlite(_connection));
                 services.RemoveAll<IAiAssistService>();
                 services.AddScoped<IAiAssistService, TestAiAssistService>();
+                services.RemoveAll<IEntitlementService>();
+                services.RemoveAll<IEntitlementAllowanceProvider>();
+                services.AddSingleton<IEntitlementService, TestEntitlementService>();
+                services.AddSingleton<IEntitlementAllowanceProvider, TestEntitlementService>();
             });
         }
 
@@ -171,5 +176,14 @@ public sealed class AiModuleTests(AtlasApiFactory factory) : IClassFixture<Atlas
     {
         public AiAssistResult Assist(AiAssistRequest request) =>
             AiAssistResult.Available("This is a grounded answer about the selected landscape.", "ai:test");
+    }
+
+    private sealed class TestEntitlementService : IEntitlementService, IEntitlementAllowanceProvider
+    {
+        public EntitlementDecision Evaluate(EntitlementRequest request) =>
+            Vev.Fabric.Contracts.Entitlements.EntitlementDecision.Allow(request.Capability, "entitlement:test", TimeProvider.System.GetUtcNow());
+
+        public Vev.Atlas.Fabric.EntitlementAllowanceSnapshot Describe(EntitlementAllowanceRequest request) =>
+            Vev.Atlas.Fabric.EntitlementAllowanceSnapshot.UnlimitedAllowance("entitlement:test");
     }
 }

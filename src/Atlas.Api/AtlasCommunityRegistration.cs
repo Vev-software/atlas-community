@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Vev.Atlas.Domain;
 using Vev.Atlas.Domain.Portability;
 using Vev.Atlas.Fabric;
 using Vev.Atlas.Fabric.Dev;
+using Vev.Atlas.Fabric.Portic;
 using Vev.Fabric.Contracts.Entitlements;
 using Vev.Atlas.Persistence;
 
@@ -13,6 +15,11 @@ public static class AtlasCommunityRegistration
 {
     /// <summary>Register the Community catalogue services against the given SQLite connection string.</summary>
     public static IServiceCollection AddAtlasCommunity(this IServiceCollection services, string connectionString)
+    {
+        return AddAtlasCommunity(services, connectionString, null);
+    }
+
+    public static IServiceCollection AddAtlasCommunity(this IServiceCollection services, string connectionString, IConfiguration? configuration)
     {
         // --- Fabric shim (dev implementations; swap for Vev.Fabric.* when it lands, handbook 11 §4) ---
         var contextAccessor = new AmbientRequestContextAccessor();
@@ -71,6 +78,14 @@ public static class AtlasCommunityRegistration
         services.AddSingleton<ILandscapeImporter, AtlasJsonLandscapeImporter>();
         services.AddSingleton<ILandscapeImporter, AtlasMarkdownLandscapeImporter>();
         services.AddSingleton<LandscapeFormatRegistry>();
+
+        // --- Portic AI provider extension (opt-in, issue #115) ---
+        // When configuration is available and Atlas:Portic:BaseUrl is set, register the Portic provider
+        // so it becomes available as a provider option without requiring a BYOK API key.
+        if (configuration != null && !string.IsNullOrWhiteSpace(configuration.GetSection("Atlas:Portic:BaseUrl").Value))
+        {
+            services.AddPorticAiProvider(configuration);
+        }
 
         return services;
     }

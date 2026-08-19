@@ -19,6 +19,8 @@ public sealed class CommunityAiAssistService(
     private const string Source = "ai:unconfigured";
     private readonly Dictionary<string, IAiProviderExtension> _extensions =
         providerExtensions.ToDictionary(e => e.ProviderId, StringComparer.Ordinal);
+    private readonly IReadOnlyList<string> _extensionProviderIds =
+        providerExtensions.Select(e => e.ProviderId).ToList();
 
     /// <summary>Singleton no-provider evaluator for Community.</summary>
     public static CommunityAiAssistService Unconfigured { get; } = new(
@@ -31,27 +33,30 @@ public sealed class CommunityAiAssistService(
     public AiAssistResult Assist(AiAssistRequest request)
     {
         var configuration = moduleStore.GetAsync(context.Tenant).AsTask().GetAwaiter().GetResult();
-        if (configuration?.IsUsable != true)
+        if (configuration?.IsUsableForProvider(_extensionProviderIds) != true)
         {
             return AiAssistResult.Unavailable(Source);
         }
 
         var provider = configuration.Provider!;
-        var apiKey = configuration.ApiKey!;
 
-        switch (provider)
+        if (_extensions.TryGetValue(provider, out var extension))
         {
-            case "openai":
-                return SendOpenAiCompatible(apiKey, request);
-            case "anthropic":
-                return SendAnthropic(apiKey, request);
-            default:
-                if (_extensions.TryGetValue(provider, out var extension))
-                {
-                    return extension.Assist(request);
-                }
-                return AiAssistResult.Unavailable(Source);
+            return extension.Assist(request);
         }
+
+        var apiKey = configuration.ApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return AiAssistResult.Unavailable(Source);
+        }
+
+        return provider switch
+        {
+            "openai" => SendOpenAiCompatible(apiKey, request),
+            "anthropic" => SendAnthropic(apiKey, request),
+            _ => AiAssistResult.Unavailable(Source)
+        };
     }
 
     private AiAssistResult SendOpenAiCompatible(string apiKey, AiAssistRequest request)

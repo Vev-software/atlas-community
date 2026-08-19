@@ -13,6 +13,7 @@ public sealed class LandscapeChatService(
     IAuthorizer authorizer,
     IAiAssistService aiAssist,
     IAiModuleConfigurationStore moduleStore,
+    AiAllowanceService allowances,
     McpReadService mcp,
     IAtlasAuditSink audit,
     TimeProvider clock)
@@ -30,9 +31,15 @@ public sealed class LandscapeChatService(
         }
 
         var configuration = await moduleStore.GetAsync(context.Tenant, ct);
-        if (configuration?.IsUsable != true)
+        if (configuration?.Enabled != true || configuration.ConsentAccepted != true)
         {
             return LandscapeChatReply.SetupRequired("The Atlas AI module is not enabled for this tenant yet.");
+        }
+
+        var allowance = allowances.Describe(AtlasCapabilities.AiChat, ChatResource);
+        if (!allowance.Allowed)
+        {
+            return LandscapeChatReply.AllowanceDenied(allowance.Status, allowance.Remaining, allowance.Window);
         }
 
         var selectedAssetIds = (request.AssetIds ?? [])
@@ -125,10 +132,16 @@ public sealed record LandscapeChatReply(
     string Message,
     string Source,
     IReadOnlyList<string> SelectedAssetIds,
-    IReadOnlyList<AiDocLink> DocLinks)
+    IReadOnlyList<AiDocLink> DocLinks,
+    string? AllowanceStatus = null,
+    int? AllowanceRemaining = null,
+    string? AllowanceWindow = null)
 {
     public static LandscapeChatReply SetupRequired(string message) =>
         new("setup-required", message, "ai:setup-required", [], []);
+
+    public static LandscapeChatReply AllowanceDenied(string status, int? remaining, string window) =>
+        new("allowance-denied", $"AI chat allowance exhausted. {status}", "ai:allowance-denied", [], [], status, remaining, window);
 }
 
 /// <summary>A stable documentation link key the API resolves into a deployment-aware URL.</summary>

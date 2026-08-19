@@ -17,6 +17,7 @@
     <ProjectReference Include="../Atlas.Domain/Atlas.Domain.csproj" />
     <ProjectReference Include="../Atlas.Persistence/Atlas.Persistence.csproj" />
     <ProjectReference Include="../Atlas.Fabric.Dev/Atlas.Fabric.Dev.csproj" />
+    <ProjectReference Include="../Atlas.Fabric.Portic/Atlas.Fabric.Portic.csproj" />
   </ItemGroup>
 
 </Project>

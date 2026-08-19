@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vev.Atlas.Fabric;
 using Vev.Atlas.Fabric.Portic;
+using Vev.Fabric.Contracts.Entitlements;
 using Vev.Atlas.Persistence;
 using Xunit;
 
@@ -141,6 +142,99 @@ public sealed class PorticProviderTests
         Assert.Contains("portic", body.GetProperty("message").GetString()!, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Portic_provider_works_without_api_key_when_registered()
+    {
+        using var factory = new PorticTestFactory();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Tenant-Id", "t-portic-no-key");
+        client.DefaultRequestHeaders.Add("X-Principal-Id", "arch");
+        client.DefaultRequestHeaders.Add("X-Principal-Roles", "AtlasArchitect");
+
+        var save = await client.PutAsJsonAsync("/api/v1/ai/module", new
+        {
+            enabled = true,
+            consentAccepted = true,
+            provider = "portic"
+        }, Json);
+
+        Assert.Equal(HttpStatusCode.OK, save.StatusCode);
+        var body = await save.Content.ReadFromJsonAsync<JsonElement>(Json);
+        Assert.Equal("portic", body.GetProperty("provider").GetString());
+        Assert.True(body.GetProperty("ready").GetBoolean());
+        Assert.False(body.GetProperty("apiKeyConfigured").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Portic_chat_works_without_api_key_when_registered()
+    {
+        using var factory = new PorticTestFactory();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Tenant-Id", "t-portic-no-key-chat");
+        client.DefaultRequestHeaders.Add("X-Principal-Id", "arch");
+        client.DefaultRequestHeaders.Add("X-Principal-Roles", "AtlasArchitect");
+
+        await client.PostAsJsonAsync("/api/v1/assets",
+            new Vev.Atlas.Contracts.Asset("sys-payments", Vev.Atlas.Contracts.AssetKind.System, "Payments", Vev.Atlas.Contracts.Lifecycle.Active), Json);
+        await client.PutAsJsonAsync("/api/v1/ai/module", new
+        {
+            enabled = true,
+            consentAccepted = true,
+            provider = "portic"
+        }, Json);
+
+        var response = await client.PostAsJsonAsync("/api/v1/ai/chat", new
+        {
+            question = "What is in this landscape?"
+        }, Json);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(Json);
+        Assert.Equal("ready", body.GetProperty("status").GetString());
+        Assert.Contains("portic", body.GetProperty("message").GetString()!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Providers_endpoint_returns_all_registered_providers()
+    {
+        using var factory = new PorticTestFactory();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Tenant-Id", "t-providers");
+        client.DefaultRequestHeaders.Add("X-Principal-Id", "arch");
+        client.DefaultRequestHeaders.Add("X-Principal-Roles", "AtlasArchitect");
+
+        var response = await client.GetAsync("/api/v1/ai/providers");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement[]>(Json);
+        Assert.NotNull(body);
+
+        var ids = body.Select(e => e.GetProperty("id").GetString()!).ToList();
+        Assert.Contains("openai", ids);
+        Assert.Contains("anthropic", ids);
+        Assert.Contains("portic", ids);
+    }
+
+    [Fact]
+    public async Task Providers_endpoint_marks_extension_providers_as_no_key_required()
+    {
+        using var factory = new PorticTestFactory();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Tenant-Id", "t-providers-key");
+        client.DefaultRequestHeaders.Add("X-Principal-Id", "arch");
+        client.DefaultRequestHeaders.Add("X-Principal-Roles", "AtlasArchitect");
+
+        var response = await client.GetAsync("/api/v1/ai/providers");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement[]>(Json);
+        Assert.NotNull(body);
+
+        var portic = body.First(e => e.GetProperty("id").GetString() == "portic");
+        Assert.False(portic.GetProperty("requiresApiKey").GetBoolean());
+
+        var openai = body.First(e => e.GetProperty("id").GetString() == "openai");
+        Assert.True(openai.GetProperty("requiresApiKey").GetBoolean());
+    }
+
     private sealed class PorticTestFactory : WebApplicationFactory<Program>
     {
         private readonly SqliteConnection _connection = new("DataSource=:memory:");
@@ -158,7 +252,10 @@ public sealed class PorticProviderTests
                 services.AddDbContext<AtlasDbContext>(options => options.UseSqlite(_connection));
                 services.RemoveAll<IAiAssistService>();
                 services.AddScoped<IAiAssistService, TestPorticAssistService>();
-                services.AddPorticAiProvider(hostingContext.Configuration);
+                services.RemoveAll<IEntitlementService>();
+                services.RemoveAll<IEntitlementAllowanceProvider>();
+                services.AddSingleton<IEntitlementService, TestEntitlementService>();
+                services.AddSingleton<IEntitlementAllowanceProvider, TestEntitlementService>();
             });
         }
 
@@ -180,11 +277,13 @@ public sealed class PorticProviderTests
         private const string Source = "ai:unconfigured";
         private readonly Dictionary<string, IAiProviderExtension> _extensions =
             providerExtensions.ToDictionary(e => e.ProviderId, StringComparer.Ordinal);
+        private readonly IReadOnlyList<string> _extensionProviderIds =
+            providerExtensions.Select(e => e.ProviderId).ToList();
 
         public AiAssistResult Assist(AiAssistRequest request)
         {
             var configuration = moduleStore.GetAsync(context.Tenant).AsTask().GetAwaiter().GetResult();
-            if (configuration?.IsUsable != true)
+            if (configuration?.IsUsableForProvider(_extensionProviderIds) != true)
             {
                 return AiAssistResult.Unavailable(Source);
             }
@@ -202,5 +301,14 @@ public sealed class PorticProviderTests
                 _ => AiAssistResult.Unavailable(Source)
             };
         }
+    }
+
+    private sealed class TestEntitlementService : IEntitlementService, IEntitlementAllowanceProvider
+    {
+        public EntitlementDecision Evaluate(EntitlementRequest request) =>
+            Vev.Fabric.Contracts.Entitlements.EntitlementDecision.Allow(request.Capability, "entitlement:test", TimeProvider.System.GetUtcNow());
+
+        public Vev.Atlas.Fabric.EntitlementAllowanceSnapshot Describe(EntitlementAllowanceRequest request) =>
+            Vev.Atlas.Fabric.EntitlementAllowanceSnapshot.UnlimitedAllowance("entitlement:test");
     }
 }
