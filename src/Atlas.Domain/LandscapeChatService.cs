@@ -31,7 +31,7 @@ public sealed class LandscapeChatService(
         }
 
         var configuration = await moduleStore.GetAsync(context.Tenant, ct);
-        if (configuration?.IsUsable != true)
+        if (configuration?.Enabled != true || configuration.ConsentAccepted != true)
         {
             return LandscapeChatReply.SetupRequired("The Atlas AI module is not enabled for this tenant yet.");
         }

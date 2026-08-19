@@ -33,7 +33,7 @@ public sealed class AiModuleService(
             ConsentAccepted: configuration?.ConsentAccepted == true,
             Provider: configuration?.Provider,
             ApiKeyConfigured: !string.IsNullOrWhiteSpace(configuration?.ApiKey),
-            Ready: configuration?.IsUsable == true,
+            Ready: configuration?.IsUsableForProvider(_extensionProviderIds) == true,
             CanManage: authorizer.Authorize(tenant, context.Principal, AtlasActions.AssetWrite, ModuleResource).Allowed,
             ConsentAcceptedAt: configuration?.ConsentAcceptedAt,
             ConsentAcceptedBy: configuration?.ConsentAcceptedBy,
@@ -60,7 +60,8 @@ public sealed class AiModuleService(
             throw new CatalogueValidationException("Select a supported provider.");
         }
 
-        if (string.IsNullOrWhiteSpace(request.ApiKey))
+        bool requiresApiKey = !_extensionProviderIds.Contains(provider);
+        if (requiresApiKey && string.IsNullOrWhiteSpace(request.ApiKey))
         {
             throw new CatalogueValidationException("Paste an API key for the selected provider.");
         }
@@ -74,7 +75,7 @@ public sealed class AiModuleService(
                 ConsentAcceptedAt: now,
                 ConsentAcceptedBy: context.Principal.PrincipalId,
                 Provider: provider,
-                ApiKey: request.ApiKey.Trim(),
+                ApiKey: requiresApiKey ? request.ApiKey!.Trim() : null,
                 UpdatedAt: now),
             ct);
 
@@ -108,6 +109,20 @@ public sealed class AiModuleService(
 
     public IReadOnlyList<string> GetSupportedProviders() =>
         AiProviders.All.Concat(_extensionProviderIds).ToList();
+
+    public IReadOnlyList<AiProviderInfo> GetProviderInfos()
+    {
+        var infos = new List<AiProviderInfo>();
+        foreach (var p in AiProviders.All)
+        {
+            infos.Add(new AiProviderInfo(p, p, true));
+        }
+        foreach (var p in _extensionProviderIds)
+        {
+            infos.Add(new AiProviderInfo(p, p, false));
+        }
+        return infos;
+    }
 
     private void AuthorizeRead()
     {
@@ -167,3 +182,6 @@ public static class AiProviders
     /// <summary>The built-in providers only. Use <c>AiModuleService.GetSupportedProviders()</c> for the full runtime list including extensions.</summary>
     public static readonly IReadOnlyList<string> All = [OpenAi, Anthropic];
 }
+
+/// <summary>Provider information for the UI, including whether an API key is required.</summary>
+public sealed record AiProviderInfo(string Id, string Label, bool RequiresApiKey);

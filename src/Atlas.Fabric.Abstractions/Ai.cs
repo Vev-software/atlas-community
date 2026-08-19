@@ -67,10 +67,19 @@ public sealed record AiModuleConfiguration(
 {
     /// <summary>Whether the module is ready to serve requests through the Fabric AI contract.</summary>
     public bool IsUsable =>
+        IsUsableForProvider(null);
+
+    /// <summary>
+    /// Whether the module is ready to serve requests. For extension providers (identified by
+    /// <paramref name="extensionProviderIds"/>), an API key is not required — the extension handles
+    /// its own authentication. Built-in providers (OpenAI, Anthropic) still require a key.
+    /// </summary>
+    public bool IsUsableForProvider(IReadOnlyList<string>? extensionProviderIds) =>
         Enabled &&
         ConsentAccepted &&
         !string.IsNullOrWhiteSpace(Provider) &&
-        !string.IsNullOrWhiteSpace(ApiKey);
+        (!string.IsNullOrWhiteSpace(ApiKey) ||
+         (extensionProviderIds != null && extensionProviderIds.Contains(Provider!)));
 }
 
 /// <summary>

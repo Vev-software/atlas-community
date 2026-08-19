@@ -1030,6 +1030,7 @@
     let setupGuide = null;      // Grounded onboarding guide for the current tenant.
     let aiAllowances = [];      // Visible AI-hook allowance state for the current tenant.
     let aiModule = null;        // Server-side AI setup status (consent, provider, key presence).
+    let aiProviders = [];       // Supported AI providers and their key requirements.
     let aiMessages = [];        // Client-only chat transcript for the current browser session.
     let aiPanelView = "chat";
     let aiBusy = false;
@@ -1570,11 +1571,18 @@
     }
     async function loadAiModule() {
       try {
-        const res = await fetch(api("/v1/ai/module"), { headers: { "Accept": "application/json" } });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        aiModule = await res.json();
+        const [moduleRes, providersRes] = await Promise.all([
+          fetch(api("/v1/ai/module"), { headers: { "Accept": "application/json" } }),
+          fetch(api("/v1/ai/providers"), { headers: { "Accept": "application/json" } })
+        ]);
+        if (!moduleRes.ok) throw new Error("HTTP " + moduleRes.status);
+        aiModule = await moduleRes.json();
+        if (providersRes.ok) {
+          aiProviders = await providersRes.json();
+        }
       } catch {
         aiModule = null;
+        aiProviders = [];
       }
     }
 
@@ -1671,7 +1679,7 @@
       status.className = "ai-empty";
       status.innerHTML =
         `<strong>Atlas AI setup</strong>` +
-        `<p class="placeholder">Your provider key stays in this Atlas instance and is used only after you explicitly enable the module.</p>`;
+        `<p class="placeholder">Choose a provider and enable Atlas AI. Extension providers (e.g. Portic) do not require an API key — built-in providers (OpenAI, Anthropic) use your own key.</p>`;
       body.appendChild(status);
 
       if (aiModule && aiModule.allowance) {
@@ -1679,27 +1687,51 @@
         body.appendChild(renderAllowanceSection());
       }
 
+      const providerOptions = aiProviders.length > 0
+        ? aiProviders.map(p => `<option value="${p.id}" ${p.requiresApiKey ? 'data-requires-key="true"' : ''}>${escapeHtml(p.label)}</option>`).join("")
+        : `<option value="openai" data-requires-key="true">OpenAI</option><option value="anthropic" data-requires-key="true">Anthropic</option>`;
+
       const form = document.createElement("form");
       form.className = "ai-form";
       form.innerHTML =
         `<div class="consent-box">` +
           `<strong>Consent</strong>` +
-          `<p class="placeholder">Atlas AI sends your grounded question plus selected landscape facts to your own configured provider. The key stays in your own Atlas instance.</p>` +
+          `<p class="placeholder">Atlas AI sends your grounded question plus selected landscape facts to your configured provider. For built-in providers, the key stays in your own Atlas instance.</p>` +
           `<label><input id="aiConsent" type="checkbox" ${aiModule && aiModule.consentAccepted ? "checked" : ""} />I accept and start using Atlas AI</label>` +
         `</div>` +
-        `<div class="field"><label for="aiProvider">Provider</label><select id="aiProvider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option></select></div>` +
-        `<div class="field"><label for="aiApiKey">API key</label><input id="aiApiKey" type="password" autocomplete="off" placeholder="Paste your provider API key" /><div class="hint">${aiModule && aiModule.apiKeyConfigured ? "A key is already stored. Paste a new one to replace it." : "The key is encrypted at rest and never shown back in the UI."}</div></div>`;
+        `<div class="field"><label for="aiProvider">Provider</label><select id="aiProvider">${providerOptions}</select></div>` +
+        `<div class="field" id="aiApiKeyField"><label for="aiApiKey">API key</label><input id="aiApiKey" type="password" autocomplete="off" placeholder="Paste your provider API key" /><div class="hint">${aiModule && aiModule.apiKeyConfigured ? "A key is already stored. Paste a new one to replace it." : "The key is encrypted at rest and never shown back in the UI."}</div></div>`;
       body.appendChild(form);
-      if (aiModule && aiModule.provider) {
-        form.querySelector("#aiProvider").value = aiModule.provider;
-      }
 
+      const providerSelect = form.querySelector("#aiProvider");
+      if (aiModule && aiModule.provider) {
+        providerSelect.value = aiModule.provider;
+      }
+      updateApiKeyField(providerSelect);
+      providerSelect.addEventListener("change", () => updateApiKeyField(providerSelect));
+
+      const statusText = aiModule && aiModule.ready
+        ? "Configured"
+        : (aiModule && aiModule.consentAccepted && aiModule.provider ? "Save to enable" : "Not configured");
       const footerForm = document.createElement("form");
       footerForm.className = "ai-footer-form";
       footerForm.innerHTML =
-        `<div class="ai-footer-row"><span class="ai-status-pill">${aiModule && aiModule.ready ? "Configured" : "Not configured"}</span><button class="primary" id="saveAiSetup" ${aiBusy ? "disabled" : ""}>Enable Atlas AI</button></div>`;
+        `<div class="ai-footer-row"><span class="ai-status-pill">${statusText}</span><button class="primary" id="saveAiSetup" ${aiBusy ? "disabled" : ""}>${aiModule && aiModule.ready ? "Update" : "Enable Atlas AI"}</button></div>`;
       footerForm.addEventListener("submit", submitAiSetup);
       footer.appendChild(footerForm);
+    }
+
+    function updateApiKeyField(providerSelect) {
+      const apiKeyField = el("aiApiKeyField");
+      if (!apiKeyField) return;
+      const selectedOption = providerSelect.options[providerSelect.selectedIndex];
+      const requiresKey = selectedOption && selectedOption.dataset.requiresKey === "true";
+      apiKeyField.hidden = !requiresKey;
+      const apiKeyInput = el("aiApiKey");
+      if (apiKeyInput) {
+        apiKeyInput.required = requiresKey;
+        apiKeyInput.placeholder = requiresKey ? "Paste your provider API key" : "Not required for this provider";
+      }
     }
 
     async function submitAiSetup(ev) {
@@ -1713,7 +1745,9 @@
         toast("Accept the Atlas AI consent step before enabling the module.", true);
         return;
       }
-      if (!apiKey) {
+      const selectedOption = el("aiProvider").options[el("aiProvider").selectedIndex];
+      const requiresKey = selectedOption && selectedOption.dataset.requiresKey === "true";
+      if (requiresKey && !apiKey) {
         toast("Paste an API key for the selected provider.", true);
         return;
       }
@@ -1724,7 +1758,7 @@
         const res = await fetch(api("/v1/ai/module"), {
           method: "PUT",
           headers: { "Content-Type": "application/json", "Accept": "application/json" },
-          body: JSON.stringify({ enabled: true, consentAccepted, provider, apiKey }),
+          body: JSON.stringify({ enabled: true, consentAccepted, provider, apiKey: requiresKey ? apiKey : undefined }),
         });
         if (!res.ok) {
           toast(await apiError(res), true);
