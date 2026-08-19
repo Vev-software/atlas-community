@@ -244,7 +244,7 @@ public sealed class PorticProviderTests
             _connection.Open();
             builder.UseEnvironment("Development");
             builder.UseSetting("Atlas:Portic:BaseUrl", "https://portic.test.example/v1");
-            builder.UseSetting("Atlas:Portic:Model", "gpt-4.1-mini");
+            builder.UseSetting("Atlas:Portic:Model", "stub-echo");
 
             builder.ConfigureServices((hostingContext, services) =>
             {
