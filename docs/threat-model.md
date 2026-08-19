@@ -56,8 +56,11 @@ Scoped to the Community, self-hosted deployment:
   Development environment; it cannot be forced on elsewhere.
 - **Secrets and customer content are kept out of logs and audit by design** (`E4/E5`), but exported
   documents and backups are full plaintext copies of the map and must be protected in kind.
-- **No AI or external-provider calls exist in Community**, so there is no prompt-injection or
-  data-egress-to-a-model surface in this edition.
+- **AI chat is tenant-borne.** The `/api/v1/ai/chat` endpoint routes through the Fabric AI contract
+  with a provider key supplied by the tenant (BYOK). Prompt and response content are not logged by
+  default. The LLM is never the sole mechanism for a security or access decision, and chat never
+  mutates the catalogue. Data egress only occurs when the tenant has enabled AI and configured a
+  provider.
 
 ## Compatibility statement
 

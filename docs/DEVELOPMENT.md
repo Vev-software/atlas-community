@@ -463,6 +463,76 @@ no matching signature in the transparency log for that identity, so `cosign veri
 it. Pin deployments to an immutable digest (`ghcr.io/vev-software/atlas-community@sha256:…`), not just a
 moving tag, once you have verified it.
 
+## Chat with your landscape (issue #28)
+
+Grounded, read-only Q&A over the tenant's own catalogue. The user asks a question in plain language;
+Atlas selects relevant assets, builds a context pack, and routes the grounded prompt through the
+Fabric AI contract. Read-assist only: the LLM is never the sole mechanism for a security or access
+decision, and chat never mutates the catalogue.
+
+### API endpoint
+
+`POST /api/v1/ai/chat` — ask a natural-language question about the current landscape.
+
+```bash
+# Ask a question (requires the AI module to be enabled — see below)
+curl -X POST http://localhost:5199/api/v1/ai/chat \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-Id: demo" \
+  -d '{"question": "What depends on the payments database?"}'
+```
+
+The response includes the answer, the asset ids used for grounding, and documentation links. If the
+AI module is not enabled, the endpoint returns `"status": "setup-required"` with a message guiding
+the user to enable Atlas AI.
+
+### How it works
+
+1. The question is validated and the service checks that the AI module is enabled for the tenant.
+2. If no asset ids are provided, the service searches for assets matching the question keywords
+   (up to 6 results); if that yields nothing, it takes the first 6 assets in the catalogue.
+3. A deterministic context pack is built from the selected assets (including related assets and
+   relationships), producing a grounded markdown summary.
+4. The grounding is sent through `IAiAssistService` via the Fabric AI contract.
+5. If no AI provider is configured, the caller gets a typed `"setup-required"` response.
+6. The interaction is audited as `atlas.ai.chat` with the selected asset/relationship counts.
+
+### Enabling Atlas AI for a tenant
+
+Chat requires the Atlas AI module to be enabled with a provider and BYOK key:
+
+```bash
+# Enable the AI module with OpenAI (or Anthropic)
+curl -X PUT http://localhost:5199/api/v1/ai/module \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-Id: demo" \
+  -d '{
+        "enabled": true,
+        "consentAccepted": true,
+        "provider": "openai",
+        "apiKey": "sk-..."
+      }'
+
+# Check the module status (the key is never echoed back)
+curl http://localhost:5199/api/v1/ai/module -H "X-Tenant-Id: demo"
+```
+
+The `GET /api/v1/ai/module` endpoint returns the redaction-safe status (enabled, consent, provider,
+ready flag) without exposing the stored API key. The key is encrypted at rest using ASP.NET Core
+Data Protection.
+
+### Non-goals
+
+- Not analytical reasoning or assessment over the landscape — gap analysis, roadmap generation,
+  and portfolio scoring are paid Enterprise capabilities.
+- Not a write path: chat proposes, it does not mutate the catalogue.
+
+### Capability and metering
+
+Chat is metered under `atlas.ai.chat` and runs through the Fabric AI contract. Prompt and response
+content are not logged by default. When Portic is registered as a provider extension, chat routes
+through Portic automatically.
+
 ## Portic AI provider extension
 
 Atlas Community supports third-party AI providers through the `IAiProviderExtension` interface. The
