@@ -1,0 +1,18 @@
+# Oneshot unit that resets the public Atlas Community demo. Triggered by atlas-demo-reset.timer.
+#
+# Install (on the Proxmox host / demo VM):
+#   sudo cp atlas-demo-reset.service atlas-demo-reset.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now atlas-demo-reset.timer
+#   systemctl list-timers atlas-demo-reset.timer      # confirm next run
+#
+# Adjust COMPOSE_DIR below if you cloned somewhere other than /opt/atlas-community-demo.
+[Unit]
+Description=Reset the public Atlas Community demo (wipe data, pull latest, restart)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+Environment=COMPOSE_DIR=/opt/atlas-community-demo/deploy/demo
+ExecStart=/opt/atlas-community-demo/deploy/demo/reset-demo.sh
