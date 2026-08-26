@@ -1,0 +1,67 @@
+# Atlas Community — PUBLIC demo instance. Ephemeral, self-updating, wiped nightly.
+#
+#   cp .env.example .env      # then edit .env (tunnel token)
+#   docker compose up -d
+#
+# This is deliberately different from the repo-root docker-compose.yml (which is the secure,
+# Keycloak-backed self-host). A public throwaway demo optimises for "anyone can click around with
+# zero friction, and nothing they do matters because it resets every night":
+#
+#   * single-tenant mode  — no login, everyone gets architect access (Atlas__Identity__Mode).
+#   * pre-built GHCR image — no local build; watchtower keeps it on the newest released main.
+#   * ephemeral SQLite     — the demo-data volume is wiped nightly by reset-demo.sh.
+#   * cloudflared          — outbound-only public tunnel, NO Cloudflare Access (it's meant to be open).
+#
+# Because it is internet-facing and stateless, keep it OFF your trusted LAN segment — run it in its
+# own VM/LXC on an isolated network, per the Atlas Enterprise deployment guide's network-isolation
+# section. Container engine: `podman compose` and `docker compose` both read this file.
+name: atlas-community-demo
+
+services:
+  atlas:
+    image: ${ATLAS_COMMUNITY_IMAGE:-ghcr.io/vev-software/atlas-community:latest}
+    environment:
+      ConnectionStrings__Atlas: "Data Source=/data/atlas.db"
+      # No OIDC: fixed single-tenant identity so the demo needs no login. NEVER use this mode for
+      # an instance that holds data you care about — here it is fine because the box resets nightly.
+      Atlas__Identity__Mode: "single-tenant"
+      Atlas__Identity__Oidc__Authority: ""
+    volumes:
+      - demo-data:/data
+    labels:
+      # watchtower (Docker) auto-update opt-in.
+      - "com.centurylinklabs.watchtower.enable=true"
+      # podman-native auto-update opt-in (`podman auto-update` / podman-auto-update.timer).
+      - "io.containers.autoupdate=registry"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on:
+      - atlas
+    restart: unless-stopped
+
+  # Full auto-update is SAFE here: the demo is stateless (nightly wipe), so redeploying on a new
+  # image can never lose anything worth keeping. Contrast with the enterprise stack, which is
+  # monitor-only.
+  watchtower:
+    image: containrrr/watchtower:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_POLL_INTERVAL: ${WATCHTOWER_POLL_INTERVAL:-300}
+    restart: unless-stopped
+
+volumes:
+  demo-data:

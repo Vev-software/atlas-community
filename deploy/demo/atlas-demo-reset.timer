@@ -1,0 +1,11 @@
+# Fires the nightly Atlas Community demo reset. See atlas-demo-reset.service for install steps.
+[Unit]
+Description=Nightly reset of the public Atlas Community demo
+
+[Timer]
+# 04:00 local time every day. Persistent=true runs a missed reset after the host was off/asleep.
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
