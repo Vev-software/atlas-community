@@ -91,6 +91,23 @@ public static class RequestIdentityConfiguration
     public const string FabricOidc = "fabric-oidc";
 
     /// <summary>
+    /// Trusted machine-to-machine caller authenticated by a configured shared secret
+    /// (<see cref="ServiceTokenSecretKey"/>), acting on behalf of the tenant it names in
+    /// <c>X-Tenant-Id</c>. For a same-org backend forwarding reconciled landscape data into the
+    /// catalogue; see <see cref="ServiceTokenContextMiddleware"/>. An explicit opt-in — never a default.
+    /// </summary>
+    public const string ServiceToken = "service-token";
+
+    /// <summary>Shared secret for <see cref="ServiceToken"/> mode. Required to run it; unset fails closed.</summary>
+    public const string ServiceTokenSecretKey = "Atlas:Identity:ServiceToken:Secret";
+
+    /// <summary>Fixed principal id recorded for <see cref="ServiceToken"/> callers. Defaults to <c>service</c>.</summary>
+    public const string ServiceTokenPrincipalKey = "Atlas:Identity:ServiceToken:Principal";
+
+    /// <summary>Comma-separated fixed roles for <see cref="ServiceToken"/> callers. Defaults to the Architect role.</summary>
+    public const string ServiceTokenRolesKey = "Atlas:Identity:ServiceToken:Roles";
+
+    /// <summary>
     /// Register the authentication services the resolved identity mode needs, before the host is built.
     /// For <see cref="FabricOidc"/> with a configured <see cref="OidcAuthorityKey"/> this wires JWT bearer
     /// validation against the provider; the other modes need no service registration here. Pair with
@@ -198,9 +215,28 @@ public static class RequestIdentityConfiguration
                 app.UseMiddleware<OidcRequestContextMiddleware>(OidcIdentityOptions.FromConfiguration(app.Configuration));
                 return app;
 
+            case ServiceToken:
+                // A trusted machine caller proves itself with a configured shared secret; without one
+                // Atlas fails closed rather than accept an unauthenticated service call.
+                var secret = app.Configuration[ServiceTokenSecretKey];
+                if (string.IsNullOrWhiteSpace(secret))
+                {
+                    throw new InvalidOperationException(
+                        $"Refusing to start: '{ModeKey}={ServiceToken}' requires a shared secret at '{ServiceTokenSecretKey}'. " +
+                        "Atlas does not accept unauthenticated service calls.");
+                }
+
+                var servicePrincipal = Value(app, ServiceTokenPrincipalKey, "service");
+                var serviceRoles = Value(app, ServiceTokenRolesKey, AtlasRoles.Architect)
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                app.UseMiddleware<ServiceTokenContextMiddleware>(
+                    System.Text.Encoding.UTF8.GetBytes(secret), servicePrincipal, serviceRoles);
+                return app;
+
             default:
                 throw new InvalidOperationException(
-                    $"Unknown '{ModeKey}' value '{mode}'. Expected '{DevHeaders}', '{SingleTenant}' or '{FabricOidc}'.");
+                    $"Unknown '{ModeKey}' value '{mode}'. Expected '{DevHeaders}', '{SingleTenant}', '{FabricOidc}' or '{ServiceToken}'.");
         }
     }
 
