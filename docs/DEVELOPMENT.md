@@ -213,27 +213,32 @@ CLI build does.
 docker compose up --build          # podman compose up --build
 ```
 
-Then:
+This brings up a bundled Keycloak alongside Atlas, so the stack is **secure by default** — every request
+needs a login. Complete the first-run password change (README § "First-run setup"), then:
 
 ```bash
-curl http://localhost:8080/health                        # {"status":"ok"}
-curl http://localhost:8080/api/v1/assets                 # single-tenant self-host; no identity header needed
-# The landscape UI: open http://localhost:8080/ in a browser.
+curl http://localhost:8080/health          # {"status":"ok"} — anonymous liveness probe
+# The landscape UI: open http://localhost:8080/ in a browser and sign in.
+# API calls need a Keycloak bearer token; e.g. GET /api/v1/assets returns 401 without one.
 ```
 
-The container runs in **single-tenant** identity mode (`Atlas__Identity__Mode=single-tenant`, set in the
-`Dockerfile`): the whole catalogue is one fixed tenant and request identity comes from configuration,
-not from `X-*` headers — see [Identity & tenancy](#identity--tenancy).
+The Compose stack runs Atlas in **`fabric-oidc`** mode against the bundled Keycloak. The image itself is
+**secure by default**: it refuses to start unless an OIDC authority is configured — or you explicitly opt
+out with `Atlas__Identity__Mode=single-tenant` (one fixed tenant, request identity from configuration, no
+login; local use only). See [Identity & tenancy](#identity--tenancy).
 
 The catalogue is stored in SQLite on the `atlas-data` volume (`/data/atlas.db` in the container), so
 it survives `docker compose down` / restarts. Remove it with `docker compose down -v`. That file holds
 the whole landscape map — protect it at rest: see [Encryption at rest](#encryption-at-rest).
 
-To build or run the image directly:
+To build or run the image directly — it is secure by default, so give it an identity mode or it refuses
+to start:
 
 ```bash
 docker build -t atlas-community:local .
-docker run --rm -p 8080:8080 -v atlas-data:/data atlas-community:local
+# Quick, no-login trial (one fixed tenant; local use only):
+docker run --rm -p 8080:8080 -v atlas-data:/data \
+  -e Atlas__Identity__Mode=single-tenant atlas-community:local
 ```
 
 The image runs as a non-root user, listens on port 8080, and carries a `HEALTHCHECK` that polls

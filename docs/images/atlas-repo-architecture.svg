@@ -138,36 +138,40 @@
   <text x="1170" y="832" class="box-body">restore the same published contracts</text>
   <text x="1170" y="854" class="box-body">package from nuget.org.</text>
 
-  <path d="M 370 265 H 420" class="line line-blue" marker-end="url(#arrowBlue)"/>
-  <text x="380" y="250" class="label">shared substrate contracts</text>
+  <!-- Row 1 — the shared contracts publish to the registries. Routed above the card band and down the
+       clear gap between the two groups, so they never cross the portic-sdk card that sits between
+       atlas-contracts and the registries. -->
+  <path d="M 640 185 V 166 H 1092 V 226 H 1150" class="line line-green" marker-end="url(#arrowGreen)"/>
+  <path d="M 690 185 V 176 H 1104 V 321 H 1150" class="line line-green dashed" marker-end="url(#arrowGreen)"/>
+  <text x="650" y="160" class="label">atlas-contracts → NuGet + npm</text>
 
-  <path d="M 740 265 H 1150" class="line line-green" marker-end="url(#arrowGreen)"/>
-  <text x="855" y="250" class="label">Vev.Atlas.Contracts package</text>
+  <path d="M 1050 262 H 1150" class="line line-green dashed" marker-end="url(#arrowGreen)"/>
+  <text x="1052" y="284" class="small">SDK/SPI packages</text>
 
-  <path d="M 740 305 H 1150" class="line line-green dashed" marker-end="url(#arrowGreen)"/>
-  <text x="860" y="329" class="label">@vev-software/atlas-contracts package</text>
+  <!-- Row 2 — both runtimes consume the SAME public contracts (the key message). Verticals drop into
+       the clear gap between the contract layer and the runtime layer; labels sit in that gap. -->
+  <path d="M 150 345 V 485" class="line line-blue dashed" marker-end="url(#arrowBlue)"/>
+  <text x="162" y="408" class="label">Fabric abstractions (package later)</text>
 
-  <path d="M 920 265 H 1150" class="line line-green dashed" marker-end="url(#arrowGreen)"/>
-  <text x="932" y="289" class="label">SDK/SPI package(s)</text>
+  <path d="M 430 345 V 485" class="line line-blue" marker-end="url(#arrowBlue)"/>
+  <text x="452" y="408" class="label">consumes atlas-contracts</text>
 
-  <path d="M 580 345 V 485" class="line line-blue" marker-end="url(#arrowBlue)"/>
-  <text x="598" y="424" class="label">Atlas data model and import/export seam</text>
+  <path d="M 650 345 V 485" class="line line-blue" marker-end="url(#arrowBlue)"/>
+  <text x="662" y="404" class="label">same public contracts,</text>
+  <text x="662" y="422" class="label">not community internals</text>
 
-  <path d="M 225 345 V 485" class="line line-blue dashed" marker-end="url(#arrowBlue)"/>
-  <text x="88" y="424" class="label">fabric-shaped abstractions today; package later</text>
+  <!-- community modules build on the public contract layer -->
+  <path d="M 960 485 V 390" class="line line-gray dashed" marker-end="url(#arrowGray)"/>
 
-  <path d="M 660 570 H 500" class="line line-blue" marker-end="url(#arrowBlue)"/>
-  <text x="537" y="557" class="label">same public contract surface</text>
+  <!-- one published package surface, consumed the same way across local, CI and container builds -->
+  <path d="M 470 700 H 1112" class="line line-gray dashed" marker-end="url(#arrowGray)"/>
+  <text x="700" y="688" class="label">same published packages across local, CI and container builds</text>
 
-  <path d="M 740 570 H 870" class="line line-blue" marker-end="url(#arrowBlue)"/>
-  <text x="754" y="556" class="label">community ecosystem</text>
-
-  <path d="M 560 718 H 1150" class="line line-gray dashed" marker-end="url(#arrowGray)"/>
-  <text x="812" y="705" class="label">published public package consumed consistently across environments</text>
-
+  <!-- Bottom row — Portic mirrors the split. Short connectors in the gaps; labels in the clear strip
+       above the cards. -->
   <path d="M 440 864 H 500" class="line line-red" marker-end="url(#arrowRed)"/>
-  <text x="447" y="848" class="label">same repo split idea</text>
+  <text x="300" y="815" class="label">same split idea</text>
 
   <path d="M 780 864 H 840" class="line line-blue" marker-end="url(#arrowBlue)"/>
-  <text x="786" y="848" class="label">shared platform concerns</text>
+  <text x="726" y="815" class="label">shared platform concerns</text>
 </svg>

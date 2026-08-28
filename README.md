@@ -148,6 +148,20 @@ curl http://localhost:8080/health  # {"status":"ok"}
 On Windows, `./deploy.ps1` wraps this: it picks Podman or Docker, builds the image and runs it on
 port 8080 (`./deploy.ps1 -Down` tears it back down).
 
+**Prefer the pre-built image?** Every tagged release publishes a signed image to
+[`ghcr.io/vev-software/atlas-community`](https://github.com/Vev-software/atlas-community/pkgs/container/atlas-community)
+(verify its signature and SBOM: [Supply chain](./docs/DEVELOPMENT.md#supply-chain-sbom--signed-provenance)). The image is
+**secure by default** and refuses to start without an identity provider, so for a quick, no-login look at
+the published image, opt into single-tenant mode:
+
+```bash
+docker run --rm -p 8080:8080 -e Atlas__Identity__Mode=single-tenant \
+  ghcr.io/vev-software/atlas-community:latest
+# then open http://localhost:8080/
+```
+
+For a real self-host, use the Compose stack above — secure by default, with the bundled Keycloak.
+
 ### First-run setup
 
 Atlas is **secure by default**: every request requires authentication. The bundled Keycloak ships
