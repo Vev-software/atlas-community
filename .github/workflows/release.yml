@@ -1,5 +1,6 @@
-# Auto-fires when the `release` workflow (publish.yml) pushes a vX.Y.Z tag. Renamed to
-# `container release` so it is distinct from the `release` button.
+# Builds the release container image. Fired by the `release` button (publish.yml) via
+# `gh workflow run` after it pushes a vX.Y.Z tag, and also directly on a human-pushed vX.Y.Z tag.
+# Named `container release` so it is distinct from the `release` button.
 name: container release
 
 # Publish a signed, SBOM-carrying container image for a tagged release (atlas#38).
@@ -10,6 +11,12 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  # Also invocable directly, because a tag pushed by another workflow using GITHUB_TOKEN does NOT
+  # trigger the `push` event above (GitHub's anti-recursion rule) — so the one-button release
+  # (publish.yml) fires this with `gh workflow run release.yml --ref <tag>`. Dispatched against the tag
+  # ref, github.ref / github.ref_name / github.sha are the tag's, so every step below behaves exactly as
+  # it does on a real tag push — no branching on the trigger.
+  workflow_dispatch:
 
 permissions:
   contents: write   # create/update the GitHub Release and upload the SBOM asset
@@ -22,10 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup .NET (pinned by global.json)
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
 

@@ -1,14 +1,16 @@
 # One-button release: pick a version bump, we validate main, then you click Approve to publish.
 #
 # atlas-community ships a CONTAINER (not nuget/npm). This workflow is the button; the actual
-# image build/push/sign/SBOM lives in the tag-triggered `github release` workflow (release.yml).
+# image build/push/sign/SBOM lives in the `container release` workflow (release.yml), which this
+# dispatches after tagging.
 #
 # Flow (Actions -> release -> Run workflow -> choose bump -> Run):
 #   1. verify  (no gate)  — refuse unless on main; require the latest `ci` run for main's HEAD
 #                            to be green; compute the next version from the last tag + bump.
 #   2. release (environment: release, Required Reviewers) — pauses for your Approve click, then
-#      pushes the tag `vX.Y.Z`, which fires release.yml to build + push the signed, SBOM-carrying
-#      image to GHCR and cut the GitHub Release.
+#      pushes the tag `vX.Y.Z` and dispatches release.yml to build + push the signed, SBOM-carrying
+#      image to GHCR and cut the GitHub Release. (An explicit dispatch, not the tag push, because a
+#      GITHUB_TOKEN-pushed tag does not trigger another workflow's `on: push`.)
 #   dry_run: smoke-build the image (no push, no tag, no publish) to validate the Dockerfile.
 name: release
 
@@ -48,7 +50,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
           fetch-depth: 0
@@ -92,7 +94,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   # Gate 2 — the "Publish" button. Requires approval via the `release` environment
-  # (enable Required Reviewers on it). Approval pushes the tag, which fires release.yml.
+  # (enable Required Reviewers on it). Approval pushes the tag and dispatches release.yml.
   release:
     name: release ${{ needs.verify.outputs.tag }} (container via GHCR)
     needs: verify
@@ -101,10 +103,12 @@ jobs:
     environment: release
     permissions:
       contents: write # push the version tag
+      actions: write  # dispatch release.yml for the new tag (see below)
     env:
       TAG: ${{ needs.verify.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.verify.outputs.sha }}
           fetch-depth: 0
@@ -123,9 +127,12 @@ jobs:
           file: Dockerfile
           push: false
 
-      # Real run: push the tag. release.yml (tag-triggered) builds + pushes + signs + SBOMs the
-      # image and cuts the GitHub Release.
-      - name: Tag ${{ env.TAG }} (fires the container release)
+      # Real run: push the tag, then fire release.yml to build + push + sign + SBOM the image and cut
+      # the GitHub Release. The explicit dispatch is required: a tag pushed with GITHUB_TOKEN does NOT
+      # trigger release.yml's `on: push` (GitHub's anti-recursion rule), so relying on the push alone
+      # silently produces a tag with no image. `workflow_dispatch` invoked via the API with GITHUB_TOKEN
+      # does run; --ref "$TAG" makes release.yml see the tag exactly as it would on a push.
+      - name: Tag ${{ env.TAG }} and fire the container release
         if: ${{ !inputs.dry_run }}
         run: |
           git fetch --tags --force --quiet
@@ -135,3 +142,5 @@ jobs:
             git tag "$TAG" "${{ needs.verify.outputs.sha }}"
             git push origin "$TAG"
           fi
+          gh workflow run release.yml --ref "$TAG"
+          echo "Dispatched release.yml for $TAG."
