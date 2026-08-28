@@ -14,7 +14,8 @@ separately-licensed commercial edition developed outside this public repository.
 > catalogue (CRUD, manual relationships, tags) over an API-first .NET stack, consuming the
 > public Fabric contracts with local signed-snapshot entitlement evaluation, plus architecture
 > fitness tests that fail the build on a boundary violation.
-> Self-hosted packaging (Docker + Compose) is in the tree; basic visualisation is still landing.
+> Self-hosted packaging (Docker + Compose) is in the tree, and a self-contained landscape browser —
+> view *and* author, with no separate front-end to deploy — ships inside the app.
 > Treat anything not yet in the source tree as intended direction rather than a shipped feature.
 
 ## Quick start (local dev)
@@ -52,9 +53,20 @@ Asset management — a genuinely useful place to hold your landscape, not crippl
 
 - An asset repository for systems, applications, servers, infrastructure, data areas,
   datasets and columns — create, edit, hold and browse.
-- Basic visualisation of the landscape you hold.
+- A **built-in landscape browser** — visualise the map and author assets and relationships
+  right in the app, served from the API itself with no separate front-end to deploy.
 - Manual relationships, join keys and tags on assets.
-- Customer-owned data export — a portability guarantee, not an afterthought.
+- **Shadow-IT signals** — surface unowned, unsanctioned and past-end-of-life assets straight
+  from the catalogue you already hold, no extra model to maintain.
+- **Portable export & import** — download your whole tenant as an atlas-contracts JSON
+  document (or a human-readable Markdown one) and load it back in (merge or replace). A
+  portability guarantee, not an afterthought.
+- **API- and agent-ready** — every capability is a documented REST endpoint (OpenAPI at
+  `/openapi/v1.json`) and a built-in **MCP server** at `/mcp`, so AI agents can read your
+  landscape directly.
+- **First-run setup copilot** — grounded onboarding suggestions computed from your current
+  catalogue; it works with no AI provider configured (deterministic local fallback) and only
+  proposes, never changes your data.
 
 ## Growing into Atlas Enterprise
 
@@ -75,9 +87,10 @@ Your data is yours, and the map is meant to interoperate with the tools you alre
   landscape as a portable atlas-contracts document; `POST /api/v1/import` loads a bundle back
   in (merge or replace). Both run through an explicit **format-adapter seam**, so the core
   portability boundary is the canonical contract form and nothing else.
-- **Community modules** — open format adapters such as ArchiMate import/export, BPMN import
-  and report exporters, built against the public contracts. They compose onto the seam by
-  registering a format adapter — they never change the core boundary.
+- **Format adapters** — the export/import seam ships with the canonical **atlas-contracts JSON**
+  format and a human-readable **Markdown** format today. Further open adapters (e.g. ArchiMate,
+  BPMN, report exporters) are the intended direction: they compose onto the seam by registering a
+  format adapter — never changing the core boundary.
 
 Compatibility and versioning expectations for exported documents are in
 [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md#portability-export--import).
