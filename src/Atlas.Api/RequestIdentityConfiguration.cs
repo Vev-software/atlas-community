@@ -2,6 +2,7 @@ using System.Linq;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Vev.Atlas.Domain;
 using Vev.Atlas.Fabric;
+using Vev.Fabric.Contracts.Identity;
 
 namespace Vev.Atlas.Api;
 
@@ -106,6 +107,30 @@ public static class RequestIdentityConfiguration
 
     /// <summary>Comma-separated fixed roles for <see cref="ServiceToken"/> callers. Defaults to the Architect role.</summary>
     public const string ServiceTokenRolesKey = "Atlas:Identity:ServiceToken:Roles";
+
+    /// <summary>
+    /// Trusted machine-to-machine caller authenticated by a Fabric service-identity assertion — a
+    /// short-lived, ECDSA-signed token presented in <c>X-Fabric-Service-Assertion</c> and verified with
+    /// only the caller's public key (no shared secret). Supersedes <see cref="ServiceToken"/> for a same-org
+    /// backend forwarding reconciled landscape data; see <see cref="ServiceAssertionContextMiddleware"/>. An
+    /// explicit opt-in — never a default.
+    /// </summary>
+    public const string ServiceAssertion = "service-assertion";
+
+    /// <summary>Caller's PEM-encoded EC public key for <see cref="ServiceAssertion"/> mode. Required; unset fails closed.</summary>
+    public const string ServiceAssertionPublicKeyKey = "Atlas:Identity:ServiceAssertion:PublicKeyPem";
+
+    /// <summary>Key id (<c>kid</c>) the assertion's signing key is looked up by. Required for <see cref="ServiceAssertion"/> mode.</summary>
+    public const string ServiceAssertionKeyIdKey = "Atlas:Identity:ServiceAssertion:KeyId";
+
+    /// <summary>Expected assertion issuer (<c>iss</c>). Required for <see cref="ServiceAssertion"/> mode.</summary>
+    public const string ServiceAssertionIssuerKey = "Atlas:Identity:ServiceAssertion:Issuer";
+
+    /// <summary>Expected assertion audience (<c>aud</c>) — this Atlas service's id. Required for <see cref="ServiceAssertion"/> mode.</summary>
+    public const string ServiceAssertionAudienceKey = "Atlas:Identity:ServiceAssertion:Audience";
+
+    /// <summary>Comma-separated fixed roles for <see cref="ServiceAssertion"/> callers. Defaults to the Architect role.</summary>
+    public const string ServiceAssertionRolesKey = "Atlas:Identity:ServiceAssertion:Roles";
 
     /// <summary>
     /// Register the authentication services the resolved identity mode needs, before the host is built.
@@ -234,9 +259,36 @@ public static class RequestIdentityConfiguration
                     System.Text.Encoding.UTF8.GetBytes(secret), servicePrincipal, serviceRoles);
                 return app;
 
+            case ServiceAssertion:
+                // A trusted machine caller proves itself with a signed assertion Atlas verifies using only
+                // the caller's public key. Without the verifying key/issuer/audience configured, Atlas fails
+                // closed rather than accept an unverifiable service call.
+                var publicKeyPem = app.Configuration[ServiceAssertionPublicKeyKey];
+                var keyId = app.Configuration[ServiceAssertionKeyIdKey];
+                var expectedIssuer = app.Configuration[ServiceAssertionIssuerKey];
+                var expectedAudience = app.Configuration[ServiceAssertionAudienceKey];
+                if (string.IsNullOrWhiteSpace(publicKeyPem) || string.IsNullOrWhiteSpace(keyId)
+                    || string.IsNullOrWhiteSpace(expectedIssuer) || string.IsNullOrWhiteSpace(expectedAudience))
+                {
+                    throw new InvalidOperationException(
+                        $"Refusing to start: '{ModeKey}={ServiceAssertion}' requires the caller's public key, key id, " +
+                        $"issuer and audience at '{ServiceAssertionPublicKeyKey}', '{ServiceAssertionKeyIdKey}', " +
+                        $"'{ServiceAssertionIssuerKey}' and '{ServiceAssertionAudienceKey}'. Atlas does not accept " +
+                        "unverifiable service calls.");
+                }
+
+                var assertionValidator = ServiceAssertionValidator.FromPem(
+                    keyId, publicKeyPem, expectedIssuer, expectedAudience);
+                var assertionRoles = Value(app, ServiceAssertionRolesKey, AtlasRoles.Architect)
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                app.UseMiddleware<ServiceAssertionContextMiddleware>(assertionValidator, assertionRoles);
+                return app;
+
             default:
                 throw new InvalidOperationException(
-                    $"Unknown '{ModeKey}' value '{mode}'. Expected '{DevHeaders}', '{SingleTenant}', '{FabricOidc}' or '{ServiceToken}'.");
+                    $"Unknown '{ModeKey}' value '{mode}'. Expected '{DevHeaders}', '{SingleTenant}', '{FabricOidc}', " +
+                    $"'{ServiceToken}' or '{ServiceAssertion}'.");
         }
     }
 
