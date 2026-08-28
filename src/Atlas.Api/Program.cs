@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -27,10 +28,19 @@ builder.Services.AddSingleton<AtlasUrls>();
 // pipeline is wired below by UseAtlasRequestIdentity (fabric#3, atlas#34).
 builder.AddAtlasRequestIdentity();
 
-// Speak the same wire shape the contract publishes: omit null properties.
+// Speak the same wire shape the contract publishes: omit null properties. Also normalize the public
+// contracts' optional ImmutableArray<> constructor-parameter defaults so OpenAPI schema generation
+// doesn't 500 on GET /openapi/v1.json — see OpenApiImmutableArrayDefaults for the why. This targets the
+// JSON options AddOpenApi reads, so it must be configured before AddOpenApi below.
 builder.Services.ConfigureHttpJsonOptions(options =>
+{
     options.SerializerOptions.DefaultIgnoreCondition =
-        System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull);
+        System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
+
+    var resolver = options.SerializerOptions.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver();
+    options.SerializerOptions.TypeInfoResolver = resolver.WithAddedModifier(
+        OpenApiImmutableArrayDefaults.NormalizeOptionalImmutableArrayDefaults);
+});
 
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
