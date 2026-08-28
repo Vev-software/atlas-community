@@ -9,8 +9,12 @@
 # Adjust COMPOSE_DIR below if you cloned somewhere other than /opt/atlas-community-demo.
 [Unit]
 Description=Reset the public Atlas Community demo (wipe data, pull latest, restart)
-After=docker.service
-Requires=docker.service
+# Engine-agnostic: the reference host runs podman, and `podman compose` needs no daemon, so this must
+# NOT hard-require docker.service — Requires=docker.service would make the reset fail to activate on a
+# podman-only host and the nightly wipe would silently never run. Order after the network; order after
+# docker.service too, but only if that unit exists (a bare After= on an absent unit is ignored).
+After=network-online.target docker.service
+Wants=network-online.target
 
 [Service]
 Type=oneshot
