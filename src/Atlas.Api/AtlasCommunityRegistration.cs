@@ -71,6 +71,17 @@ public static class AtlasCommunityRegistration
         // which refuses a module declaring or satisfying a reserved paid capability (atlas#22).
         services.AddScoped<ModuleInstallGuard>();
 
+        // UI extension seam (atlas#139/#140/#141): the host mounts entitlement-gated ui-extensions into
+        // named client slots. The open-source client ships the slot + mount protocol only; the analysis
+        // view content is delivered by a separate, entitlement-gated extension and never lives here. The
+        // catalogue runs every registration through the install guard and then the entitlement gate, so a
+        // module can never self-grant a paid capability and a denied extension is simply not offered.
+        services.AddScoped<UiExtensionCatalog>();
+        foreach (var registration in BuildUiExtensionRegistrations(configuration))
+        {
+            services.AddSingleton(registration);
+        }
+
         // --- Portability format-adapter seam (issue #12) ---
         // The canonical atlas-contracts JSON adapter is always present. Community format modules
         // (ArchiMate/BPMN/report) add themselves by registering more ILandscapeExporter/Importer here.
@@ -88,5 +99,26 @@ public static class AtlasCommunityRegistration
         }
 
         return services;
+    }
+
+    /// <summary>
+    /// The ui-extensions this host knows how to mount (atlas#139). Each is an edge module — its manifest
+    /// declares no reserved paid capability, so it passes the open-core guard; whether it is actually
+    /// offered to a tenant is the entitlement gate's decision, not the module's. The content source
+    /// (<c>FragmentUrl</c>) is deployment configuration, so Community stays self-contained and carries no
+    /// view of its own; when it is unset the extension is still gated correctly, just without content.
+    /// </summary>
+    private static IEnumerable<UiExtensionRegistration> BuildUiExtensionRegistrations(IConfiguration? configuration)
+    {
+        const string portfolioHealthId = "com.vev.atlas.portfolio-health";
+        var portfolioHealthFragmentUrl = configuration?["Atlas:Extensions:PortfolioHealth:FragmentUrl"];
+
+        yield return new UiExtensionRegistration(
+            Id: portfolioHealthId,
+            Slot: "landscape-right-rail",
+            Title: "Portfolio health",
+            RequiredCapability: AtlasCapabilities.PortfolioAnalysis,
+            Manifest: ModuleManifest.ForEdgeModule(portfolioHealthId),
+            FragmentUrl: string.IsNullOrWhiteSpace(portfolioHealthFragmentUrl) ? null : portfolioHealthFragmentUrl);
     }
 }

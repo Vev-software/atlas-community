@@ -20,6 +20,7 @@ public sealed class ModuleInstallGuardTests
         [
             "atlas.ai.generate",
             "atlas.ai.review",
+            "atlas.analysis.apm",
             "atlas.data.introspection",
             "atlas.data.overlap",
             "atlas.data.quality",

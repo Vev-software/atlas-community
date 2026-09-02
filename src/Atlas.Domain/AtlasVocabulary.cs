@@ -51,6 +51,15 @@ public static class AtlasCapabilities
     /// <summary>Application-portfolio management heatmap (paid Atlas core).</summary>
     public static readonly CapabilityId PortfolioManagement = new("atlas.portfolio.apm");
 
+    /// <summary>
+    /// Application-portfolio-management analysis — the canonical reserved capability id from the public
+    /// Fabric taxonomy (<c>atlas.analysis.apm</c>). Gates the mounted "portfolio health" analysis
+    /// ui-extension (atlas#141): grants are matched by id string against the signed snapshot, which is
+    /// keyed on the canonical taxonomy ids, so the gate must use this id for a grant to resolve. Distinct
+    /// from the legacy <see cref="PortfolioManagement"/> id pending vocabulary reconciliation.
+    /// </summary>
+    public static readonly CapabilityId PortfolioAnalysis = new("atlas.analysis.apm");
+
     /// <summary>EA roadmap generation (paid Atlas core, via the Fabric AI contract).</summary>
     public static readonly CapabilityId RoadmapGeneration = new("atlas.roadmap.generate");
 
@@ -101,6 +110,7 @@ public static class AtlasCapabilities
         IntegrationMapping,
         EndOfLifeTracking,
         PortfolioManagement,
+        PortfolioAnalysis,
         RoadmapGeneration,
         AiReview,
         AiGenerate,

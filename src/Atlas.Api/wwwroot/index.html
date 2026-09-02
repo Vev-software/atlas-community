@@ -252,6 +252,13 @@
       padding: 12px;
       background: #fbfbfc;
     }
+    /* Extension mount slot (atlas#139): the host frame around a mounted ui-extension. The client owns the
+       chrome (border + title); the content itself is the extension's, isolated in a sandboxed iframe. */
+    .ext-slot { margin-top: 18px; display: grid; gap: 12px; }
+    .ext-panel { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
+    .ext-panel > header { padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+    .ext-panel .ext-frame { width: 100%; height: 160px; border: 0; display: block; background: var(--panel); }
+    .ext-panel .ext-empty { padding: 12px; color: var(--muted); font-size: 13px; }
     .pack-box {
       font-size: 12.5px;
       background: #f8fafc;
@@ -741,6 +748,11 @@
     <aside>
       <h2>Details</h2>
       <div id="detail" class="stack"><p class="placeholder">Select an asset in the map to inspect it.</p></div>
+      <!-- Extension mount slot (atlas#139): the host mounts entitled ui-extensions here. This client ships
+           the slot and mount protocol only — the analysis view content comes from a separately delivered,
+           entitlement-gated extension and is never part of this open-source client. Stays empty (and
+           hidden) unless the current tenant is entitled to a ui-extension for this slot. -->
+      <div id="ext-slot-landscape-right-rail" class="ext-slot" data-slot="landscape-right-rail" hidden></div>
     </aside>
   </main>
 
@@ -1124,6 +1136,58 @@
       el("import").hidden = !canAuthor;
       // Paste-to-landscape creates draft assets, so it is also an author-only affordance (issue #27).
       el("pasteLandscape").hidden = !canAuthor;
+    }
+
+    // --- Extension mount slots (atlas#139): mount the entitled ui-extensions the API returns. -----------
+    // The client ships the slot and the mount protocol only; it never contains the view itself. The API
+    // has already taken the server-side entitlement decision, so an extension listed here is one the tenant
+    // is entitled to — the client only reflects that decision, it never takes it. Fail-closed: any error
+    // leaves the slot empty, exactly as an unentitled tenant sees it.
+    async function loadExtensions() {
+      let extensions = [];
+      try {
+        const res = await fetchWithAuth(api("/v1/extensions/ui"));
+        if (res.ok) {
+          const body = await res.json();
+          extensions = Array.isArray(body.extensions) ? body.extensions : [];
+        }
+      } catch {
+        extensions = [];
+      }
+      mountExtensions("landscape-right-rail", extensions.filter((e) => e && e.slot === "landscape-right-rail"));
+    }
+
+    function mountExtensions(slot, extensions) {
+      const host = el("ext-slot-" + slot);
+      if (!host) return;
+      host.replaceChildren();
+      host.hidden = extensions.length === 0;
+      for (const ext of extensions) {
+        const panel = document.createElement("section");
+        panel.className = "ext-panel";
+        panel.dataset.extensionId = ext.id || "";
+        const header = document.createElement("header");
+        header.textContent = ext.title || ext.id || "Extension";
+        panel.appendChild(header);
+        if (ext.fragmentUrl) {
+          // The content is the extension's, isolated in a fully sandboxed frame so it never runs in the
+          // host origin — the client hosts the frame but never carries or trusts the view.
+          const frame = document.createElement("iframe");
+          frame.className = "ext-frame";
+          frame.src = ext.fragmentUrl;
+          frame.title = ext.title || ext.id || "Extension";
+          frame.setAttribute("sandbox", "");
+          frame.setAttribute("referrerpolicy", "no-referrer");
+          frame.setAttribute("loading", "lazy");
+          panel.appendChild(frame);
+        } else {
+          const empty = document.createElement("div");
+          empty.className = "ext-empty";
+          empty.textContent = "This analysis view is enabled but no content source is configured.";
+          panel.appendChild(empty);
+        }
+        host.appendChild(panel);
+      }
     }
 
     // --- Session identity (atlas#80): shows who is logged in and their roles. --------------------------
@@ -3156,7 +3220,7 @@
 
     // Learn the principal's capability and identity first, then draw — so the first paint already reflects
     // author vs. read-only, shows who is logged in, and never flashes controls a read-only user may not use.
-    (async () => { await Promise.all([loadCapabilities(), loadSession()]); await load(); })();
+    (async () => { await Promise.all([loadCapabilities(), loadSession()]); await load(); loadExtensions(); })();
   </script>
 </body>
 </html>
