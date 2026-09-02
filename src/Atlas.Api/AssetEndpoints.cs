@@ -113,6 +113,17 @@ public static class AssetEndpoints
             .WithName("GetSession")
             .WithSummary("Describe the current principal's identity and roles (atlas#80).");
 
+        // Extension mount surface (atlas#139): the entitled, installable ui-extensions the current tenant
+        // may mount into the client's named slots — id + mount metadata only. Every registration is run
+        // through the open-core install guard and the entitlement gate server-side (atlas#140/#141); a
+        // denied extension is simply not listed, so nothing leaks about capabilities the tenant does not
+        // hold. The client reflects this decision — it never takes it.
+        app.MapGet($"{v1}/extensions/ui", async (UiExtensionCatalog catalog, CancellationToken ct) =>
+            Results.Ok(new { extensions = await catalog.GetMountableAsync(ct) }))
+            .WithTags("Extensions")
+            .WithName("ListMountableUiExtensions")
+            .WithSummary("List the ui-extensions the current tenant is entitled to mount (id + mount metadata only).");
+
         app.MapGet("/api/v1/setup-copilot", async (SetupCopilotService service, CancellationToken ct) =>
             Results.Ok(await service.GetGuideAsync(ct)))
             .WithTags("Session")
