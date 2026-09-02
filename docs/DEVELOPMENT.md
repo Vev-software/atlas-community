@@ -42,6 +42,25 @@ The API creates its SQLite schema on first run. OpenAPI is at `/openapi/v1.json`
 The catalogue file holds reconnaissance-grade landscape data — for any real deployment, encrypt it at
 rest ([Encryption at rest](#encryption-at-rest)).
 
+### Browser end-to-end tests
+
+`Atlas.Api.Tests` now carries a Playwright browser test for the shipped landscape UI (`issue #134`):
+it boots the real app on loopback HTTP, loads `/`, switches between graph/table navigation, selects
+an asset and exercises the column-search flow as a read-only customer.
+
+Install Chromium once after the test project has been built:
+
+```powershell
+dotnet build tests/Atlas.Api.Tests/Atlas.Api.Tests.csproj
+powershell .\tests\Atlas.Api.Tests\bin\Debug\net10.0\playwright.ps1 install chromium
+```
+
+Then run the browser test:
+
+```bash
+dotnet test tests/Atlas.Api.Tests/Atlas.Api.Tests.csproj --filter FullyQualifiedName~LandscapeUiEndToEndTests
+```
+
 ## Entitlements & signed snapshots
 
 Atlas now consumes the public `Vev.Fabric.Contracts` entitlement contract directly. The request path
