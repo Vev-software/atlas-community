@@ -108,21 +108,28 @@ public sealed class CommunityEntitlementService : IEntitlementService, IEntitlem
 
         lock (sync)
         {
-            if (!hasConfiguredSource)
+            // Test-configured fallback allowances apply only in pure community mode (no snapshot source).
+            if (!hasConfiguredSource &&
+                fallbackAllowances?.TryGetValue(request.Capability.Value, out var explicitAllowance) == true)
             {
-                if (fallbackAllowances?.TryGetValue(request.Capability.Value, out var explicitAllowance) == true)
-                {
-                    return explicitAllowance;
-                }
+                return explicitAllowance;
+            }
 
-                if (string.Equals(request.Capability.Value, AiStructureCapability, StringComparison.Ordinal) &&
-                    communityAiStructureDailyLimit > 0)
-                {
-                    return EntitlementAllowanceSnapshot.FixedWindow(
-                        communityAiStructureDailyLimit,
-                        EntitlementAllowanceWindows.Day,
-                        CommunitySource);
-                }
+            // The free landscape-structuring hook is Community's own adoption affordance, not a licensed
+            // capability. It stays available in pure community mode AND when a valid licence is simply
+            // *silent* on it (a plain not-granted) — a licence must not silently revoke the free hook.
+            // A stale / unavailable / lifecycle-denied licence still fails closed (its reason code is not
+            // a plain EntitlementDenied), so the hook is never resurrected from a broken entitlement state.
+            var licenceSilentOnHook = !hasConfiguredSource ||
+                string.Equals(decision.ReasonCode, ReasonCodes.EntitlementDenied, StringComparison.Ordinal);
+            if (licenceSilentOnHook &&
+                string.Equals(request.Capability.Value, AiStructureCapability, StringComparison.Ordinal) &&
+                communityAiStructureDailyLimit > 0)
+            {
+                return EntitlementAllowanceSnapshot.FixedWindow(
+                    communityAiStructureDailyLimit,
+                    EntitlementAllowanceWindows.Day,
+                    CommunitySource);
             }
         }
 
