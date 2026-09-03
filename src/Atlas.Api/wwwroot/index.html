@@ -114,6 +114,49 @@
       border-radius: 999px;
     }
     header .docs-link:hover { background: #eef2ff; }
+    /* Account trigger (atlas#147): the avatar + name become a button that opens the licence & entitlements
+       panel. Kept visually identical to the old static identity so the header does not change weight. */
+    header .user .account-trigger {
+      display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+      font: inherit; color: inherit; border: 1px solid transparent; background: none;
+      border-radius: 999px; padding: 2px 8px 2px 2px;
+    }
+    header .user .account-trigger:hover { background: #f1f3f7; border-color: var(--line); }
+    header .user .account-trigger .name { color: var(--ink); font-weight: 600; }
+    header .user .account-trigger .roles { font-size: 11px; color: var(--muted); }
+    header .user .account-trigger .caret { color: var(--muted); font-size: 10px; margin-left: -2px; }
+
+    /* Account / licence panel content */
+    .acct-lede { margin: 0 0 6px; font-size: 13px; color: var(--ink); }
+    .acct-edition-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .acct-pill {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+      border-radius: 999px; padding: 4px 11px; border: 1px solid var(--line);
+    }
+    .acct-pill.community { background: #eef2ff; color: #3730a3; border-color: #c7cbf5; }
+    .acct-pill.licensed { background: #ecfdf3; color: #05603a; border-color: #a6f4c5; }
+    .acct-pill.attention { background: #fffaeb; color: #93370d; border-color: #fedf89; }
+    .acct-status { font-size: 12.5px; color: var(--muted); }
+    .acct-kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12.5px; margin: 4px 0 2px; }
+    .acct-kv dt { color: var(--muted); }
+    .acct-kv dd { margin: 0; color: var(--ink); }
+    .acct-group { margin-top: 6px; }
+    .acct-group h4 {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted);
+      font-weight: 700; margin: 14px 0 6px;
+    }
+    .acct-cap { display: flex; align-items: center; gap: 9px; padding: 6px 0; border-top: 1px solid var(--line); }
+    .acct-cap:first-of-type { border-top: none; }
+    .acct-cap .mark { flex: none; width: 16px; text-align: center; font-size: 12px; }
+    .acct-cap .mark.on { color: #05603a; }
+    .acct-cap .mark.off { color: var(--muted); }
+    .acct-cap .cap-name { flex: 1; font-size: 13px; color: var(--ink); }
+    .acct-cap .cap-state { font-size: 11.5px; color: var(--muted); }
+    .acct-note {
+      margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: #f8fafc;
+      border: 1px solid var(--line); font-size: 12px; color: var(--muted);
+    }
+    .acct-loading { font-size: 13px; color: var(--muted); padding: 6px 0; }
     .toolbar {
       display: flex;
       align-items: center;
@@ -708,9 +751,16 @@
     <a class="docs-link" id="docsLink" href="https://github.com/Vev-software/docs/blob/main/docs" target="_blank" rel="noreferrer" title="Documentation">Docs</a>
     <span class="badge" id="capBadge">Read-only</span>
     <div class="user" id="userInfo" hidden>
-      <span class="avatar" id="userAvatar"></span>
-      <span class="name" id="userName"></span>
-      <span class="roles" id="userRoles"></span>
+      <!-- The identity is a button (atlas#147): it opens the licence & entitlements panel, so a user can
+           see which edition and capabilities they are on. It reflects the server's decision; it never
+           takes one. -->
+      <button type="button" class="account-trigger" id="accountTrigger"
+              aria-haspopup="dialog" aria-controls="accountBackdrop" title="View your licence and entitlements">
+        <span class="avatar" id="userAvatar"></span>
+        <span class="name" id="userName"></span>
+        <span class="roles" id="userRoles"></span>
+        <span class="caret" aria-hidden="true">▾</span>
+      </button>
       <a href="/login/?action=admin" id="usersLink">Users</a>
     </div>
   </header>
@@ -934,6 +984,28 @@
         <span class="spacer"></span>
         <button class="secondary" type="button" id="confirmCancel">Cancel</button>
         <button class="primary danger-primary" type="button" id="confirmAccept">Delete</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Account / licence & entitlements panel (atlas#147). Read-only: it shows who is signed in, the
+       tenant's edition and licence status, which paid capabilities are enabled vs. reserved, and the free
+       AI allowance. The body is filled from GET /api/v1/entitlements/summary, which composes the same
+       entitlement decisions the gates use — the client only renders that decision. -->
+  <div class="backdrop" id="accountBackdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="accountTitle" style="max-width: 500px;">
+      <header>
+        <h2 id="accountTitle">Licence &amp; entitlements</h2>
+        <button class="close" id="accountClose" type="button" aria-label="Close">×</button>
+      </header>
+      <div class="body" id="accountBody">
+        <p class="acct-loading">Loading…</p>
+      </div>
+      <footer>
+        <span class="spacer"></span>
+        <a class="secondary" id="accountUpgrade" href="https://github.com/Vev-software/docs/blob/main/docs"
+           target="_blank" rel="noreferrer" style="text-decoration:none;">Compare editions</a>
+        <button class="secondary" type="button" id="accountDone">Done</button>
       </footer>
     </div>
   </div>
@@ -1209,6 +1281,151 @@
       } catch {
         // Session endpoint unavailable — hide user info gracefully.
       }
+    }
+
+    // --- Account: licence & entitlements panel (atlas#147). ----------------------------------------------
+    // Opens a read-only view of the tenant's edition, licence status and paid-capability entitlements. The
+    // data comes wholesale from GET /api/v1/entitlements/summary; the client only renders the server's
+    // decision, it never derives the free/paid line itself.
+    async function openAccountPanel() {
+      const backdrop = el("accountBackdrop");
+      const body = el("accountBody");
+      backdrop.hidden = false;
+      body.innerHTML = '<p class="acct-loading">Loading…</p>';
+      el("accountDone").focus();
+      try {
+        const res = await fetch(api("/v1/entitlements/summary"), { headers: { "Accept": "application/json" } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        renderAccountSummary(await res.json());
+      } catch (err) {
+        body.innerHTML = '<p class="form-error">Could not load your licence details (' + escapeHtml(err.message) + ').</p>';
+      }
+    }
+
+    function closeAccountPanel() {
+      el("accountBackdrop").hidden = true;
+      const trigger = el("accountTrigger");
+      if (trigger) trigger.focus();
+    }
+
+    function renderAccountSummary(summary) {
+      const body = el("accountBody");
+      body.textContent = "";
+
+      const licence = summary.licence || {};
+      const identity = summary.identity || {};
+      const state = licence.state || "community";
+      const pillClass = state === "attention" ? "attention" : (state === "community" ? "community" : "licensed");
+
+      // Edition pill + one-line status.
+      const lede = document.createElement("p");
+      lede.className = "acct-lede";
+      lede.textContent = "You are signed in to " + (identity.tenant || "this tenant") + ".";
+      body.appendChild(lede);
+
+      const editionRow = document.createElement("div");
+      editionRow.className = "acct-edition-row";
+      const pill = document.createElement("span");
+      pill.className = "acct-pill " + pillClass;
+      pill.textContent = (summary.edition || "Community") + " edition";
+      editionRow.appendChild(pill);
+      if (licence.validUntil) {
+        const until = document.createElement("span");
+        until.className = "acct-status";
+        until.textContent = "valid until " + formatDate(licence.validUntil);
+        editionRow.appendChild(until);
+      }
+      body.appendChild(editionRow);
+
+      if (licence.summary) {
+        const status = document.createElement("p");
+        status.className = "acct-status";
+        status.style.margin = "0 0 4px";
+        status.textContent = licence.summary;
+        body.appendChild(status);
+      }
+
+      // Identity block.
+      const idHead = document.createElement("h4");
+      idHead.textContent = "Signed in as";
+      idHead.className = "acct-group";
+      body.appendChild(idHead);
+      const kv = document.createElement("dl");
+      kv.className = "acct-kv";
+      appendKv(kv, "Name", identity.displayName || identity.principalId || "—");
+      appendKv(kv, "Roles", (identity.roles && identity.roles.length) ? identity.roles.join(", ") : "—");
+      appendKv(kv, "Tenant", identity.tenant || "—");
+      body.appendChild(kv);
+
+      // Free AI allowance (Community's own adoption affordance).
+      const ai = summary.aiStructure;
+      if (ai) {
+        const aiHead = document.createElement("h4");
+        aiHead.textContent = "Included AI allowance";
+        body.appendChild(aiHead);
+        const aiLine = document.createElement("p");
+        aiLine.className = "acct-status";
+        aiLine.style.margin = "0";
+        aiLine.textContent = ai.upgrade || describeAllowance(ai);
+        body.appendChild(aiLine);
+      }
+
+      // Paid capabilities, grouped by category, each marked enabled or reserved.
+      const caps = summary.capabilities || [];
+      const groups = [];
+      const byCategory = new Map();
+      caps.forEach(c => {
+        if (!byCategory.has(c.category)) { byCategory.set(c.category, []); groups.push(c.category); }
+        byCategory.get(c.category).push(c);
+      });
+      groups.forEach(category => {
+        const h = document.createElement("h4");
+        h.textContent = category;
+        body.appendChild(h);
+        byCategory.get(category).forEach(c => {
+          const row = document.createElement("div");
+          row.className = "acct-cap";
+          const mark = document.createElement("span");
+          mark.className = "mark " + (c.enabled ? "on" : "off");
+          mark.textContent = c.enabled ? "✓" : "○";
+          mark.setAttribute("aria-hidden", "true");
+          const nm = document.createElement("span");
+          nm.className = "cap-name";
+          nm.textContent = c.label;
+          const st = document.createElement("span");
+          st.className = "cap-state";
+          st.textContent = c.enabled
+            ? (c.validUntil ? "Enabled · until " + formatDate(c.validUntil) : "Enabled")
+            : "Reserved";
+          row.appendChild(mark);
+          row.appendChild(nm);
+          row.appendChild(st);
+          body.appendChild(row);
+        });
+      });
+
+      const note = document.createElement("p");
+      note.className = "acct-note";
+      note.textContent = (pillClass === "licensed")
+        ? "These entitlements come from your licence. Contact VEV to change your plan."
+        : "Reserved capabilities are part of a paid Atlas edition. Contact VEV to enable them.";
+      body.appendChild(note);
+    }
+
+    function appendKv(dl, key, value) {
+      const dt = document.createElement("dt"); dt.textContent = key;
+      const dd = document.createElement("dd"); dd.textContent = value;
+      dl.appendChild(dt); dl.appendChild(dd);
+    }
+
+    function describeAllowance(ai) {
+      if (ai.unlimited) return "Unlimited AI structuring is enabled for this tenant.";
+      if (ai.limit != null) return "Free AI structuring: " + (ai.remaining ?? 0) + " of " + ai.limit + " left today.";
+      return "AI-assisted landscape structuring is not enabled for this tenant.";
+    }
+
+    function formatDate(iso) {
+      try { return new Date(iso).toISOString().slice(0, 10); } catch { return String(iso); }
     }
 
     async function load() {
@@ -3207,8 +3424,15 @@
     el("confirmClose").addEventListener("click", () => closeConfirm(false));
     el("confirmBackdrop").addEventListener("click", e => { if (e.target === el("confirmBackdrop")) closeConfirm(false); });
 
+    // Account / licence panel wiring (atlas#147).
+    el("accountTrigger").addEventListener("click", openAccountPanel);
+    el("accountClose").addEventListener("click", closeAccountPanel);
+    el("accountDone").addEventListener("click", closeAccountPanel);
+    el("accountBackdrop").addEventListener("click", e => { if (e.target === el("accountBackdrop")) closeAccountPanel(); });
+
     document.addEventListener("keydown", e => {
       if (e.key === "Escape") {
+        if (!el("accountBackdrop").hidden) closeAccountPanel();
         if (!el("aiPanel").hidden) closeAiPanel();
         if (!el("assetBackdrop").hidden) closeAssetForm();
         if (!el("relBackdrop").hidden) closeRelForm();

@@ -101,6 +101,35 @@ curl http://localhost:5199/api/v1/assets -H "X-Tenant-Id: demo"
 curl http://localhost:5199/api/v1/does-not-exist -H "X-Tenant-Id: demo"
 ```
 
+### Licence & entitlements summary (account panel)
+
+`GET /api/v1/entitlements/summary` composes one read-only view of what the current tenant is on, so a
+signed-in user can see their licence without reading logs or config. It is the data source for the
+**account panel** in the UI — click the name/avatar in the header (issue #147). The endpoint evaluates the
+same paid capabilities through the same `IEntitlementService` the gates use, so the client only *reflects*
+the entitlement decision; it never derives the free/paid line itself.
+
+The response reports:
+
+- **`edition`** — `"Community"` or `"Licensed"`.
+- **`licence`** — `state` (`community` · `active` · `expiring` · `attention`), the earliest grant
+  `validUntil`, the entitlement `source`, and a plain-language `summary` the UI shows directly.
+  `attention` means a licence is configured but is not granting (expired, stale, tenant-mismatched, or a
+  lifecycle hold) — it fails closed rather than silently falling back to Community.
+- **`identity`** — the current principal id, display name, roles and tenant (mirrors `GET /api/v1/session`).
+- **`capabilities`** — each user-facing paid capability with `enabled`, `reasonCode`, `source`, `validUntil`,
+  a display `label` and a `category` (`Core` · `AI` · `Data` · `Interoperability`).
+- **`aiStructure`** — the free `atlas.ai.structure` allowance (Community's own adoption affordance), in the
+  same shape the AI endpoints return.
+
+```bash
+# Pure Community: edition "Community", every paid capability reserved (entitlement_denied)
+curl http://localhost:5199/api/v1/entitlements/summary -H "X-Tenant-Id: demo"
+```
+
+Configure a signed snapshot (see the table above) to see the same endpoint report `"Licensed"` with the
+granted capabilities enabled and a licence `validUntil`.
+
 ## Shadow-IT visibility
 
 Atlas Community computes shadow-IT signals from the existing catalogue — no separate model
