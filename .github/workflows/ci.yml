@@ -33,8 +33,14 @@ jobs:
       - name: Lint (format verify)
         run: dotnet format Atlas.slnx --verify-no-changes --no-restore
 
+      # The landscape UI end-to-end test (issue #134) drives the shipped UI in a real browser via
+      # Playwright, so CI must install the Chromium build the test project references. --with-deps
+      # pulls the OS libraries the headless browser needs on ubuntu-latest.
+      - name: Install Playwright browser (Chromium)
+        run: pwsh tests/Atlas.Api.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+
       # Full suite: architecture/fitness (dependency direction, no plan==, no direct provider
-      # calls) + full-stack API integration tests.
+      # calls) + full-stack API integration tests + the browser end-to-end test.
       - name: Test
         run: dotnet test Atlas.slnx -c Release --no-build
 
