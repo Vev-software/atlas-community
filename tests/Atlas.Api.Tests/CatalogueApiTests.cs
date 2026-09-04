@@ -203,7 +203,7 @@ public sealed class CatalogueApiTests(AtlasApiFactory factory) : IClassFixture<A
         Assert.Equal(HttpStatusCode.PaymentRequired, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("entitlement_denied", body.GetProperty("reasonCode").GetString());
-        Assert.Equal("atlas.integration.mapping", body.GetProperty("capability").GetString());
+        Assert.Equal("atlas.analysis.integration-map", body.GetProperty("capability").GetString());
     }
 
     [Fact]

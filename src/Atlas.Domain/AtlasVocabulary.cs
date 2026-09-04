@@ -1,4 +1,5 @@
 using Vev.Atlas.Fabric;
+using Vev.Fabric.Contracts.Taxonomy;
 
 namespace Vev.Atlas.Domain;
 
@@ -41,33 +42,35 @@ public static class AtlasActions
 public static class AtlasCapabilities
 {
     // --- Paid capabilities: reserved seams, entitlement-denied in Community ---
+    //
+    // These are *aliases* of the canonical Fabric taxonomy ids (Vev.Fabric.Contracts AtlasTaxonomy),
+    // which is the single source of truth for the reserved-paid set. CommunityEntitlementService
+    // evaluates a signed snapshot keyed on those exact canonical ids, so a Community gate must use the
+    // canonical id or it can never be granted. The ReservedPaidTaxonomyAlignmentTests fail closed if any
+    // of these drifts away from a Reserved capability in the Fabric catalog.
 
     /// <summary>Integration mapping with ownership + criticality (paid Atlas core).</summary>
-    public static readonly CapabilityId IntegrationMapping = new("atlas.integration.mapping");
+    public static readonly CapabilityId IntegrationMapping = AtlasTaxonomy.AnalysisIntegrationMap;
 
     /// <summary>End-of-life tracking + risk (paid Atlas core).</summary>
-    public static readonly CapabilityId EndOfLifeTracking = new("atlas.eol.tracking");
-
-    /// <summary>Application-portfolio management heatmap (paid Atlas core).</summary>
-    public static readonly CapabilityId PortfolioManagement = new("atlas.portfolio.apm");
+    public static readonly CapabilityId EndOfLifeTracking = AtlasTaxonomy.AnalysisEndOfLife;
 
     /// <summary>
-    /// Application-portfolio-management analysis — the canonical reserved capability id from the public
-    /// Fabric taxonomy (<c>atlas.analysis.apm</c>). Gates the mounted "portfolio health" analysis
-    /// ui-extension (atlas#141): grants are matched by id string against the signed snapshot, which is
-    /// keyed on the canonical taxonomy ids, so the gate must use this id for a grant to resolve. Distinct
-    /// from the legacy <see cref="PortfolioManagement"/> id pending vocabulary reconciliation.
+    /// Application-portfolio-management analysis (paid Atlas core) — the canonical reserved capability id
+    /// from the public Fabric taxonomy (<c>atlas.analysis.apm</c>). Gates the mounted "portfolio health"
+    /// analysis ui-extension (atlas#141): grants are matched by id string against the signed snapshot,
+    /// which is keyed on the canonical taxonomy ids, so the gate must use this id for a grant to resolve.
     /// </summary>
-    public static readonly CapabilityId PortfolioAnalysis = new("atlas.analysis.apm");
+    public static readonly CapabilityId PortfolioAnalysis = AtlasTaxonomy.AnalysisApm;
 
     /// <summary>EA roadmap generation (paid Atlas core, via the Fabric AI contract).</summary>
-    public static readonly CapabilityId RoadmapGeneration = new("atlas.roadmap.generate");
+    public static readonly CapabilityId RoadmapGeneration = AtlasTaxonomy.AnalysisRoadmap;
 
     /// <summary>AI architecture review (paid Atlas core, via the Fabric AI contract).</summary>
-    public static readonly CapabilityId AiReview = new("atlas.ai.review");
+    public static readonly CapabilityId AiReview = AtlasTaxonomy.AiReview;
 
     /// <summary>AI-generated draft deliverables over a selected landscape slice (paid Atlas Enterprise).</summary>
-    public static readonly CapabilityId AiGenerate = new("atlas.ai.generate");
+    public static readonly CapabilityId AiGenerate = AtlasTaxonomy.AiGenerate;
 
     /// <summary>Grounded read-only chat over the tenant's own landscape.</summary>
     public static readonly CapabilityId AiChat = new("atlas.ai.chat");
@@ -88,16 +91,16 @@ public static class AtlasCapabilities
     public static readonly CapabilityId McpRead = new("atlas.mcp.read");
 
     /// <summary>Data introspection seam for schema auto-scan into the catalogue (paid Atlas Enterprise).</summary>
-    public static readonly CapabilityId DataIntrospection = new("atlas.data.introspection");
+    public static readonly CapabilityId DataIntrospection = AtlasTaxonomy.DataIntrospection;
 
     /// <summary>Data overlap analysis seam for domain/dublet and consumer-map analysis (paid Atlas Enterprise).</summary>
-    public static readonly CapabilityId DataOverlap = new("atlas.data.overlap");
+    public static readonly CapabilityId DataOverlap = AtlasTaxonomy.DataOverlap;
 
     /// <summary>Data quality seam for classification, provenance and quality reporting (paid Atlas Enterprise).</summary>
-    public static readonly CapabilityId DataQuality = new("atlas.data.quality");
+    public static readonly CapabilityId DataQuality = AtlasTaxonomy.DataQuality;
 
     /// <summary>ArchiMate export seam for data-layer round-trip interoperability (paid Atlas Enterprise).</summary>
-    public static readonly CapabilityId ArchimateExport = new("atlas.export.archimate");
+    public static readonly CapabilityId ArchimateExport = AtlasTaxonomy.ExportArchiMate;
 
     /// <summary>
     /// The reserved paid capabilities, as one authoritative set. The free/paid line is entitlement-only:
@@ -109,7 +112,6 @@ public static class AtlasCapabilities
     {
         IntegrationMapping,
         EndOfLifeTracking,
-        PortfolioManagement,
         PortfolioAnalysis,
         RoadmapGeneration,
         AiReview,

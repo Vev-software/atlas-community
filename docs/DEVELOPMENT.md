@@ -129,7 +129,7 @@ curl "http://localhost:5199/api/v1/shadow-it/assets?unowned=true" -H "X-Tenant-I
 ### Tag conventions
 
 The sanctioned convention is a Community Edition heuristic. Formal governance state
-lives in the paid integration mapping capability (`atlas.integration.mapping`).
+lives in the paid integration mapping capability (`atlas.analysis.integration-map`).
 
 ## Portability: export & import
 
@@ -194,8 +194,10 @@ via `?format=…`. No core code changes.
 
 Community modules add value **at the edges** — importers/exporters, connectors, UI panels — through the
 capabilities and permissions they declare. What a module may **never** do is declare or satisfy a
-**reserved paid capability** (`atlas.integration.mapping`, `atlas.eol.tracking`, `atlas.portfolio.apm`,
-`atlas.roadmap.generate`, `atlas.ai.review`). The free/paid line is **entitlement-only**: a paid feature
+**reserved paid capability** (`atlas.analysis.integration-map`, `atlas.analysis.eol`, `atlas.analysis.apm`,
+`atlas.analysis.roadmap`, `atlas.ai.review`). These are aliases of the canonical Fabric taxonomy ids
+(`Vev.Fabric.Contracts` `AtlasTaxonomy`), the single source of truth for the reserved set. The free/paid
+line is **entitlement-only**: a paid feature
 stays behind `PaidCapabilityGate` → the Fabric entitlement decision, and no module can flip it to
 allowed (atlas#22, engineering#3).
 

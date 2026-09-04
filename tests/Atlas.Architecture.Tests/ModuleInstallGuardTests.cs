@@ -21,14 +21,13 @@ public sealed class ModuleInstallGuardTests
             "atlas.ai.generate",
             "atlas.ai.review",
             "atlas.analysis.apm",
+            "atlas.analysis.eol",
+            "atlas.analysis.integration-map",
+            "atlas.analysis.roadmap",
             "atlas.data.introspection",
             "atlas.data.overlap",
             "atlas.data.quality",
-            "atlas.eol.tracking",
             "atlas.export.archimate",
-            "atlas.integration.mapping",
-            "atlas.portfolio.apm",
-            "atlas.roadmap.generate",
         ];
         Assert.Equal(expected.OrderBy(v => v, StringComparer.Ordinal), reserved);
     }
