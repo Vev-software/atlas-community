@@ -29,11 +29,15 @@ public sealed record UiExtensionRegistration(
 /// A ui-extension that is installable and entitled for the current tenant — the host's mount offer. It
 /// carries id + mount metadata only, never anything about capabilities the tenant does not hold.
 /// </summary>
+/// <param name="Kind">The closed-set extension shape identifier. For mountable UI panels this is <c>ui-extension</c>.</param>
 /// <param name="Id">The extension id.</param>
 /// <param name="Slot">The named slot to mount into.</param>
 /// <param name="Title">The panel title.</param>
 /// <param name="FragmentUrl">Where the host loads the content from, or null when unconfigured.</param>
-public sealed record MountableUiExtension(string Id, string Slot, string Title, string? FragmentUrl);
+public sealed record MountableUiExtension(string Kind, string Id, string Slot, string Title, string? FragmentUrl)
+{
+    public const string UiExtensionKind = "ui-extension";
+}
 
 /// <summary>
 /// Resolves which registered ui-extensions the current tenant may mount (atlas#139, #140, #141). Every
@@ -79,6 +83,7 @@ public sealed class UiExtensionCatalog(
             }
 
             mountable.Add(new MountableUiExtension(
+                MountableUiExtension.UiExtensionKind,
                 registration.Id,
                 registration.Slot,
                 registration.Title,

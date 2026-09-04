@@ -1226,7 +1226,8 @@
       } catch {
         extensions = [];
       }
-      mountExtensions("landscape-right-rail", extensions.filter((e) => e && e.slot === "landscape-right-rail"));
+      mountExtensions("landscape-right-rail", extensions.filter((e) =>
+        e && e.kind === "ui-extension" && e.slot === "landscape-right-rail"));
     }
 
     function mountExtensions(slot, extensions) {
