@@ -30,6 +30,8 @@ jobs:
           STATUS_ON_NOT_PLANNED: Won't do|Not planned|Cancelled|Canceled
           PRODUCT_ATLAS: Atlas
           PRODUCT_PORTIC: Portic
+          PRODUCT_FABRIC: Fabric
+          PRODUCT_ORION: Orion
         with:
           github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
           script: |
@@ -72,6 +74,14 @@ jobs:
 
               if (repoName.startsWith("portic-")) {
                 return candidates(process.env.PRODUCT_PORTIC);
+              }
+
+              if (repoName === "fabric" || repoName.startsWith("fabric-")) {
+                return candidates(process.env.PRODUCT_FABRIC);
+              }
+
+              if (repoName === "orion") {
+                return candidates(process.env.PRODUCT_ORION);
               }
 
               return [];
