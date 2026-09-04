@@ -237,6 +237,45 @@ first (`Atlas.Domain/ModuleInstallGuard.cs`). A manifest that claims a reserved 
 fitness test, so it cannot silently lose an id. The generic manifest schema and extension model live in
 the platform Module Author Guide (handbook §16) and the Fabric extension model (fabric#10).
 
+### UI extension mount contract
+
+`GET /api/v1/extensions/ui` is the Community host's public offer surface for entitlement-gated
+UI extensions. The response is explicitly versioned and typed:
+
+```json
+{
+  "contractVersion": "1",
+  "extensions": [
+    {
+      "id": "com.vev.atlas.portfolio-health",
+      "slot": "landscape-right-rail",
+      "title": "Portfolio health",
+      "mount": {
+        "kind": "fragment",
+        "contractVersion": "1",
+        "url": "https://extension.example/portfolio-health"
+      }
+    }
+  ]
+}
+```
+
+- `contractVersion` is the version of the host-offer API shape itself.
+- `mount.kind` is the mount shape. **V1 supports `fragment` only.**
+- `mount.contractVersion` is the version of that mount shape's contract. **V1 fragment mounts use
+  exact version `"1"` only.**
+- `mount.url` may be `null` when the tenant is entitled but this deployment has not configured a
+  content source yet.
+- The response carries **id + mount metadata only**. Capability ids, denial reasons, and other
+  non-entitled details are never listed.
+
+Compatibility is fail-closed:
+
+- The server offers only mount kinds and mount-contract versions it explicitly understands.
+- The browser mounts only the same known `kind` + `contractVersion` pairs and ignores anything else.
+- Adding a new mount kind or making a breaking change to the mount shape requires a new ADR and a new
+  contract version; it is not an in-place widening of V1.
+
 ### Compatibility & versioning
 
 - Every exported `LandscapeDocument` (and every `ImportBundle`) carries a `contractVersion` — the

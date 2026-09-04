@@ -76,8 +76,8 @@ public static class AtlasCommunityRegistration
         // UI extension seam (atlas#139/#140/#141): the host mounts entitlement-gated ui-extensions into
         // named client slots. The open-source client ships the slot + mount protocol only; the analysis
         // view content is delivered by a separate, entitlement-gated extension and never lives here. The
-        // catalogue runs every registration through the install guard and then the entitlement gate, so a
-        // module can never self-grant a paid capability and a denied extension is simply not offered.
+        // catalogue runs every registration through the install guard and then the entitlement gate, and
+        // only emits mount kinds/versions this host explicitly understands.
         services.AddScoped<UiExtensionCatalog>();
         foreach (var registration in BuildUiExtensionRegistrations(configuration))
         {
@@ -107,8 +107,9 @@ public static class AtlasCommunityRegistration
     /// The ui-extensions this host knows how to mount (atlas#139). Each is an edge module — its manifest
     /// declares no reserved paid capability, so it passes the open-core guard; whether it is actually
     /// offered to a tenant is the entitlement gate's decision, not the module's. The content source
-    /// (<c>FragmentUrl</c>) is deployment configuration, so Community stays self-contained and carries no
-    /// view of its own; when it is unset the extension is still gated correctly, just without content.
+    /// (<c>UiExtensionMount.Fragment</c>) is deployment configuration, so Community stays self-contained
+    /// and carries no view of its own; when the URL is unset the extension is still gated correctly, just
+    /// without content.
     /// </summary>
     private static IEnumerable<UiExtensionRegistration> BuildUiExtensionRegistrations(IConfiguration? configuration)
     {
@@ -121,6 +122,7 @@ public static class AtlasCommunityRegistration
             Title: "Portfolio health",
             RequiredCapability: AtlasCapabilities.PortfolioAnalysis,
             Manifest: ModuleManifest.ForEdgeModule(portfolioHealthId),
-            FragmentUrl: string.IsNullOrWhiteSpace(portfolioHealthFragmentUrl) ? null : portfolioHealthFragmentUrl);
+            Mount: UiExtensionMount.Fragment(
+                string.IsNullOrWhiteSpace(portfolioHealthFragmentUrl) ? null : portfolioHealthFragmentUrl));
     }
 }
