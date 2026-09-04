@@ -161,12 +161,15 @@ public static class AssetEndpoints
         // may mount into the client's named slots — id + mount metadata only. Every registration is run
         // through the open-core install guard and the entitlement gate server-side (atlas#140/#141); a
         // denied extension is simply not listed, so nothing leaks about capabilities the tenant does not
-        // hold. The client reflects this decision — it never takes it.
+        // hold. The response is explicitly versioned and only contains mount kinds/versions the host knows
+        // how to render. The client reflects this decision — it never takes it.
         app.MapGet($"{v1}/extensions/ui", async (UiExtensionCatalog catalog, CancellationToken ct) =>
-            Results.Ok(new { extensions = await catalog.GetMountableAsync(ct) }))
+            Results.Ok(new UiExtensionListResponse(
+                UiExtensionContracts.ExtensionsContractVersion,
+                await catalog.GetMountableAsync(ct))))
             .WithTags("Extensions")
             .WithName("ListMountableUiExtensions")
-            .WithSummary("List the ui-extensions the current tenant is entitled to mount (id + mount metadata only).");
+            .WithSummary("List the ui-extensions the current tenant is entitled to mount (versioned id + typed mount metadata only).");
 
         app.MapGet("/api/v1/setup-copilot", async (SetupCopilotService service, CancellationToken ct) =>
             Results.Ok(await service.GetGuideAsync(ct)))

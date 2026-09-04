@@ -9,6 +9,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Vev.Atlas.Domain;
 using Vev.Atlas.Persistence;
 using Vev.Fabric.Contracts.Entitlements;
 using Xunit;
@@ -37,11 +38,16 @@ public sealed class EntitlementLicenseEndToEndTests
         using var client = factory.CreateClient();
         SetDevHeaders(client, LicensedTenant);
 
-        var extension = Assert.Single(await GetOfferedExtensionsAsync(client));
+        var body = await GetExtensionsResponseAsync(client);
+        Assert.Equal(UiExtensionContracts.ExtensionsContractVersion, body.GetProperty("contractVersion").GetString());
+        var extension = Assert.Single(body.GetProperty("extensions").EnumerateArray());
         Assert.Equal("ui-extension", extension.GetProperty("kind").GetString());
         Assert.Equal(PortfolioHealthId, extension.GetProperty("id").GetString());
         Assert.Equal("landscape-right-rail", extension.GetProperty("slot").GetString());
-        Assert.Equal(FragmentUrl, extension.GetProperty("fragmentUrl").GetString());
+        var mount = extension.GetProperty("mount");
+        Assert.Equal(UiExtensionContracts.FragmentMountKind, mount.GetProperty("kind").GetString());
+        Assert.Equal(UiExtensionContracts.FragmentMountContractVersion, mount.GetProperty("contractVersion").GetString());
+        Assert.Equal(FragmentUrl, mount.GetProperty("url").GetString());
     }
 
     [Fact]
@@ -51,7 +57,9 @@ public sealed class EntitlementLicenseEndToEndTests
         using var client = factory.CreateClient();
         SetDevHeaders(client, LicensedTenant);
 
-        Assert.Empty(await GetOfferedExtensionsAsync(client));
+        var body = await GetExtensionsResponseAsync(client);
+        Assert.Equal(UiExtensionContracts.ExtensionsContractVersion, body.GetProperty("contractVersion").GetString());
+        Assert.Empty(body.GetProperty("extensions").EnumerateArray());
     }
 
     [Fact]
@@ -67,7 +75,9 @@ public sealed class EntitlementLicenseEndToEndTests
         using var client = factory.CreateClient();
         SetDevHeaders(client, LicensedTenant);
 
-        Assert.Empty(await GetOfferedExtensionsAsync(client));
+        var body = await GetExtensionsResponseAsync(client);
+        Assert.Equal(UiExtensionContracts.ExtensionsContractVersion, body.GetProperty("contractVersion").GetString());
+        Assert.Empty(body.GetProperty("extensions").EnumerateArray());
     }
 
     [Fact]
@@ -79,19 +89,23 @@ public sealed class EntitlementLicenseEndToEndTests
         using var client = factory.CreateClient();
         SetDevHeaders(client, LicensedTenant);
 
-        var extension = Assert.Single(await GetOfferedExtensionsAsync(client));
+        var body = await GetExtensionsResponseAsync(client);
+        Assert.Equal(UiExtensionContracts.ExtensionsContractVersion, body.GetProperty("contractVersion").GetString());
+        var extension = Assert.Single(body.GetProperty("extensions").EnumerateArray());
         Assert.Equal(PortfolioHealthId, extension.GetProperty("id").GetString());
-        // No content source is shipped by the open-source host: the fragmentUrl is absent (or null).
-        var hasContent = extension.TryGetProperty("fragmentUrl", out var fragment) && fragment.ValueKind == JsonValueKind.String;
+        var mount = extension.GetProperty("mount");
+        Assert.Equal(UiExtensionContracts.FragmentMountKind, mount.GetProperty("kind").GetString());
+        Assert.Equal(UiExtensionContracts.FragmentMountContractVersion, mount.GetProperty("contractVersion").GetString());
+        // No content source is shipped by the open-source host: the fragment URL is absent (or null).
+        var hasContent = mount.TryGetProperty("url", out var fragment) && fragment.ValueKind == JsonValueKind.String;
         Assert.False(hasContent);
     }
 
-    private static async Task<JsonElement[]> GetOfferedExtensionsAsync(HttpClient client)
+    private static async Task<JsonElement> GetExtensionsResponseAsync(HttpClient client)
     {
         var response = await client.GetAsync("/api/v1/extensions/ui");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        return body.GetProperty("extensions").EnumerateArray().ToArray();
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
     private static void SetDevHeaders(HttpClient client, string tenant)

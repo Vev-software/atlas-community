@@ -1213,21 +1213,28 @@
     // --- Extension mount slots (atlas#139): mount the entitled ui-extensions the API returns. -----------
     // The client ships the slot and the mount protocol only; it never contains the view itself. The API
     // has already taken the server-side entitlement decision, so an extension listed here is one the tenant
-    // is entitled to — the client only reflects that decision, it never takes it. Fail-closed: any error
-    // leaves the slot empty, exactly as an unentitled tenant sees it.
+    // is entitled to — the client only reflects that decision, it never takes it. Fail-closed: any error,
+    // unknown contract version, or unknown mount kind leaves the slot empty.
     async function loadExtensions() {
       let extensions = [];
       try {
         const res = await fetchWithAuth(api("/v1/extensions/ui"));
         if (res.ok) {
           const body = await res.json();
-          extensions = Array.isArray(body.extensions) ? body.extensions : [];
+          if (body && body.contractVersion === "1" && Array.isArray(body.extensions)) {
+            extensions = body.extensions;
+          }
         }
       } catch {
         extensions = [];
       }
       mountExtensions("landscape-right-rail", extensions.filter((e) =>
-        e && e.kind === "ui-extension" && e.slot === "landscape-right-rail"));
+        e &&
+        e.kind === "ui-extension" &&
+        e.slot === "landscape-right-rail" &&
+        e.mount &&
+        e.mount.kind === "fragment" &&
+        e.mount.contractVersion === "1"));
     }
 
     function mountExtensions(slot, extensions) {
@@ -1242,12 +1249,12 @@
         const header = document.createElement("header");
         header.textContent = ext.title || ext.id || "Extension";
         panel.appendChild(header);
-        if (ext.fragmentUrl) {
+        if (ext.mount && ext.mount.url) {
           // The content is the extension's, isolated in a fully sandboxed frame so it never runs in the
           // host origin — the client hosts the frame but never carries or trusts the view.
           const frame = document.createElement("iframe");
           frame.className = "ext-frame";
-          frame.src = ext.fragmentUrl;
+          frame.src = ext.mount.url;
           frame.title = ext.title || ext.id || "Extension";
           frame.setAttribute("sandbox", "");
           frame.setAttribute("referrerpolicy", "no-referrer");

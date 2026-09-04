@@ -31,7 +31,9 @@ public sealed class UiExtensionCatalogTests
         Assert.Equal(PortfolioHealthId, offer.Id);
         Assert.Equal("landscape-right-rail", offer.Slot);
         Assert.Equal("Portfolio health", offer.Title);
-        Assert.Equal("https://enterprise.local/portfolio-health", offer.FragmentUrl);
+        Assert.Equal(UiExtensionContracts.FragmentMountKind, offer.Mount.Kind);
+        Assert.Equal(UiExtensionContracts.FragmentMountContractVersion, offer.Mount.ContractVersion);
+        Assert.Equal("https://enterprise.local/portfolio-health", offer.Mount.Url);
     }
 
     [Fact]
@@ -59,7 +61,7 @@ public sealed class UiExtensionCatalogTests
             Title: "Sneaky",
             RequiredCapability: AtlasCapabilities.PortfolioAnalysis,
             Manifest: new ModuleManifest("com.vev.atlas.sneaky", [AtlasCapabilities.PortfolioAnalysis]),
-            FragmentUrl: "https://enterprise.local/sneaky");
+            Mount: UiExtensionMount.Fragment("https://enterprise.local/sneaky"));
 
         var catalog = BuildCatalog(
             granted: new HashSet<string>(StringComparer.Ordinal) { AtlasCapabilities.PortfolioAnalysis.Value },
@@ -74,13 +76,51 @@ public sealed class UiExtensionCatalogTests
         Assert.Equal("atlas.module.rejected", rejection.Action);
     }
 
+    [Fact]
+    public async Task A_mount_with_an_unknown_kind_is_not_offered()
+    {
+        var catalog = BuildCatalog(
+            granted: new HashSet<string>(StringComparer.Ordinal) { AtlasCapabilities.PortfolioAnalysis.Value },
+            audit: out _,
+            registrations: new UiExtensionRegistration(
+                Id: PortfolioHealthId,
+                Slot: "landscape-right-rail",
+                Title: "Portfolio health",
+                RequiredCapability: AtlasCapabilities.PortfolioAnalysis,
+                Manifest: ModuleManifest.ForEdgeModule(PortfolioHealthId),
+                Mount: new UiExtensionMount("bundle", UiExtensionContracts.FragmentMountContractVersion, "https://enterprise.local/bundle.js")));
+
+        var mountable = await catalog.GetMountableAsync();
+
+        Assert.Empty(mountable);
+    }
+
+    [Fact]
+    public async Task A_mount_with_an_unsupported_contract_version_is_not_offered()
+    {
+        var catalog = BuildCatalog(
+            granted: new HashSet<string>(StringComparer.Ordinal) { AtlasCapabilities.PortfolioAnalysis.Value },
+            audit: out _,
+            registrations: new UiExtensionRegistration(
+                Id: PortfolioHealthId,
+                Slot: "landscape-right-rail",
+                Title: "Portfolio health",
+                RequiredCapability: AtlasCapabilities.PortfolioAnalysis,
+                Manifest: ModuleManifest.ForEdgeModule(PortfolioHealthId),
+                Mount: new UiExtensionMount(UiExtensionContracts.FragmentMountKind, "2", "https://enterprise.local/portfolio-health")));
+
+        var mountable = await catalog.GetMountableAsync();
+
+        Assert.Empty(mountable);
+    }
+
     private static UiExtensionRegistration PortfolioHealth(string? fragmentUrl) => new(
         Id: PortfolioHealthId,
         Slot: "landscape-right-rail",
         Title: "Portfolio health",
         RequiredCapability: AtlasCapabilities.PortfolioAnalysis,
         Manifest: ModuleManifest.ForEdgeModule(PortfolioHealthId),
-        FragmentUrl: fragmentUrl);
+        Mount: UiExtensionMount.Fragment(fragmentUrl));
 
     private static UiExtensionCatalog BuildCatalog(
         IReadOnlySet<string> granted,
