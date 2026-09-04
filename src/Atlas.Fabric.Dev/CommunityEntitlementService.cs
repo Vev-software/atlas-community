@@ -13,6 +13,9 @@ namespace Vev.Atlas.Fabric.Dev;
 public sealed class CommunityEntitlementService : IEntitlementService, IEntitlementAllowanceProvider
 {
     private const string AiStructureCapability = "atlas.ai.structure";
+    // The daily allotment for the free landscape-structuring hook rides on the bundle-limits grant.
+    private static readonly CapabilityId BundleLimitsCapability = new("fabric.bundle.limits");
+    private const string AiStructureDailyLimitKey = "atlas.ai.structure.daily";
     private const string CommunitySource = "entitlement:community-default";
     private const string SnapshotConfigSource = "entitlement:snapshot-config";
     private static readonly JsonSerializerOptions SnapshotJson = new(JsonSerializerDefaults.Web);
@@ -103,6 +106,16 @@ public sealed class CommunityEntitlementService : IEntitlementService, IEntitlem
         var decision = Evaluate(new EntitlementRequest(request.Tenant, request.Capability, request.Principal, request.Resource));
         if (decision.Allowed)
         {
+            // A granted capability is unlimited unless the entitlement carries a windowed daily limit for
+            // it. The free tier caps atlas.ai.structure via the atlas.ai.structure.daily limit on the
+            // bundle-limits grant; a paid tier grants it uncapped. Read the allowance from the entitlement
+            // rather than a hardcoded fallback (atlas#149).
+            if (TryReadDailyLimit(request, out var grantedDailyLimit))
+            {
+                return EntitlementAllowanceSnapshot.FixedWindow(
+                    grantedDailyLimit, EntitlementAllowanceWindows.Day, decision.Source);
+            }
+
             return EntitlementAllowanceSnapshot.UnlimitedAllowance(decision.Source);
         }
 
@@ -115,14 +128,13 @@ public sealed class CommunityEntitlementService : IEntitlementService, IEntitlem
                 return explicitAllowance;
             }
 
-            // The free landscape-structuring hook is Community's own adoption affordance, not a licensed
-            // capability. It stays available in pure community mode AND when a valid licence is simply
-            // *silent* on it (a plain not-granted) — a licence must not silently revoke the free hook.
-            // A stale / unavailable / lifecycle-denied licence still fails closed (its reason code is not
-            // a plain EntitlementDenied), so the hook is never resurrected from a broken entitlement state.
-            var licenceSilentOnHook = !hasConfiguredSource ||
-                string.Equals(decision.ReasonCode, ReasonCodes.EntitlementDenied, StringComparison.Ordinal);
-            if (licenceSilentOnHook &&
+            // Standalone self-host / offline: with NO entitlement source at all, the free landscape-
+            // structuring hook is Community's own affordance and needs no control plane (handbook §1.9).
+            // When a snapshot source IS configured the allowance is the entitlement's to grant — a licence
+            // that does not grant it means the tenant is not entitled, and a broken/stale licence fails
+            // closed. (This is the licensed path; the interim "silent licence keeps the hook" behaviour is
+            // retired now that the free tier grants atlas.ai.structure explicitly.)
+            if (!hasConfiguredSource &&
                 string.Equals(request.Capability.Value, AiStructureCapability, StringComparison.Ordinal) &&
                 communityAiStructureDailyLimit > 0)
             {
@@ -134,6 +146,33 @@ public sealed class CommunityEntitlementService : IEntitlementService, IEntitlem
         }
 
         return EntitlementAllowanceSnapshot.Deny(decision.ReasonCode, decision.Source);
+    }
+
+    /// <summary>
+    /// A granted capability may carry a windowed daily limit expressed on the bundle-limits grant (today
+    /// only <c>atlas.ai.structure</c>, via <c>atlas.ai.structure.daily</c>). Returns the limit when the
+    /// entitlement carries one, so a granted-but-capped capability becomes a fixed daily window rather
+    /// than unlimited.
+    /// </summary>
+    private bool TryReadDailyLimit(EntitlementAllowanceRequest request, out int dailyLimit)
+    {
+        dailyLimit = 0;
+        if (!string.Equals(request.Capability.Value, AiStructureCapability, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var limits = Evaluate(new EntitlementRequest(
+            request.Tenant, BundleLimitsCapability, request.Principal, request.Resource)).Limits;
+        if (limits is not null &&
+            limits.TryGetValue(AiStructureDailyLimitKey, out var value) &&
+            value > 0m)
+        {
+            dailyLimit = (int)value;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>
