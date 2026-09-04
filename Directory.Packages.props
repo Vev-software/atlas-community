@@ -6,7 +6,7 @@
   <ItemGroup>
     <!-- Public contract surface (Apache-2.0). The AGPL runtime consumes it; never the reverse. -->
     <PackageVersion Include="Vev.Atlas.Contracts" Version="0.1.1" />
-    <PackageVersion Include="Vev.Fabric.Contracts" Version="0.1.3" />
+    <PackageVersion Include="Vev.Fabric.Contracts" Version="0.1.6" />
 
     <!-- Persistence: thin storage behind the Fabric storage abstraction, not an ORM religion (05 §2). -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
