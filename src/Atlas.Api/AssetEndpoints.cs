@@ -113,6 +113,50 @@ public static class AssetEndpoints
             .WithName("GetSession")
             .WithSummary("Describe the current principal's identity and roles (atlas#80).");
 
+        // Licence & entitlements summary (atlas#147): one read-only view for the account panel — who the
+        // current principal is, which edition/licence the tenant is on, which paid capabilities are enabled
+        // vs. reserved, and the free AI allowance. It composes the same entitlement decisions the gates use,
+        // so the client only reflects the server's decision; it never derives the free/paid line itself.
+        app.MapGet($"{v1}/entitlements/summary", (EntitlementSummaryService service) =>
+        {
+            var summary = service.Describe();
+            return Results.Ok(new
+            {
+                edition = summary.Edition,
+                licence = new
+                {
+                    edition = summary.Licence.Edition,
+                    state = summary.Licence.State,
+                    source = summary.Licence.Source,
+                    validUntil = summary.Licence.ValidUntil,
+                    summary = summary.Licence.Summary
+                },
+                identity = new
+                {
+                    principalId = summary.Identity.PrincipalId,
+                    displayName = summary.Identity.DisplayName,
+                    roles = summary.Identity.Roles,
+                    tenant = summary.Identity.Tenant
+                },
+                capabilities = summary.Capabilities.Select(c => new
+                {
+                    capability = c.Capability,
+                    label = c.Label,
+                    category = c.Category,
+                    enabled = c.Enabled,
+                    reasonCode = c.ReasonCode,
+                    source = c.Source,
+                    validUntil = c.ValidUntil
+                }),
+                aiStructure = ToAiAllowancePayload(
+                    summary.AiStructure,
+                    "Paste supplied notes or images into a draft landscape import bundle for review.")
+            });
+        })
+            .WithTags("Session")
+            .WithName("GetEntitlementSummary")
+            .WithSummary("Describe the current tenant's edition, licence status and paid-capability entitlements (atlas#147).");
+
         // Extension mount surface (atlas#139): the entitled, installable ui-extensions the current tenant
         // may mount into the client's named slots — id + mount metadata only. Every registration is run
         // through the open-core install guard and the entitlement gate server-side (atlas#140/#141); a

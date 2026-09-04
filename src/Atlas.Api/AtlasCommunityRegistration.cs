@@ -65,6 +65,8 @@ public static class AtlasCommunityRegistration
         services.AddScoped<LandscapeChatService>();
         services.AddScoped<McpReadService>();
         services.AddScoped<PaidCapabilityGate>();
+        // Read-only "my licence & entitlements" composition for the account panel (atlas#147).
+        services.AddScoped<EntitlementSummaryService>();
         services.AddScoped<SetupCopilotService>();
         services.AddScoped<ShadowItService>();
         // The open-core install boundary: any module install path runs its manifest through this guard,
