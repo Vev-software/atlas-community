@@ -56,6 +56,7 @@ public sealed class UiExtensionEndpointTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         var extension = Assert.Single(body.GetProperty("extensions").EnumerateArray());
+        Assert.Equal("ui-extension", extension.GetProperty("kind").GetString());
         Assert.Equal("com.vev.atlas.portfolio-health", extension.GetProperty("id").GetString());
         Assert.Equal("landscape-right-rail", extension.GetProperty("slot").GetString());
         Assert.Equal("Portfolio health", extension.GetProperty("title").GetString());
