@@ -1230,6 +1230,7 @@
       }
       mountExtensions("landscape-right-rail", extensions.filter((e) =>
         e &&
+        e.kind === "ui-extension" &&
         e.slot === "landscape-right-rail" &&
         e.mount &&
         e.mount.kind === "fragment" &&

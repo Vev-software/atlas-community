@@ -41,6 +41,7 @@ public sealed class EntitlementLicenseEndToEndTests
         var body = await GetExtensionsResponseAsync(client);
         Assert.Equal(UiExtensionContracts.ExtensionsContractVersion, body.GetProperty("contractVersion").GetString());
         var extension = Assert.Single(body.GetProperty("extensions").EnumerateArray());
+        Assert.Equal("ui-extension", extension.GetProperty("kind").GetString());
         Assert.Equal(PortfolioHealthId, extension.GetProperty("id").GetString());
         Assert.Equal("landscape-right-rail", extension.GetProperty("slot").GetString());
         var mount = extension.GetProperty("mount");

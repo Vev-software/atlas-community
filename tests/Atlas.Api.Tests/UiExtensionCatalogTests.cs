@@ -27,6 +27,7 @@ public sealed class UiExtensionCatalogTests
         var mountable = await catalog.GetMountableAsync();
 
         var offer = Assert.Single(mountable);
+        Assert.Equal(MountableUiExtension.UiExtensionKind, offer.Kind);
         Assert.Equal(PortfolioHealthId, offer.Id);
         Assert.Equal("landscape-right-rail", offer.Slot);
         Assert.Equal("Portfolio health", offer.Title);
