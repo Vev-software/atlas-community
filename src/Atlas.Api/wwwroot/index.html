@@ -18,17 +18,41 @@
     already speaks, and every rule (validation, conflicts, authorization) is the API's, surfaced here.
   -->
   <style>
+    /* ================================================================
+       Design tokens (atlas#157) — the app's shared visual language.
+       The spacing, radius and type SCALES borrow the product preview's
+       proportions (Homepage/css/tokens.css); the brand accent and the
+       per-kind colours are deliberately KEPT unchanged — we align
+       components and proportions, not the marketing palette. Components
+       further down read from these vars, so a value is defined once here
+       rather than sprinkled as literals. Self-hosted + system-font only:
+       no web fonts and no external assets (the app stays offline-capable).
+       ================================================================ */
     :root {
+      /* ---- Surfaces ---- */
       --bg: #f6f7f9;
       --panel: #ffffff;
+      --surface-3: #f1f3f7;         /* subtle raised/hover fill */
+
+      /* ---- Ink / text ---- */
       --ink: #16181d;
+      --ink-2: #333a44;             /* secondary body text */
       --muted: #6b7280;
+      --ink-soft: #6b7280;          /* alias of --muted, named for component legibility */
+
+      /* ---- Lines / borders ---- */
       --line: #e4e7ec;
+      --line-2: #d3d7de;            /* slightly stronger hairline (chips, pills) */
+
+      /* ---- Accent (unchanged brand hue) ---- */
       --accent: #4f46e5;
       --accent-ink: #ffffff;
+      --accent-tint: #eef2ff;       /* accent wash for pressed/active states */
       --danger: #dc2626;
       --danger-soft: #fef2f2;
       --edge: #b3b8c2;
+
+      /* ---- Kind colours (unchanged) ---- */
       --kind-system: #4f46e5;
       --kind-application: #0e9f6e;
       --kind-server: #d97706;
@@ -36,9 +60,85 @@
       --kind-data-area: #b45309;
       --kind-dataset: #0f766e;
       --kind-column: #7c3aed;
+
+      /* ---- Spacing scale ---- */
+      --sp-1: 4px;
+      --sp-2: 8px;
+      --sp-3: 12px;
+      --sp-4: 16px;
+      --sp-5: 24px;
+      --sp-6: 32px;
+
+      /* ---- Radii ---- */
+      --r-sm: 8px;
+      --r-md: 10px;
+      --r-lg: 16px;
+
+      /* ---- Type scale (system font stack; proportions from the preview) ---- */
+      --fs-eyebrow: 11px;
+      --fs-label: 12px;
+      --fs-body: 14px;
+      --fs-h2: 16px;
+      --fs-h1: 22px;
+      --track-eyebrow: .12em;
+
+      /* ---- Effects ---- */
       --focus-ring: 0 0 0 3px rgba(79, 70, 229, .22);
       --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .10);
       --shadow-lg: 0 10px 25px rgba(16, 24, 40, .12), 0 4px 10px rgba(16, 24, 40, .08);
+    }
+
+    /* ================================================================
+       Component layer (atlas#157). Small, reusable classes that the app
+       — and the later UI issues (#158 metric tiles, #159 detail panel,
+       #160 systems table, #161 nav shell) — compose from, so surfaces
+       stay consistent instead of re-inventing inline styles.
+       ================================================================ */
+    .eyebrow {
+      font-size: var(--fs-eyebrow);
+      font-weight: 600;
+      letter-spacing: var(--track-eyebrow);
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+    /* Status pill = coloured dot + label. `.warn` marks an at-risk state
+       (retired / deprecated / end-of-life). */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-2);
+      padding: 3px 9px;
+      border: 1px solid var(--line-2);
+      border-radius: 999px;
+      font-size: 11px;
+      letter-spacing: .02em;
+      color: var(--ink-soft);
+      white-space: nowrap;
+    }
+    .pill .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-soft); flex: none; }
+    .pill.warn { border-color: var(--accent); color: var(--accent); }
+    .pill.warn .pill-dot { background: var(--accent); }
+    /* Summary tile grid. Foundation for the landscape summary tiles (#158);
+       here it renders the compact at-a-glance counts in the detail panel. */
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      overflow: hidden;
+    }
+    .metric { padding: var(--sp-3) var(--sp-4); border-right: 1px solid var(--line); background: var(--panel); }
+    .metric:last-child { border-right: none; }
+    .metric .m-label { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+    .metric .m-val { font-size: 20px; font-weight: 600; color: var(--ink); margin-top: 4px; letter-spacing: -.01em; }
+    .metric .m-val small { font-size: 12px; color: var(--ink-soft); font-weight: 400; }
+    /* Panel surface. */
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      padding: var(--sp-4);
+      box-shadow: var(--shadow);
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
@@ -166,20 +266,23 @@
       border-bottom: 1px solid var(--line);
       flex-wrap: wrap;
     }
+    /* Chip — a small rounded token. Static as a tag (detail panel), and
+       interactive as a filter button in the toolbar: a <button> carrying
+       the [data-kind]/[aria-pressed] toggle the JS drives (behaviour kept). */
     .chip {
       font: inherit;
       font-size: 12.5px;
-      cursor: pointer;
-      border: 1px solid var(--line);
-      background: #fff;
-      color: var(--ink);
+      border: 1px solid var(--line-2);
+      background: var(--panel);
+      color: var(--ink-2);
       border-radius: 999px;
       padding: 5px 12px;
       display: inline-flex;
       align-items: center;
       gap: 7px;
     }
-    .chip[aria-pressed="true"] { border-color: var(--accent); background: #eef2ff; color: var(--accent); }
+    button.chip { cursor: pointer; }
+    .chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-tint); color: var(--accent); }
     .chip .dot { width: 9px; height: 9px; border-radius: 50%; }
     .searchbox {
       min-width: min(320px, 100%);
@@ -237,11 +340,16 @@
       border-left: 1px solid var(--line);
       background: var(--panel);
       overflow: auto;
-      padding: 16px 18px;
+      padding: var(--sp-3);
     }
-    aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0 0 10px; }
-    .detail .dname { font-size: 16px; font-weight: 650; margin: 0 0 2px; }
-    .detail .dkind { color: var(--muted); font-size: 12.5px; text-transform: capitalize; margin-bottom: 14px; }
+    aside h2 { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0 0 10px; }
+    /* The selected-asset detail renders as a card surface (atlas#157). */
+    .detail.card { margin: 0; }
+    .detail .dname { font-size: var(--fs-h2); font-weight: 650; margin: 0 0 var(--sp-2); }
+    .detail .dkind { display: flex; align-items: center; gap: var(--sp-2); color: var(--muted); font-size: 12.5px; text-transform: capitalize; margin: 0 0 14px; }
+    /* The lifecycle pill carries its own casing/colour — don't inherit the row's capitalize. */
+    .detail .dkind .pill { text-transform: none; }
+    .det-metrics { margin: 0 0 var(--sp-4); }
     .detail .dmeta { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; }
     .detail-actions { display: flex; gap: 8px; margin: 0 0 16px; }
     .link-btn {
@@ -264,8 +372,9 @@
     .kv { display: grid; grid-template-columns: 92px 1fr; gap: 4px 10px; font-size: 13px; margin-bottom: 14px; }
     .kv dt { color: var(--muted); }
     .kv dd { margin: 0; word-break: break-word; }
-    .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
-    .tag { font-size: 11.5px; background: #f1f3f7; border-radius: 6px; padding: 2px 8px; color: #384150; }
+    /* Held-fact tags render as static chips (atlas#157). */
+    .tags { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-1) 0 14px; }
+    .tags .chip { font-size: 11.5px; padding: 3px 9px; }
     .rel-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
     .rel-head h2 { margin: 0; }
     .rel-head .add-rel {
@@ -747,7 +856,7 @@
       </svg>
     </span>
     <h1 id="brandName">Atlas · Community</h1>
-    <span class="sub">Landscape</span>
+    <span class="sub eyebrow">Landscape</span>
     <a class="docs-link" id="docsLink" href="https://github.com/Vev-software/docs/blob/main/docs" target="_blank" rel="noreferrer" title="Documentation">Docs</a>
     <span class="badge" id="capBadge">Read-only</span>
     <div class="user" id="userInfo" hidden>
@@ -796,7 +905,7 @@
   <main>
     <div id="canvas"><div class="empty"><h3>Loading landscape…</h3></div></div>
     <aside>
-      <h2>Details</h2>
+      <h2 class="eyebrow">Details</h2>
       <div id="detail" class="stack"><p class="placeholder">Select an asset in the map to inspect it.</p></div>
       <!-- Extension mount slot (atlas#139): the host mounts entitled ui-extensions here. This client ships
            the slot and mount protocol only — the analysis view content comes from a separately delivered,
@@ -2457,6 +2566,13 @@
       detail.appendChild(wrap);
     }
 
+    // A lifecycle value reads as "at risk" when it names an end-of-life or
+    // wound-down state — used to give the status pill its `.warn` styling.
+    // Cataloguing only: this is presentation of a held fact, never analysis.
+    function lifecycleIsWarn(v) {
+      return /retire|deprecat|\beol\b|end.?of.?life|past|sunset|obsolete|legacy/i.test(String(v || ""));
+    }
+
     function showDetail(id) {
       const a = landscape.assets.find(x => x.id === id);
       if (!a) return;
@@ -2470,16 +2586,27 @@
       detail.innerHTML = "";
 
       const wrap = document.createElement("div");
-      wrap.className = "detail";
+      wrap.className = "detail card";
 
       const dname = document.createElement("p");
       dname.className = "dname";
       dname.textContent = a.name || a.id;
       wrap.appendChild(dname);
 
+      // Kind stays as text; lifecycle renders as a status pill (atlas#157) —
+      // `.warn` when the lifecycle reads as at-risk (retired / EOL / deprecated).
       const dkind = document.createElement("p");
       dkind.className = "dkind";
-      dkind.textContent = `${a.kind} · ${a.lifecycle || "—"}`;
+      dkind.textContent = a.kind;
+      const lifecycle = a.lifecycle || "";
+      if (lifecycle) {
+        const pill = document.createElement("span");
+        pill.className = lifecycleIsWarn(lifecycle) ? "pill warn" : "pill";
+        const dot = document.createElement("span");
+        dot.className = "pill-dot";
+        pill.append(dot, document.createTextNode(lifecycle));
+        dkind.appendChild(pill);
+      }
       wrap.appendChild(dkind);
 
       const meta = document.createElement("p");
@@ -2526,6 +2653,18 @@
       }
       wrap.appendChild(actions);
 
+      // At-a-glance counts as metric tiles (atlas#157) — pure presentation of
+      // already-loaded facts; the summary-tile component is the foundation the
+      // landscape summary tiles (#158) build on.
+      const stats = document.createElement("div");
+      stats.className = "metrics det-metrics";
+      const relCount = rels.length;
+      const tagCount = (a.tags && a.tags.length) || 0;
+      stats.innerHTML =
+        `<div class="metric"><div class="m-label">Relationships</div><div class="m-val">${relCount}</div></div>` +
+        `<div class="metric"><div class="m-label">Tags</div><div class="m-val">${tagCount}</div></div>`;
+      wrap.appendChild(stats);
+
       const kv = document.createElement("dl");
       kv.className = "kv";
       const addKv = (k, v) => {
@@ -2549,7 +2688,7 @@
         tags.className = "tags";
         for (const t of a.tags) {
           const span = document.createElement("span");
-          span.className = "tag";
+          span.className = "chip";
           span.textContent = t.key + (t.value ? ": " + t.value : "");
           tags.appendChild(span);
         }
