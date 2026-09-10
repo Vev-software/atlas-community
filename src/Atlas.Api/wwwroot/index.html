@@ -132,6 +132,10 @@
     .metric .m-label { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
     .metric .m-val { font-size: 20px; font-weight: 600; color: var(--ink); margin-top: 4px; letter-spacing: -.01em; }
     .metric .m-val small { font-size: 12px; color: var(--ink-soft); font-weight: 400; }
+    .metrics--4 { grid-template-columns: repeat(4, 1fr); }
+    /* Lifecycle breakdown inside a single tile (draft/active/retired counts). */
+    .metric .m-split { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 13px; color: var(--ink-soft); }
+    .metric .m-split b { color: var(--ink); font-weight: 600; font-size: 15px; }
     /* Panel surface. */
     .card {
       background: var(--panel);
@@ -323,7 +327,11 @@
     button.primary.danger-primary:hover { border-color: #b91c1c; background: #b91c1c; }
     button.primary .plus { font-size: 15px; line-height: 1; margin-top: -1px; }
     main { flex: 1; display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
-    #canvas { position: relative; overflow: auto; background:
+    /* Landscape column = summary tiles (atlas#158) stacked above the canvas;
+       the detail aside keeps its own full-height column to the right. */
+    .land-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    .summary-metrics { margin: var(--sp-3) var(--sp-3) 0; flex: none; }
+    #canvas { position: relative; flex: 1 1 auto; overflow: auto; background:
         radial-gradient(circle at 1px 1px, #e9ebf0 1px, transparent 0) 0 0 / 22px 22px, var(--bg); }
     svg { display: block; }
     .node rect { fill: #fff; stroke-width: 1.5; rx: 9; filter: drop-shadow(0 1px 1px rgba(16,24,40,.08)); cursor: pointer; }
@@ -836,7 +844,7 @@
     .view-toggle button:last-child { border-right: none; }
     .view-toggle button[aria-pressed="true"] { background: #eef2ff; color: var(--accent); }
     .table-container { overflow: auto; max-height: calc(100vh - 160px); }
-    @media (max-width: 820px) { main { grid-template-columns: 1fr; } aside { border-left: none; border-top: 1px solid var(--line); } }
+    @media (max-width: 820px) { main { grid-template-columns: 1fr; } aside { border-left: none; border-top: 1px solid var(--line); } .metrics--4 { grid-template-columns: repeat(2, 1fr); } }
   </style>
   <!-- Runtime deployment config (atlas#19): sets window.__ATLAS__ (API base incl. path base). -->
   <script src="app-config.js"></script>
@@ -903,7 +911,25 @@
   </div>
 
   <main>
-    <div id="canvas"><div class="empty"><h3>Loading landscape…</h3></div></div>
+    <div class="land-col">
+      <!-- Landscape summary tiles (atlas#158): at-a-glance counts of held facts only —
+           never EOL/risk/scoring, which are reserved paid Atlas core. Hidden until the
+           first successful load, then recomputed by render() on refresh and every CRUD. -->
+      <div class="metrics metrics--4 summary-metrics" id="summaryMetrics" hidden aria-label="Landscape summary">
+        <div class="metric"><div class="m-label">Assets catalogued</div><div class="m-val" id="sumAssets">0</div></div>
+        <div class="metric"><div class="m-label">Systems</div><div class="m-val" id="sumSystems">0</div></div>
+        <div class="metric">
+          <div class="m-label">Lifecycle</div>
+          <div class="m-split">
+            <span><b id="sumLifeActive">0</b> active</span>
+            <span><b id="sumLifeDraft">0</b> draft</span>
+            <span><b id="sumLifeRetired">0</b> retired</span>
+          </div>
+        </div>
+        <div class="metric"><div class="m-label">Ownership coverage</div><div class="m-val" id="sumOwnership">—</div></div>
+      </div>
+      <div id="canvas"><div class="empty"><h3>Loading landscape…</h3></div></div>
+    </div>
     <aside>
       <h2 class="eyebrow">Details</h2>
       <div id="detail" class="stack"><p class="placeholder">Select an asset in the map to inspect it.</p></div>
@@ -1555,6 +1581,7 @@
         landscape.assets ||= [];
         landscape.relationships ||= [];
         el("toolbar").hidden = false;
+        el("summaryMetrics").hidden = false;
         await Promise.all([loadSetupCopilot(), loadAiAllowances(), loadAiModule()]);
         render();
         if (selectedId) showDetail(selectedId);
@@ -1658,7 +1685,40 @@
       return filter === "all" ? landscape.assets : landscape.assets.filter(a => a.kind === filter);
     }
 
+    // An owner is a HELD FACT (atlas#158): an application's business owner, a
+    // dataset's owner, or an explicit `owner:` tag. Ownership is never inferred.
+    function assetHasOwner(a) {
+      if (a.application && String(a.application.businessOwner || "").trim()) return true;
+      if (a.dataset && String(a.dataset.owner || "").trim()) return true;
+      if (a.tags && a.tags.some(t => t.key === "owner")) return true;
+      return false;
+    }
+
+    // Landscape summary tiles: counts of held facts and a coverage ratio only —
+    // no EOL/risk/scoring (that is reserved paid Atlas core). Computed over the
+    // whole landscape (not the kind filter), so the tiles read the true state.
+    function renderSummary() {
+      const all = landscape.assets || [];
+      const total = all.length;
+      const life = { active: 0, draft: 0, retired: 0 };
+      let systems = 0, withOwner = 0;
+      for (const a of all) {
+        if (a.kind === "system") systems++;
+        const lc = String(a.lifecycle || "").toLowerCase();
+        if (lc in life) life[lc]++;
+        if (assetHasOwner(a)) withOwner++;
+      }
+      const set = (id, v) => { const e = el(id); if (e) e.textContent = v; };
+      set("sumAssets", String(total));
+      set("sumSystems", String(systems));
+      set("sumLifeActive", String(life.active));
+      set("sumLifeDraft", String(life.draft));
+      set("sumLifeRetired", String(life.retired));
+      set("sumOwnership", total ? Math.round((withOwner / total) * 100) + "%" : "—");
+    }
+
     function render() {
+      renderSummary();
       const assets = visibleAssets();
       const total = landscape.assets.length;
       el("count").textContent =
