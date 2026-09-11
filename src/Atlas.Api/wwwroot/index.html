@@ -353,11 +353,25 @@
     aside h2 { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0 0 10px; }
     /* The selected-asset detail renders as a card surface (atlas#157). */
     .detail.card { margin: 0; }
-    .detail .dname { font-size: var(--fs-h2); font-weight: 650; margin: 0 0 var(--sp-2); }
-    .detail .dkind { display: flex; align-items: center; gap: var(--sp-2); color: var(--muted); font-size: 12.5px; text-transform: capitalize; margin: 0 0 14px; }
-    /* The lifecycle pill carries its own casing/colour — don't inherit the row's capitalize. */
-    .detail .dkind .pill { text-transform: none; }
-    .det-metrics { margin: 0 0 var(--sp-4); }
+    .detail .eyebrow { margin: 0 0 4px; text-transform: capitalize; }
+    .detail .dname { font-size: var(--fs-h2); font-weight: 650; margin: 0 0 var(--sp-3); }
+    .dkind { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; }
+    /* Structured, labelled held-fact rows (atlas#159) — replaces the raw KV dump. */
+    .det-facts { margin: 0 0 var(--sp-4); }
+    .det-row { display: grid; grid-template-columns: 104px 1fr; gap: var(--sp-2) var(--sp-3); padding: 9px 0; border-top: 1px solid var(--line); font-size: 13px; align-items: center; }
+    .det-row:first-child { border-top: none; }
+    .det-row .det-label { color: var(--muted); }
+    .det-row .det-value { color: var(--ink-2); word-break: break-word; }
+    /* Capabilities / dependencies / tags sections, each under an eyebrow label. */
+    .det-section { margin: 0 0 var(--sp-4); }
+    .det-section > .eyebrow { margin: 0 0 var(--sp-2); }
+    .det-section .tags { margin: 0; }
+    .dep-chain { font-size: 13px; line-height: 1.6; color: var(--ink-2); word-break: break-word; }
+    /* Identifiers, demoted to the bottom. */
+    .det-ids { display: grid; grid-template-columns: 104px 1fr; gap: 4px var(--sp-3); margin: var(--sp-4) 0 0; padding-top: var(--sp-3); border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+    .det-ids .det-label { color: var(--muted); }
+    .det-ids .det-value { color: var(--ink-2); word-break: break-word; }
+    .det-ids code { font-size: 11px; color: var(--ink-2); word-break: break-all; }
     .detail .dmeta { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; }
     .detail-actions { display: flex; gap: 8px; margin: 0 0 16px; }
     .link-btn {
@@ -2633,6 +2647,68 @@
       return /retire|deprecat|\beol\b|end.?of.?life|past|sunset|obsolete|legacy/i.test(String(v || ""));
     }
 
+    // ---- Detail-panel held-fact helpers (atlas#159) ----
+    // Typed sub-object field → human label, per kind. Owner fields
+    // (application.businessOwner / dataset.owner) are surfaced separately as the
+    // Owner row, so they are intentionally omitted here.
+    const TYPED_FACT_LABELS = {
+      application: [["version", "Version"], ["vendor", "Vendor"]],
+      server: [["hostname", "Hostname"], ["environment", "Environment"], ["operatingSystem", "OS"]],
+      infrastructure: [["category", "Category"], ["location", "Location"]],
+      dataArea: [["realisation", "Realisation"]],
+      dataset: [["physicalName", "Physical name"]],
+      column: [["dataType", "Data type"], ["nullable", "Nullable"]],
+    };
+    // Relationship types that imply a dependency (held facts, not impact analysis).
+    const DEP_REL_TYPES = new Set(["depends-on", "part-of", "runs-on"]);
+    // Tag keys promoted to their own row/section, so the generic Tags list omits them.
+    const SURFACED_TAG_KEYS = new Set(["owner", "domain", "criticality", "stack", "capability"]);
+
+    function firstTagValue(a, key) {
+      const t = (a.tags || []).find(x => x.key === key && String(x.value || "").trim());
+      return t ? String(t.value).trim() : "";
+    }
+    // The held owner fact: an application business owner, a dataset owner, or an
+    // `owner:` tag. Never inferred.
+    function assetOwnerLabel(a) {
+      if (a.application && String(a.application.businessOwner || "").trim()) return a.application.businessOwner.trim();
+      if (a.dataset && String(a.dataset.owner || "").trim()) return a.dataset.owner.trim();
+      return firstTagValue(a, "owner");
+    }
+    function capabilityTagValues(a) {
+      return (a.tags || []).filter(t => t.key === "capability" && String(t.value || "").trim())
+        .map(t => String(t.value).trim());
+    }
+    // Typed sub-object facts as [label, value] rows, in a stable order.
+    function typedFactRows(a) {
+      const out = [];
+      for (const key of ["application", "server", "infrastructure", "dataArea", "dataset", "column"]) {
+        const d = a[key];
+        if (!d) continue;
+        for (const [prop, labelText] of (TYPED_FACT_LABELS[key] || [])) {
+          let v = d[prop];
+          if (v == null || v === "") continue;
+          if (prop === "nullable") v = v === true ? "Yes" : v === false ? "No" : "";
+          if (v === "") continue;
+          out.push([labelText, String(v)]);
+        }
+      }
+      return out;
+    }
+    // Dependency neighbours as a "Source → This → Target" chain. Literal held
+    // relationship facts only — never a dependents/impact rollup (that is the
+    // paid analysis surface).
+    function dependencyChain(a, id, rels) {
+      const sources = rels.filter(r => r.toId === id && DEP_REL_TYPES.has(r.type)).map(r => label(r.fromId));
+      const targets = rels.filter(r => r.fromId === id && DEP_REL_TYPES.has(r.type)).map(r => label(r.toId));
+      if (!sources.length && !targets.length) return "";
+      const parts = [];
+      if (sources.length) parts.push(sources.join(", "));
+      parts.push(a.name || a.id);
+      if (targets.length) parts.push(targets.join(", "));
+      return parts.join(" → ");
+    }
+
     function showDetail(id) {
       const a = landscape.assets.find(x => x.id === id);
       if (!a) return;
@@ -2640,7 +2716,6 @@
         void ensureAssetHistory(id);
       }
       const rels = landscape.relationships.filter(r => r.fromId === id || r.toId === id);
-      const d = a.application || a.server || a.infrastructure || a.dataArea || a.dataset || a.column || null;
       const history = assetHistoryCache.get(id);
       const detail = el("detail");
       detail.innerHTML = "";
@@ -2648,39 +2723,16 @@
       const wrap = document.createElement("div");
       wrap.className = "detail card";
 
+      // 1. Eyebrow (kind) + 2. name (atlas#159).
+      const eyebrow = document.createElement("p");
+      eyebrow.className = "eyebrow";
+      eyebrow.textContent = a.kind;
+      wrap.appendChild(eyebrow);
+
       const dname = document.createElement("p");
       dname.className = "dname";
       dname.textContent = a.name || a.id;
       wrap.appendChild(dname);
-
-      // Kind stays as text; lifecycle renders as a status pill (atlas#157) —
-      // `.warn` when the lifecycle reads as at-risk (retired / EOL / deprecated).
-      const dkind = document.createElement("p");
-      dkind.className = "dkind";
-      dkind.textContent = a.kind;
-      const lifecycle = a.lifecycle || "";
-      if (lifecycle) {
-        const pill = document.createElement("span");
-        pill.className = lifecycleIsWarn(lifecycle) ? "pill warn" : "pill";
-        const dot = document.createElement("span");
-        dot.className = "pill-dot";
-        pill.append(dot, document.createTextNode(lifecycle));
-        dkind.appendChild(pill);
-      }
-      wrap.appendChild(dkind);
-
-      const meta = document.createElement("p");
-      meta.className = "dmeta";
-      const createdStamp = history && history.createdAt
-        ? `Created ${formatStamp(history.createdAt)} · by ${history.createdBy || "unknown"}`
-        : assetHistoryPending.has(id)
-          ? "Loading created-by and history…"
-          : "Created provenance not recorded yet.";
-      const updatedStamp = history && history.lastUpdatedAt
-        ? `Last updated ${formatStamp(history.lastUpdatedAt)}`
-        : "Last updated —";
-      meta.textContent = `${createdStamp} · ${updatedStamp}`;
-      wrap.appendChild(meta);
 
       const actions = document.createElement("div");
       actions.className = "detail-actions";
@@ -2713,46 +2765,71 @@
       }
       wrap.appendChild(actions);
 
-      // At-a-glance counts as metric tiles (atlas#157) — pure presentation of
-      // already-loaded facts; the summary-tile component is the foundation the
-      // landscape summary tiles (#158) build on.
-      const stats = document.createElement("div");
-      stats.className = "metrics det-metrics";
-      const relCount = rels.length;
-      const tagCount = (a.tags && a.tags.length) || 0;
-      stats.innerHTML =
-        `<div class="metric"><div class="m-label">Relationships</div><div class="m-val">${relCount}</div></div>` +
-        `<div class="metric"><div class="m-label">Tags</div><div class="m-val">${tagCount}</div></div>`;
-      wrap.appendChild(stats);
-
-      const kv = document.createElement("dl");
-      kv.className = "kv";
-      const addKv = (k, v) => {
-        const dt = document.createElement("dt"); dt.textContent = k;
-        const dd = document.createElement("dd");
-        if (k === "ID") { const c = document.createElement("code"); c.textContent = v; dd.appendChild(c); }
-        else dd.textContent = v;
-        kv.append(dt, dd);
+      // 3. Labelled held-fact rows — only the facts this asset actually carries.
+      const facts = document.createElement("div");
+      facts.className = "det-facts";
+      const addFactRow = (labelText, value) => {
+        const row = document.createElement("div");
+        row.className = "det-row";
+        const l = document.createElement("div"); l.className = "det-label"; l.textContent = labelText;
+        const v = document.createElement("div"); v.className = "det-value";
+        if (typeof value === "string") v.textContent = value; else v.appendChild(value);
+        row.append(l, v);
+        facts.appendChild(row);
       };
-      addKv("ID", a.id);
-      if (a.numericId != null) addKv("Numeric ID", String(a.numericId));
-      if (a.description) addKv("Notes", a.description);
-      if (d) for (const [k, v] of Object.entries(d)) {
-        if (v == null || v === "") continue;
-        addKv(labelCase(k), String(v));
+      const owner = assetOwnerLabel(a);
+      if (owner) addFactRow("Owner", owner);
+      const domain = firstTagValue(a, "domain");
+      if (domain) addFactRow("Domain", domain);
+      // Criticality is shown only when it is a held `criticality:` tag — it is a
+      // scoring concept, never derived here.
+      const criticality = firstTagValue(a, "criticality");
+      if (criticality) addFactRow("Criticality", criticality);
+      for (const [labelText, value] of typedFactRows(a)) addFactRow(labelText, value);
+      const stack = firstTagValue(a, "stack");
+      if (stack) addFactRow("Stack", stack);
+      if (a.lifecycle) {
+        const pill = document.createElement("span");
+        pill.className = lifecycleIsWarn(a.lifecycle) ? "pill warn" : "pill";
+        const dot = document.createElement("span"); dot.className = "pill-dot";
+        pill.append(dot, document.createTextNode(a.lifecycle));
+        addFactRow("Lifecycle", pill);
       }
-      wrap.appendChild(kv);
+      if (a.description) addFactRow("Notes", a.description);
+      if (facts.children.length) wrap.appendChild(facts);
 
-      if (a.tags && a.tags.length) {
-        const tags = document.createElement("div");
-        tags.className = "tags";
-        for (const t of a.tags) {
+      // 4. Linked capabilities — `capability:` tags as chips.
+      const caps = capabilityTagValues(a);
+      if (caps.length) {
+        const sec = document.createElement("div"); sec.className = "det-section";
+        const lab = document.createElement("p"); lab.className = "eyebrow"; lab.textContent = "Linked capabilities";
+        const chips = document.createElement("div"); chips.className = "tags";
+        for (const c of caps) { const s = document.createElement("span"); s.className = "chip"; s.textContent = c; chips.appendChild(s); }
+        sec.append(lab, chips); wrap.appendChild(sec);
+      }
+
+      // 5. Dependencies — held relationship neighbours as a chain.
+      const dep = dependencyChain(a, id, rels);
+      if (dep) {
+        const sec = document.createElement("div"); sec.className = "det-section";
+        const lab = document.createElement("p"); lab.className = "eyebrow"; lab.textContent = "Dependencies";
+        const chain = document.createElement("p"); chain.className = "dep-chain"; chain.textContent = dep;
+        sec.append(lab, chain); wrap.appendChild(sec);
+      }
+
+      // 6. Tags — any held tags not already surfaced as a row/section above.
+      const otherTags = (a.tags || []).filter(t => !SURFACED_TAG_KEYS.has(t.key));
+      if (otherTags.length) {
+        const sec = document.createElement("div"); sec.className = "det-section";
+        const lab = document.createElement("p"); lab.className = "eyebrow"; lab.textContent = "Tags";
+        const tags = document.createElement("div"); tags.className = "tags";
+        for (const t of otherTags) {
           const span = document.createElement("span");
           span.className = "chip";
           span.textContent = t.key + (t.value ? ": " + t.value : "");
           tags.appendChild(span);
         }
-        wrap.appendChild(tags);
+        sec.append(lab, tags); wrap.appendChild(sec);
       }
 
       const relHead = document.createElement("div");
@@ -2800,8 +2877,34 @@
         wrap.appendChild(p);
       }
 
+      // Provenance, demoted to the bottom (atlas#159).
+      const meta = document.createElement("p");
+      meta.className = "dmeta";
+      const createdStamp = history && history.createdAt
+        ? `Created ${formatStamp(history.createdAt)} · by ${history.createdBy || "unknown"}`
+        : assetHistoryPending.has(id)
+          ? "Loading created-by and history…"
+          : "Created provenance not recorded yet.";
+      const updatedStamp = history && history.lastUpdatedAt
+        ? `Last updated ${formatStamp(history.lastUpdatedAt)}`
+        : "Last updated —";
+      meta.textContent = `${createdStamp} · ${updatedStamp}`;
+      wrap.appendChild(meta);
       wrap.appendChild(renderHistorySection(a, history));
       wrap.appendChild(renderPlannedVersionsSection());
+
+      // Identifiers demoted to the very bottom (small, monospace).
+      const ids = document.createElement("div");
+      ids.className = "det-ids";
+      const idLabel = document.createElement("div"); idLabel.className = "det-label"; idLabel.textContent = "ID";
+      const idValue = document.createElement("div"); const idCode = document.createElement("code"); idCode.textContent = a.id; idValue.appendChild(idCode);
+      ids.append(idLabel, idValue);
+      if (a.numericId != null) {
+        const nLabel = document.createElement("div"); nLabel.className = "det-label"; nLabel.textContent = "Numeric ID";
+        const nValue = document.createElement("div"); nValue.className = "det-value"; nValue.textContent = String(a.numericId);
+        ids.append(nLabel, nValue);
+      }
+      wrap.appendChild(ids);
 
       detail.appendChild(wrap);
       renderHierarchy(a, detail);
