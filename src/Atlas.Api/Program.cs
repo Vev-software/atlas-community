@@ -123,7 +123,8 @@ app.MapGet("/app-config.js", (HttpRequest request, AtlasUrls u, IConfiguration c
         docsBaseUrl = u.DocsBaseUrl,
         oidcAuthority = oidc?.Authority,
         oidcClientId = oidc?.ClientId,
-        oidcAccountUrl = oidc?.AccountUrl
+        oidcAccountUrl = oidc?.AccountUrl,
+        usageAnalytics = UsageAnalyticsOptions.FromConfiguration(configuration)
     };
     var js = $"window.__ATLAS__=Object.freeze({JsonSerializer.Serialize(config, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull })});";
     return Results.Text(js, "application/javascript");
