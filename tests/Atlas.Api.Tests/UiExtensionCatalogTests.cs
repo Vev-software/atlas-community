@@ -114,6 +114,19 @@ public sealed class UiExtensionCatalogTests
         Assert.Empty(mountable);
     }
 
+    [Theory]
+    [InlineData("view-roadmaps", true)]
+    [InlineData("view-lifecycle", true)]
+    [InlineData("view-reviews", true)]
+    [InlineData("unknown-slot", false)]
+    public async Task Only_known_slots_are_offered(string slot, bool supported)
+    {
+        var registration = PortfolioHealth("/api/v1/extensions/example") with { Slot = slot };
+        var catalog = BuildCatalog(new HashSet<string> { AtlasCapabilities.PortfolioAnalysis.Value }, out _, registration);
+        var offered = await catalog.GetMountableAsync();
+        Assert.Equal(supported ? 1 : 0, offered.Count);
+    }
+
     private static UiExtensionRegistration PortfolioHealth(string? fragmentUrl) => new(
         Id: PortfolioHealthId,
         Slot: "landscape-right-rail",

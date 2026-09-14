@@ -113,6 +113,21 @@ public static class AtlasCommunityRegistration
     /// </summary>
     private static IEnumerable<UiExtensionRegistration> BuildUiExtensionRegistrations(IConfiguration? configuration)
     {
+        var views = new[]
+        {
+            (Name: "Roadmaps", Slot: "view-roadmaps", Capability: AtlasCapabilities.RoadmapGeneration),
+            (Name: "Lifecycle", Slot: "view-lifecycle", Capability: AtlasCapabilities.EndOfLifeTracking),
+            (Name: "Reviews", Slot: "view-reviews", Capability: AtlasCapabilities.AiReview)
+        };
+        foreach (var view in views)
+        {
+            var url = configuration?[$"Atlas:Extensions:{view.Name}:FragmentUrl"];
+            if (string.IsNullOrWhiteSpace(url)) continue;
+            var id = $"com.vev.atlas.{view.Slot}";
+            yield return new UiExtensionRegistration(id, view.Slot, view.Name, view.Capability,
+                ModuleManifest.ForEdgeModule(id), UiExtensionMount.Fragment(url));
+        }
+
         const string portfolioHealthId = "com.vev.atlas.portfolio-health";
         var portfolioHealthFragmentUrl = configuration?["Atlas:Extensions:PortfolioHealth:FragmentUrl"];
 

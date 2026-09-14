@@ -244,7 +244,7 @@ UI extensions. The response is explicitly versioned and typed:
 
 ```json
 {
-  "contractVersion": "1",
+  "contractVersion": "2",
   "extensions": [
     {
       "id": "com.vev.atlas.portfolio-health",
@@ -275,6 +275,19 @@ Compatibility is fail-closed:
 - The browser mounts only the same known `kind` + `contractVersion` pairs and ignores anything else.
 - Adding a new mount kind or making a breaking change to the mount shape requires a new ADR and a new
   contract version; it is not an in-place widening of V1.
+
+Host-offer **V2** adds `view-roadmaps`, `view-lifecycle`, and `view-reviews` alongside
+`landscape-right-rail`. Fragment mounts remain exact version `"1"`; unknown slots are ignored.
+The browser accepts V1 offers for the rail only. See [ADR 0005](adr/0005-named-view-slots.md).
+
+Configure `Atlas:Extensions:Roadmaps:FragmentUrl`, `Atlas:Extensions:Lifecycle:FragmentUrl`,
+and `Atlas:Extensions:Reviews:FragmentUrl` with the corresponding served fragment URL, for example
+`/api/v1/extensions/roadmaps`. The separately supplied endpoint returns self-contained `text/html`
+and must enforce its entitlement on every GET. The host mounts it in an iframe with an empty sandbox
+and no referrer. No analysis logic is shipped in the host.
+
+Named views use `#landscape`, `#systems`, `#capabilities`, `#roadmaps`, `#lifecycle`, and `#reviews`.
+Capability links use `#systems?capability=<encoded-name>` and filter held `capability` tags.
 
 ### Compatibility & versioning
 
