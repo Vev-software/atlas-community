@@ -830,6 +830,7 @@
     .asset-table tbody tr { cursor: pointer; }
     .asset-table tbody tr:hover { background: #f8fafc; }
     .asset-table tbody tr.selected { background: #eef2ff; }
+    .asset-table .asset-id { color: var(--ink-soft); font-size: 11px; }
     .asset-table .kind-dot {
       display: inline-block;
       width: 9px;
@@ -1880,7 +1881,10 @@
       const cols = [
         { key: "name", label: "Name" },
         { key: "kind", label: "Kind" },
+        { key: "domain", label: "Domain" },
+        { key: "owner", label: "Owner" },
         { key: "lifecycle", label: "Lifecycle" },
+        { key: "stack", label: "Stack" },
         { key: "id", label: "ID" },
       ];
       for (const col of cols) {
@@ -1902,6 +1906,7 @@
       const tbody = document.createElement("tbody");
       for (const a of sorted) {
         const tr = document.createElement("tr");
+        tr.dataset.id = a.id;
         if (a.id === selectedId) tr.classList.add("selected");
 
         const tdName = document.createElement("td");
@@ -1916,11 +1921,29 @@
         tdKind.style.textTransform = "capitalize";
         tr.appendChild(tdKind);
 
+        for (const key of ["domain", "owner"]) {
+          const td = document.createElement("td");
+          td.textContent = tableValue(a, key);
+          tr.appendChild(td);
+        }
+
         const tdLifecycle = document.createElement("td");
-        tdLifecycle.textContent = a.lifecycle || "—";
+        if (a.lifecycle) {
+          const pill = document.createElement("span");
+          pill.className = "pill" + (lifecycleIsWarn(a.lifecycle) ? " warn" : "");
+          const statusDot = document.createElement("span");
+          statusDot.className = "pill-dot";
+          pill.append(statusDot, document.createTextNode(a.lifecycle));
+          tdLifecycle.appendChild(pill);
+        }
         tr.appendChild(tdLifecycle);
 
+        const tdStack = document.createElement("td");
+        tdStack.textContent = tableValue(a, "stack");
+        tr.appendChild(tdStack);
+
         const tdId = document.createElement("td");
+        tdId.className = "asset-id";
         const code = document.createElement("code");
         code.textContent = a.id;
         tdId.appendChild(code);
@@ -1936,13 +1959,22 @@
       canvas.appendChild(container);
     }
 
+    function tableValue(a, key) {
+      if (key === "name") return a.name || a.id;
+      if (key === "domain") return firstTagValue(a, "domain");
+      if (key === "owner") return assetOwnerLabel(a);
+      if (key === "stack") {
+        const os = String(a.server?.operatingSystem || "").trim();
+        const app = [a.application?.version, a.application?.vendor]
+          .map(v => String(v || "").trim()).filter(Boolean).join(" · ");
+        return os || app || firstTagValue(a, "stack");
+      }
+      return String(a[key] || "");
+    }
+
     function sortAssets(assets) {
       return [...assets].sort((a, b) => {
-        let va, vb;
-        if (tableSort.key === "name") { va = a.name || a.id; vb = b.name || b.id; }
-        else if (tableSort.key === "kind") { va = a.kind; vb = b.kind; }
-        else if (tableSort.key === "lifecycle") { va = a.lifecycle || ""; vb = b.lifecycle || ""; }
-        else { va = a.id; vb = b.id; }
+        const va = tableValue(a, tableSort.key), vb = tableValue(b, tableSort.key);
         const cmp = va.localeCompare(vb);
         return tableSort.dir === "asc" ? cmp : -cmp;
       });
@@ -1955,6 +1987,8 @@
     }
 
     function applySelection() {
+      canvas.querySelectorAll(".asset-table tbody tr").forEach(row =>
+        row.classList.toggle("selected", row.dataset.id === selectedId));
       const svg = canvas.querySelector("svg");
       if (!svg) return;
       const neighbours = new Set([selectedId]);

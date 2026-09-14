@@ -92,7 +92,17 @@ public sealed class LandscapeUiEndToEndTests(AtlasUiTestHost host) : IClassFixtu
 
         await page.GetByTitle("Table view").ClickAsync();
         await page.WaitForSelectorAsync("table.asset-table");
+        Assert.Equal(new[] { "Name▲", "Kind", "Domain", "Owner", "Lifecycle", "Stack", "ID" },
+            await page.Locator("table.asset-table th").AllTextContentsAsync());
+        var customerRow = page.Locator("table.asset-table tbody tr[data-id='ds-customers']");
+        Assert.Equal("CRM team", await customerRow.Locator("td").Nth(3).TextContentAsync());
+        Assert.Equal("", await customerRow.Locator("td").Nth(2).TextContentAsync());
+        Assert.Equal("", await customerRow.Locator("td").Nth(5).TextContentAsync());
+        Assert.Equal("active", await customerRow.Locator(".pill").TextContentAsync());
+        await page.GetByRole(AriaRole.Columnheader, new() { Name = "Owner", Exact = true }).ClickAsync();
+        Assert.Equal("ds-customers", await page.Locator("table.asset-table tbody tr").Last.GetAttributeAsync("data-id"));
         await page.Locator("table.asset-table tbody tr").Filter(new() { HasTextString = "Customers" }).ClickAsync();
+        Assert.Equal("ds-customers", await page.Locator("table.asset-table tbody tr.selected").GetAttributeAsync("data-id"));
 
         var detail = page.Locator("#detail");
         await detail.WaitForAsync();
