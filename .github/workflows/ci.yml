@@ -83,7 +83,7 @@ jobs:
         with:
           global-json-file: global.json
       - name: Install pinned SonarScanner from nuget.org
-        run: dotnet tool install dotnet-sonarscanner --version 11.3.0 --tool-path .sonar/tools --configfile NuGet.Config
+        run: dotnet tool install dotnet-sonarscanner --version 11.3.0 --tool-path .sonar/tools --configfile nuget.config
       - name: Begin analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -95,7 +95,7 @@ jobs:
             /d:sonar.cs.opencover.reportsPaths=".sonar/coverage/**/coverage.opencover.xml" \
             /d:sonar.qualitygate.wait=true /d:sonar.qualitygate.timeout=600
       - name: Build
-        run: dotnet build Atlas.slnx -c Release --configfile NuGet.Config
+        run: dotnet build Atlas.slnx -c Release --configfile nuget.config
       - name: Install browser for integration tests
         run: pwsh tests/Atlas.Api.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       - name: Test with Cobertura and OpenCover coverage
