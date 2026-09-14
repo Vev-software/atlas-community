@@ -47,3 +47,73 @@ jobs:
       # Run the fitness guardrails again in isolation so a red boundary is unmistakable.
       - name: Fitness (architecture guardrails)
         run: dotnet test tests/Atlas.Architecture.Tests/Atlas.Architecture.Tests.csproj -c Release --no-build
+
+  sonar-configuration:
+    name: SonarCloud configuration
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.configuration.outputs.enabled }}
+    steps:
+      - id: configuration
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        shell: bash
+        run: |
+          if [ -n "$SONAR_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "SonarCloud skipped: SONAR_TOKEN is not available for this run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  sonar:
+    name: SonarCloud quality gate
+    needs: sonar-configuration
+    if: needs.sonar-configuration.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY || 'Vev-software_atlas-community' }}
+      SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION || 'vev-software' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Install pinned SonarScanner from nuget.org
+        run: dotnet tool install dotnet-sonarscanner --version 11.3.0 --tool-path .sonar/tools --configfile NuGet.Config
+      - name: Begin analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          .sonar/tools/dotnet-sonarscanner begin \
+            /k:"$SONAR_PROJECT_KEY" /o:"$SONAR_ORGANIZATION" \
+            /d:sonar.host.url="https://sonarcloud.io" /d:sonar.token="$SONAR_TOKEN" \
+            /d:sonar.scanner.scanAll=false \
+            /d:sonar.cs.opencover.reportsPaths=".sonar/coverage/**/coverage.opencover.xml" \
+            /d:sonar.qualitygate.wait=true /d:sonar.qualitygate.timeout=600
+      - name: Build
+        run: dotnet build Atlas.slnx -c Release --configfile NuGet.Config
+      - name: Install browser for integration tests
+        run: pwsh tests/Atlas.Api.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+      - name: Test with Cobertura and OpenCover coverage
+        run: dotnet test Atlas.slnx -c Release --no-build --collect:"XPlat Code Coverage" --settings coverage.runsettings --results-directory .sonar/coverage
+      - name: Upload analysis and wait for quality gate
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: .sonar/tools/dotnet-sonarscanner end /d:sonar.token="$SONAR_TOKEN"
+      - name: Reject new blocker or critical issues
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_PULL_REQUEST: ${{ github.event.pull_request.number }}
+        run: python .github/scripts/check-sonar-issues.py
+      - name: Preserve coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-coverage
+          path: .sonar/coverage/**/coverage.*.xml
+          if-no-files-found: warn
+          retention-days: 14

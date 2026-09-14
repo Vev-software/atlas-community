@@ -29,6 +29,7 @@
     <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
 
     <!-- Test stack. -->
+    <PackageVersion Include="coverlet.collector" Version="6.0.2" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <!-- Issue self-signed JWTs in the OIDC identity tests. Pinned to the version the JwtBearer 10.0.11
          stack resolves transitively, so token creation and validation share one IdentityModel. -->

@@ -679,3 +679,23 @@ When Portic is enabled, all AI-assist payloads (grounding facts, user questions,
 are sent to the configured `Atlas:Portic:BaseUrl`. The `BaseUrl` is always operator-supplied — Atlas
 never hard-codes a Portic endpoint. See [ADR 0003](./adr/0003-portic-community-module.md) for the
 threat model discussion.
+
+### Security and quality gates
+
+CodeQL scans C# on PRs and main; findings appear in GitHub's Security / Code scanning tab.
+SonarCloud runs the tests with Cobertura reports (download the `sonar-coverage` artifact) and
+OpenCover reports for C# coverage ingestion. The job waits for the project's quality gate and
+also rejects any new unresolved blocker/critical issues, independently of project gate settings.
+See [Sonar's C# coverage guide](https://docs.sonarsource.com/sonarqube-cloud/enriching/test-coverage/dotnet-test-coverage).
+
+Set repository secret `SONAR_TOKEN` to a SonarCloud analysis token. Import the public project in
+SonarCloud and disable automatic analysis when enabling this CI analysis. Defaults are organization
+`vev-software` and project `Vev-software_atlas-community`; override them with repository variables
+`SONAR_ORGANIZATION` and `SONAR_PROJECT_KEY`. Configure the new-code quality gate and coverage target
+in SonarCloud. Require `SonarCloud quality gate`, `CodeQL (C#)`, and the existing build/test check in
+branch protection to prevent merging failed checks. If CodeQL default setup is enabled, disable it
+before using this advanced workflow.
+
+Without a token (including fork and Dependabot runs where secrets are unavailable), the Sonar job
+skips cleanly and the configuration job explains why. CodeQL and ordinary build/test checks still run.
+All .NET packages and scanner tools restore using the repository's nuget.org-only configuration.
