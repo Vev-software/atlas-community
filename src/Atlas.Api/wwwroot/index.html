@@ -334,6 +334,15 @@
     #canvas { position: relative; flex: 1 1 auto; overflow: auto; background:
         radial-gradient(circle at 1px 1px, #e9ebf0 1px, transparent 0) 0 0 / 22px 22px, var(--bg); }
     svg { display: block; }
+    #targetPanel [hidden] { display: none !important; }
+    .target-panel { padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); max-height: 45vh; overflow: auto; }
+    .target-panel button, .target-panel select, .target-panel input { margin: 4px; }
+    .target-panel label { display: inline-block; }
+    #targetError:empty { display: none; }
+    .node.planned-add rect { stroke: #178344; stroke-width: 4px; }
+    .node.planned-change rect, .edge.planned-change { stroke-dasharray: 6 4; }
+    .node.planned-retire, .edge.planned-retire { opacity: .35; }
+    .edge.planned-add { stroke: #178344; stroke-width: 4px; }
     .node rect { fill: #fff; stroke-width: 1.5; rx: 9; filter: drop-shadow(0 1px 1px rgba(16,24,40,.08)); cursor: pointer; }
     .node .stripe { rx: 3; }
     .node text { pointer-events: none; }
@@ -926,6 +935,37 @@
 
   <main>
     <div class="land-col">
+      <section id="targetPanel" class="target-panel">
+        <button id="targetAsIs" type="button" aria-pressed="true">As-Is</button>
+        <button id="targetToBe" type="button" aria-pressed="false">To-Be</button>
+        <select id="targetVersions" aria-label="Saved target version"></select>
+        <span id="targetAllowance">Loading target allowance…</span>
+        <button id="targetUpgrade" type="button">View upgrade options →</button>
+        <button id="targetEdit" type="button" hidden>Sketch next version</button>
+        <button id="targetSeed" type="button" hidden></button>
+        <p id="targetLegend" hidden>Read-only saved target · green outline: planned add · dashed: planned change · faded: planned retire</p>
+        <div id="targetEditor" hidden>
+          <label>Version name <input id="targetName" maxlength="120" /></label>
+          <label>Entity <select id="targetEntity"><option value="asset">Asset</option><option value="relationship">Relationship</option></select></label>
+          <label>Intent <select id="targetIntent"><option value="planned-change">Planned change</option><option value="planned-retire">Planned retire</option><option value="planned-add">Planned add</option></select></label>
+          <label id="targetExistingLabel">Held fact <select id="targetExisting"></select></label>
+          <div id="targetNewAsset" hidden>
+            <label>Name <input id="targetAssetName" maxlength="256" /></label>
+            <label>Kind <select id="targetAssetKind"></select></label>
+          </div>
+          <div id="targetNewRelationship" hidden>
+            <label>From <select id="targetFrom"></select></label>
+            <label>To <select id="targetTo"></select></label>
+            <label>Relationship <select id="targetRelType"><option>depends-on</option><option>part-of</option><option>runs-on</option><option>connects-to</option></select></label>
+          </div>
+          <label>Rationale <input id="targetRationale" maxlength="500" /></label>
+          <button id="targetAddIntent" type="button">Add intent</button>
+          <ul id="targetDraftList"></ul>
+          <button id="targetSave" type="button">Save target version</button>
+          <button id="targetCancel" type="button">Cancel</button>
+        </div>
+        <p id="targetError" role="status"></p>
+      </section>
       <!-- Landscape summary tiles (atlas#158): at-a-glance counts of held facts only —
            never EOL/risk/scoring, which are reserved paid Atlas core. Hidden until the
            first successful load, then recomputed by render() on refresh and every CRUD. -->
@@ -1316,6 +1356,11 @@
     let selectedId = null;
     let searchQuery = "";
     let currentView = "graph";  // "graph" or "table" (issue #87)
+    let targetSnapshot = { versions: [], allowance: null };
+    let targetMode = false;
+    let targetDraft = [];
+    let targetSaving = false;
+    let targetRetired = [];
     let tableSort = { key: "name", dir: "asc" };
     let canAuthor = false;      // Set from GET /api/v1/capabilities — never assumed.
     let principalId = "";       // Current user's principal id (atlas#76).
@@ -1596,7 +1641,7 @@
         landscape.relationships ||= [];
         el("toolbar").hidden = false;
         el("summaryMetrics").hidden = false;
-        await Promise.all([loadSetupCopilot(), loadAiAllowances(), loadAiModule()]);
+        await Promise.all([loadSetupCopilot(), loadAiAllowances(), loadAiModule(), loadTargets()]);
         render();
         if (selectedId) showDetail(selectedId);
         else if (searchQuery.trim()) {
@@ -1733,6 +1778,21 @@
 
     function render() {
       renderSummary();
+      if (targetMode && selectedTarget()) {
+        const target = selectedTarget();
+        drawGraph(target.assets.filter(a => filter === "all" || a.kind === filter), target.relationships);
+        for (const element of canvas.querySelectorAll(".node, .edge")) {
+          const entity = element.classList.contains("node") ? "asset" : "relationship";
+          const intent = target.changes.find(c => c.entity === entity && c.id === element.dataset.id);
+          if (intent) {
+            element.classList.add(intent.intent);
+            const title = document.createElementNS(SVGNS, "title");
+            title.textContent = intent.intent + ": " + intent.rationale;
+            element.appendChild(title);
+          }
+        }
+        return;
+      }
       const assets = visibleAssets();
       const total = landscape.assets.length;
       el("count").textContent =
@@ -1769,7 +1829,7 @@
 
     // Deterministic lane layout: one column per asset kind, nodes stacked within the lane. Simple and
     // stable (no physics) — "basic visualisation", legible for a held landscape of tens of assets.
-    function drawGraph(assets) {
+    function drawGraph(assets, relationships = landscape.relationships) {
       const NODE_W = 168, NODE_H = 46, GAP_Y = 20, LANE_W = 230, TOP = 54, LEFT = 30;
       const lanes = KINDS.filter(k => filter === "all" || k === filter);
       const byKind = Object.fromEntries(lanes.map(k => [k, []]));
@@ -1810,7 +1870,7 @@
 
       // Edges first (behind nodes). Only edges whose endpoints are both visible in the current filter.
       const visibleIds = new Set(assets.map(a => a.id));
-      for (const r of landscape.relationships) {
+      for (const r of relationships) {
         if (!visibleIds.has(r.fromId) || !visibleIds.has(r.toId)) continue;
         const a = pos.get(r.fromId), b = pos.get(r.toId);
         if (!a || !b) continue;
@@ -1819,6 +1879,7 @@
         path.setAttribute("d", `M ${a.cx} ${a.cy} C ${mx} ${a.cy}, ${mx} ${b.cy}, ${b.cx} ${b.cy}`);
         path.setAttribute("class", "edge");
         path.setAttribute("marker-end", "url(#arrow)");
+        path.dataset.id = r.id;
         path.dataset.from = r.fromId;
         path.dataset.to = r.toId;
         const title = document.createElementNS(SVGNS, "title");
@@ -1857,13 +1918,23 @@
         kind.textContent = a.kind;
         g.appendChild(kind);
 
-        g.addEventListener("click", () => select(a.id));
+        g.addEventListener("click", () => {
+          if (!targetMode) { select(a.id); return; }
+          const detail = el("detail");
+          detail.replaceChildren();
+          const title = document.createElement("h3");
+          title.textContent = a.name || a.id;
+          const rationale = document.createElement("p");
+          const intent = selectedTarget().changes.find(c => c.entity === "asset" && c.id === a.id);
+          rationale.textContent = intent ? intent.intent + ": " + intent.rationale : "Held fact in this saved target.";
+          detail.append(title, rationale);
+        });
         svg.appendChild(g);
       }
 
       canvas.innerHTML = "";
       canvas.appendChild(svg);
-      if (selectedId && visibleIds.has(selectedId)) applySelection(); else clearSelection();
+      if (!targetMode && selectedId && visibleIds.has(selectedId)) applySelection(); else clearSelection();
     }
 
     // Table view (issue #87): sortable, selectable list of assets
@@ -3403,6 +3474,119 @@
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     }
+
+    function selectedTarget() { return targetSnapshot.versions.find(v => v.id === el("targetVersions").value); }
+    async function loadTargets() {
+      try {
+        const response = await fetchWithAuth(api("/v1/targets"));
+        if (!response.ok) throw new Error("Could not load target versions.");
+        targetSnapshot = await response.json();
+        const previous = el("targetVersions").value;
+        el("targetVersions").replaceChildren();
+        for (const version of targetSnapshot.versions) {
+          const option = document.createElement("option");
+          option.value = version.id; option.textContent = version.name;
+          el("targetVersions").appendChild(option);
+        }
+        el("targetVersions").value = targetSnapshot.versions.some(v => v.id === previous)
+          ? previous : targetSnapshot.versions.at(-1)?.id || "";
+        const budget = targetSnapshot.allowance;
+        el("targetAllowance").textContent = budget.unlimited ? `${budget.used} saved · unlimited versions` :
+          budget.limit != null ? `${budget.used} / ${budget.limit} target versions saved` : "Target allowance unavailable";
+        el("targetEdit").hidden = !canAuthor;
+        el("targetToBe").disabled = !targetSnapshot.versions.length;
+        targetRetired = [];
+        const flagged = await fetchWithAuth(api("/v1/shadow-it/assets?pastEol=true"));
+        if (flagged.ok) targetRetired = await flagged.json();
+        const retired = targetRetired;
+        el("targetSeed").hidden = !canAuthor || !retired.length;
+        el("targetSeed").textContent = `${retired.length} retired assets · plan their replacement →`;
+      } catch (error) {
+        targetSnapshot = { versions: [], allowance: null };
+        targetMode = false;
+        el("targetAllowance").textContent = error.message;
+        el("targetToBe").disabled = true;
+      }
+    }
+    function setTargetMode(enabled) {
+      targetMode = enabled && !!selectedTarget();
+      el("targetAsIs").setAttribute("aria-pressed", String(!targetMode));
+      el("targetToBe").setAttribute("aria-pressed", String(targetMode));
+      el("targetLegend").hidden = !targetMode;
+      render();
+      renderDefaultDetail();
+    }
+    function refreshTargetFields() {
+      const entity = el("targetEntity").value, adding = el("targetIntent").value === "planned-add";
+      el("targetExistingLabel").hidden = adding;
+      el("targetNewAsset").hidden = !adding || entity !== "asset";
+      el("targetNewRelationship").hidden = !adding || entity !== "relationship";
+      const fill = (id, values, label) => {
+        el(id).replaceChildren();
+        for (const value of values) {
+          const option = document.createElement("option"); option.value = value.id; option.textContent = label(value); el(id).appendChild(option);
+        }
+      };
+      fill("targetExisting", entity === "asset" ? landscape.assets : landscape.relationships,
+        v => v.name || `${v.fromId} → ${v.toId} (${v.type})`);
+      const endpoints = [...landscape.assets, ...targetDraft.filter(c => c.asset).map(c => c.asset)];
+      fill("targetFrom", endpoints, v => v.name); fill("targetTo", endpoints, v => v.name);
+    }
+    function renderTargetDraft() {
+      el("targetDraftList").replaceChildren();
+      targetDraft.forEach((change, index) => {
+        const li = document.createElement("li");
+        li.textContent = `${change.intent} · ${change.asset?.name || change.id} · ${change.rationale} `;
+        const remove = document.createElement("button"); remove.textContent = "Remove";
+        remove.addEventListener("click", () => { targetDraft.splice(index, 1); renderTargetDraft(); });
+        li.appendChild(remove); el("targetDraftList").appendChild(li);
+      });
+      refreshTargetFields();
+    }
+    async function saveTarget(name, changes) {
+      if (targetSaving) return;
+      if (!targetSnapshot.allowance?.allowed) { openAccountPanel(); return; }
+      targetSaving = true; el("targetSave").disabled = true; el("targetError").textContent = "";
+      try {
+        const response = await fetchWithAuth(api("/v1/targets"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, changes }) });
+        if (!response.ok) {
+          const problem = await response.json();
+          throw new Error(problem.detail || problem.title || "Could not save target version.");
+        }
+        const saved = await response.json();
+        await loadTargets(); el("targetVersions").value = saved.id;
+        el("targetEditor").hidden = true; setTargetMode(true);
+      } catch (error) { el("targetError").textContent = error.message; await loadTargets(); }
+      finally { targetSaving = false; el("targetSave").disabled = false; }
+    }
+    el("targetAsIs").addEventListener("click", () => setTargetMode(false));
+    el("targetToBe").addEventListener("click", () => setTargetMode(true));
+    el("targetVersions").addEventListener("change", () => setTargetMode(true));
+    el("targetUpgrade").addEventListener("click", openAccountPanel);
+    el("targetEdit").addEventListener("click", () => {
+      if (!targetSnapshot.allowance?.allowed) { openAccountPanel(); return; }
+      targetDraft = []; el("targetName").value = ""; el("targetEditor").hidden = false;
+      renderTargetDraft(); el("targetName").focus();
+    });
+    el("targetSeed").addEventListener("click", () => saveTarget("Retired asset replacement", targetRetired
+      .map(a => ({ entity: "asset", id: a.id, intent: "planned-retire", rationale: "Plan replacement of this catalogued retired asset." }))));
+    for (const kind of Object.keys(KIND_COLOR)) {
+      const option = document.createElement("option"); option.value = kind; option.textContent = kind; el("targetAssetKind").appendChild(option);
+    }
+    el("targetEntity").addEventListener("change", refreshTargetFields);
+    el("targetIntent").addEventListener("change", refreshTargetFields);
+    el("targetCancel").addEventListener("click", () => { el("targetEditor").hidden = true; });
+    el("targetAddIntent").addEventListener("click", () => {
+      const entity = el("targetEntity").value, intent = el("targetIntent").value;
+      const rationale = el("targetRationale").value.trim();
+      if (!rationale) { el("targetError").textContent = "Add a short rationale."; return; }
+      const id = intent === "planned-add" ? "planned-" + crypto.randomUUID() : el("targetExisting").value;
+      const change = { entity, id, intent, rationale };
+      if (intent === "planned-add" && entity === "asset") change.asset = { id, name: el("targetAssetName").value.trim(), kind: el("targetAssetKind").value, lifecycle: "draft" };
+      if (intent === "planned-add" && entity === "relationship") change.relationship = { id, fromId: el("targetFrom").value, toId: el("targetTo").value, type: el("targetRelType").value };
+      targetDraft.push(change); el("targetRationale").value = ""; renderTargetDraft();
+    });
+    el("targetSave").addEventListener("click", () => saveTarget(el("targetName").value.trim(), targetDraft));
 
     // --- Wiring --------------------------------------------------------------------------------------
     document.querySelectorAll(".chip").forEach(chip => {

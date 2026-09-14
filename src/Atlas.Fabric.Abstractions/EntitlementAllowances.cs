@@ -23,6 +23,7 @@ public readonly record struct EntitlementAllowanceRequest(
 public static class EntitlementAllowanceWindows
 {
     public const string Day = "day";
+    public const string Lifetime = "lifetime";
     public const string None = "none";
 }
 

@@ -41,6 +41,8 @@ public static class AtlasActions
 /// </summary>
 public static class AtlasCapabilities
 {
+    public static readonly CapabilityId TargetVersions = new("atlas.target.versions");
+
     // --- Paid capabilities: reserved seams, entitlement-denied in Community ---
     //
     // These are *aliases* of the canonical Fabric taxonomy ids (Vev.Fabric.Contracts AtlasTaxonomy),

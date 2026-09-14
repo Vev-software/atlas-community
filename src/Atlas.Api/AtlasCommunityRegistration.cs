@@ -61,6 +61,9 @@ public static class AtlasCommunityRegistration
         services.AddScoped<StructureDraftService>();
         services.AddScoped<DeliverableDraftService>();
         services.AddScoped<AiAllowanceService>();
+        services.AddScoped<ITargetVersionStore, EfTargetVersionStore>();
+        services.AddScoped<TargetAllowanceService>();
+        services.AddScoped<TargetSketchService>();
         services.AddScoped<AiModuleService>();
         services.AddScoped<LandscapeChatService>();
         services.AddScoped<McpReadService>();

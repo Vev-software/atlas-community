@@ -17,6 +17,7 @@ namespace Vev.Atlas.Persistence;
 public sealed class AtlasDbContext(DbContextOptions<AtlasDbContext> options, IRequestContextAccessor requestContext)
     : DbContext(options)
 {
+    internal DbSet<TargetVersionRow> TargetVersions => Set<TargetVersionRow>();
     internal DbSet<AssetRow> Assets => Set<AssetRow>();
     internal DbSet<RelationshipRow> Relationships => Set<RelationshipRow>();
     internal DbSet<AiModuleSettingsRow> AiModuleSettings => Set<AiModuleSettingsRow>();
@@ -47,6 +48,12 @@ public sealed class AtlasDbContext(DbContextOptions<AtlasDbContext> options, IRe
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<TargetVersionRow>(e =>
+        {
+            e.ToTable("target_versions");
+            e.HasKey(v => new { v.TenantId, v.Id });
+            e.HasQueryFilter(v => v.TenantId == CurrentTenantId);
+        });
         modelBuilder.Entity<AssetRow>(e =>
         {
             e.ToTable("assets");

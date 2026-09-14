@@ -35,6 +35,47 @@ public sealed class LandscapeUiEndToEndTests(AtlasUiTestHost host) : IClassFixtu
     }
 
     [Fact]
+    public async Task Concurrent_target_saves_cannot_exceed_the_allowance()
+    {
+        using var author = host.CreateBrowserClient(tenant: "t-target-race");
+        var request = new Vev.Atlas.Domain.TargetSketchRequest("Next", [new("asset", "new-system", "planned-add", "Planned addition",
+            new Asset("new-system", AssetKind.System, "New system", Lifecycle.Draft))]);
+        var responses = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => author.PostAsJsonAsync("/api/v1/targets", request)));
+        Assert.Equal(2, responses.Count(r => r.StatusCode == HttpStatusCode.Created));
+        Assert.Equal(3, responses.Count(r => r.StatusCode == HttpStatusCode.Forbidden));
+    }
+
+    [Fact]
+    public async Task Retired_assets_seed_a_saved_read_only_target_overlay()
+    {
+        using var author = host.CreateBrowserClient(tenant: "t-ui-target");
+        await author.PostAsJsonAsync("/api/v1/assets", new Asset("retired-system", AssetKind.System, "Retired system", Lifecycle.Retired));
+        await using var context = await _browser!.NewContextAsync(new BrowserNewContextOptions
+        {
+            BaseURL = host.RootUri.ToString(),
+            ExtraHTTPHeaders = new Dictionary<string, string>
+            {
+                ["X-Tenant-Id"] = "t-ui-target",
+                ["X-Principal-Id"] = "author",
+                ["X-Principal-Roles"] = "AtlasArchitect"
+            }
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("/");
+        await page.Locator("#targetSeed").ClickAsync();
+        await page.WaitForSelectorAsync("#canvas .node.planned-retire");
+        Assert.Contains("1 / 2", await page.Locator("#targetAllowance").InnerTextAsync());
+        await page.Locator("#canvas .node.planned-retire").ClickAsync();
+        Assert.Contains("Plan replacement", await page.Locator("#detail").InnerTextAsync());
+        Assert.Equal(0, await page.Locator("#detail button").CountAsync());
+        await page.Locator("#targetAsIs").ClickAsync();
+        Assert.Equal(0, await page.Locator("#canvas .planned-retire").CountAsync());
+        await page.ReloadAsync();
+        await page.Locator("#targetToBe").ClickAsync();
+        await page.WaitForSelectorAsync("#canvas .node.planned-retire");
+    }
+
+    [Fact]
     public async Task Read_only_user_can_navigate_the_landscape_in_the_browser()
     {
         using (var author = host.CreateBrowserClient(tenant: "t-ui-nav"))
