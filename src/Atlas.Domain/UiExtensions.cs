@@ -4,9 +4,12 @@ namespace Vev.Atlas.Domain;
 
 public static class UiExtensionContracts
 {
-    public const string ExtensionsContractVersion = "1";
+    public const string ExtensionsContractVersion = "2";
     public const string FragmentMountKind = "fragment";
     public const string FragmentMountContractVersion = "1";
+
+    public static bool SupportsSlot(string slot) => slot is
+        "landscape-right-rail" or "view-roadmaps" or "view-lifecycle" or "view-reviews";
 
     public static bool Supports(UiExtensionMount mount) =>
         string.Equals(mount.Kind, FragmentMountKind, StringComparison.Ordinal) &&
@@ -113,7 +116,7 @@ public sealed class UiExtensionCatalog(
                 continue;
             }
 
-            if (!UiExtensionContracts.Supports(registration.Mount))
+            if (!UiExtensionContracts.SupportsSlot(registration.Slot) || !UiExtensionContracts.Supports(registration.Mount))
             {
                 continue;
             }

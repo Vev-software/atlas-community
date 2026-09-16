@@ -145,6 +145,20 @@
       box-shadow: var(--shadow);
     }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    .app-shell { display: flex; flex: 1; min-height: 0; }
+    .app-content { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+    .app-side { width: 190px; flex: none; padding: 22px 12px; background: var(--surface); border-right: 1px solid var(--line); overflow: auto; }
+    .side-nav button { width: 100%; display: flex; justify-content: space-between; text-align: left; padding: 10px; margin: 3px 0; border: 0; border-radius: 6px; background: transparent; color: var(--ink); cursor: pointer; }
+    .side-nav button[aria-current="page"] { background: #eef2ff; font-weight: 600; }
+    .side-nav button.locked { color: var(--ink-soft); }
+    .side-nav .eyebrow { display: block; margin: 12px 10px; }
+    #workspaceMain.named-view { grid-template-columns: 1fr; }
+    #namedViews { padding: 24px; overflow: auto; }
+    #namedViews .ext-frame { min-height: 65vh; }
+    .capability-list { display: grid; gap: 10px; max-width: 640px; }
+    .capability-list button { display: flex; justify-content: space-between; padding: 16px; cursor: pointer; }
+    @media (max-width: 820px) { .app-side { width: 145px; padding: 10px 4px; } }
     html, body { height: 100%; }
     body {
       margin: 0;
@@ -839,6 +853,7 @@
     .asset-table tbody tr { cursor: pointer; }
     .asset-table tbody tr:hover { background: #f8fafc; }
     .asset-table tbody tr.selected { background: #eef2ff; }
+    .asset-table .asset-id { color: var(--ink-soft); font-size: 11px; }
     .asset-table .kind-dot {
       display: inline-block;
       width: 9px;
@@ -905,6 +920,20 @@
     </div>
   </header>
 
+  <div class="app-shell">
+    <nav class="app-side side-nav" aria-label="Views">
+      <strong class="eyebrow">Atlas workspace</strong>
+      <div id="viewToggle">
+        <button data-route="landscape" data-view="graph" title="Graph view">Landscape</button>
+        <button data-route="systems" data-view="table" title="Table view">Systems</button>
+        <button data-route="capabilities">Capabilities</button>
+      </div>
+      <span class="eyebrow">Enterprise</span>
+      <button data-route="roadmaps">Roadmaps <small>Unlock →</small></button>
+      <button data-route="lifecycle">Lifecycle (EOL) <small>Unlock →</small></button>
+      <button data-route="reviews">Reviews <small>Unlock →</small></button>
+    </nav>
+    <div class="app-content">
   <div class="toolbar" id="toolbar" hidden>
     <button class="chip" data-kind="all" aria-pressed="true">All</button>
     <button class="chip" data-kind="system"><span class="dot" style="background:var(--kind-system)"></span>Systems</button>
@@ -919,10 +948,6 @@
       <span class="hint">Column-level search</span>
     </label>
     <span class="count" id="count"></span>
-    <div class="view-toggle" id="viewToggle">
-      <button aria-pressed="true" data-view="graph" title="Graph view">Graph</button>
-      <button aria-pressed="false" data-view="table" title="Table view">Table</button>
-    </div>
     <button class="primary" id="newAsset" hidden title="Add a new asset to the catalogue"><span class="plus">+</span>New asset</button>
     <button class="action" id="contextPack" title="Export a grounded brief for the selected slice" disabled>Context pack</button>
     <button class="action ai-entry" id="aiChatButton" title="Ask grounded questions about this landscape">✦ Atlas AI</button>
@@ -933,7 +958,7 @@
     <button class="action ai-entry" id="pasteLandscape" hidden title="Paste notes or upload images to generate a draft landscape">✦ Paste to landscape</button>
   </div>
 
-  <main>
+  <main id="workspaceMain">
     <div class="land-col">
       <section id="targetPanel" class="target-panel">
         <button id="targetAsIs" type="button" aria-pressed="true">As-Is</button>
@@ -984,7 +1009,7 @@
       </div>
       <div id="canvas"><div class="empty"><h3>Loading landscape…</h3></div></div>
     </div>
-    <aside>
+    <aside id="detailRail">
       <h2 class="eyebrow">Details</h2>
       <div id="detail" class="stack"><p class="placeholder">Select an asset in the map to inspect it.</p></div>
       <!-- Extension mount slot (atlas#139): the host mounts entitled ui-extensions here. This client ships
@@ -993,7 +1018,18 @@
            hidden) unless the current tenant is entitled to a ui-extension for this slot. -->
       <div id="ext-slot-landscape-right-rail" class="ext-slot" data-slot="landscape-right-rail" hidden></div>
     </aside>
+    <section id="namedViews" hidden>
+      <div id="capabilitiesView" hidden></div>
+      <div id="enterpriseView" hidden>
+        <div id="viewTeaser"></div>
+        <div id="ext-slot-view-roadmaps" class="ext-slot" hidden></div>
+        <div id="ext-slot-view-lifecycle" class="ext-slot" hidden></div>
+        <div id="ext-slot-view-reviews" class="ext-slot" hidden></div>
+      </div>
+    </section>
   </main>
+    </div>
+  </div>
 
   <div class="ai-panel-backdrop" id="aiPanelBackdrop" hidden></div>
   <section class="ai-panel" id="aiPanel" hidden aria-labelledby="aiPanelTitle" aria-modal="true" role="dialog">
@@ -1355,6 +1391,11 @@
     let filter = "all";
     let selectedId = null;
     let searchQuery = "";
+    let activeRoute = "landscape";
+    let capabilityFilter = "";
+    let landscapeLoaded = false;
+    const enabledViews = new Set();
+    const enterpriseViews = { roadmaps: ["Roadmaps", "atlas.analysis.roadmap"], lifecycle: ["Lifecycle (EOL)", "atlas.analysis.eol"], reviews: ["Reviews", "atlas.ai.review"] };
     let currentView = "graph";  // "graph" or "table" (issue #87)
     let targetSnapshot = { versions: [], allowance: null };
     let targetMode = false;
@@ -1409,26 +1450,124 @@
     // has already taken the server-side entitlement decision, so an extension listed here is one the tenant
     // is entitled to — the client only reflects that decision, it never takes it. Fail-closed: any error,
     // unknown contract version, or unknown mount kind leaves the slot empty.
+    let extensionLoad = 0;
     async function loadExtensions() {
-      let extensions = [];
+      const generation = ++extensionLoad;
+      let extensions = [], capabilities = [];
+      enabledViews.clear();
+      for (const slot of ["landscape-right-rail", ...Object.keys(enterpriseViews).map(v => "view-" + v)]) mountExtensions(slot, []);
+      renderRoute();
       try {
-        const res = await fetchWithAuth(api("/v1/extensions/ui"));
-        if (res.ok) {
+        const [res, summary] = await Promise.all([
+          fetchWithAuth(api("/v1/extensions/ui")), fetchWithAuth(api("/v1/entitlements/summary"))
+        ]);
+        if (res.ok && summary.ok) {
           const body = await res.json();
-          if (body && body.contractVersion === "1" && Array.isArray(body.extensions)) {
-            extensions = body.extensions;
+          capabilities = (await summary.json()).capabilities || [];
+          if (body && ["1", "2"].includes(body.contractVersion) && Array.isArray(body.extensions)) {
+            extensions = body.extensions.filter(e => e && e.kind === "ui-extension" && e.mount &&
+              e.mount.kind === "fragment" && e.mount.contractVersion === "1" &&
+              (body.contractVersion === "2" || e.slot === "landscape-right-rail"));
           }
         }
-      } catch {
-        extensions = [];
+      } catch { extensions = []; }
+      if (generation !== extensionLoad) return;
+      mountExtensions("landscape-right-rail", extensions.filter(e => e.slot === "landscape-right-rail"));
+      for (const [view, [, capability]] of Object.entries(enterpriseViews)) {
+        const offered = capabilities.some(c => c.capability === capability && c.enabled === true)
+          ? extensions.filter(e => e.slot === "view-" + view && validFragmentUrl(e.mount.url)) : [];
+        if (offered.length) enabledViews.add(view);
+        mountExtensions("view-" + view, offered);
       }
-      mountExtensions("landscape-right-rail", extensions.filter((e) =>
-        e &&
-        e.kind === "ui-extension" &&
-        e.slot === "landscape-right-rail" &&
-        e.mount &&
-        e.mount.kind === "fragment" &&
-        e.mount.contractVersion === "1"));
+      renderRoute();
+    }
+
+    function validFragmentUrl(value) {
+      if (!value) return false;
+      try {
+        const url = new URL(value, location.href);
+        return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
+      } catch { return false; }
+    }
+
+    function navigateView(view, capability = "") {
+      location.hash = view + (capability ? "?capability=" + encodeURIComponent(capability) : "");
+      readRoute();
+    }
+
+    function readRoute() {
+      const [route, query] = location.hash.slice(1).split("?");
+      activeRoute = ["landscape", "systems", "capabilities", ...Object.keys(enterpriseViews)].includes(route) ? route : "landscape";
+      capabilityFilter = activeRoute === "systems" ? new URLSearchParams(query || "").get("capability") || "" : "";
+      currentView = activeRoute === "systems" ? "table" : "graph";
+      renderRoute();
+      if (landscapeLoaded) render();
+    }
+
+    function renderRoute() {
+      const catalogue = activeRoute === "landscape" || activeRoute === "systems";
+      el("toolbar").hidden = !catalogue || !landscapeLoaded;
+      document.querySelector(".land-col").hidden = !catalogue;
+      el("detailRail").hidden = !catalogue;
+      el("workspaceMain").classList.toggle("named-view", !catalogue);
+      el("namedViews").hidden = catalogue;
+      el("capabilitiesView").hidden = activeRoute !== "capabilities";
+      el("enterpriseView").hidden = !enterpriseViews[activeRoute];
+      document.querySelectorAll("[data-route]").forEach(button => {
+        const route = button.dataset.route;
+        button.setAttribute("aria-current", route === activeRoute ? "page" : "false");
+        button.setAttribute("aria-pressed", String(route === activeRoute));
+        const locked = !!enterpriseViews[route] && !enabledViews.has(route);
+        button.classList.toggle("locked", locked);
+        if (button.querySelector("small")) button.querySelector("small").textContent = locked ? "Unlock →" : "Enterprise";
+      });
+      for (const view of Object.keys(enterpriseViews)) el("ext-slot-view-" + view).hidden = view !== activeRoute || !enabledViews.has(view);
+      const teaser = el("viewTeaser");
+      teaser.replaceChildren();
+      if (enterpriseViews[activeRoute] && !enabledViews.has(activeRoute)) {
+        const heading = document.createElement("h2");
+        heading.textContent = enterpriseViews[activeRoute][0];
+        const copy = document.createElement("p");
+        copy.textContent = "Available with an entitled Atlas Enterprise view extension.";
+        const unlock = document.createElement("button");
+        unlock.textContent = "Unlock →";
+        unlock.addEventListener("click", openAccountPanel);
+        teaser.append(heading, copy, unlock);
+      }
+    }
+
+    function renderCapabilitiesView() {
+      const host = el("capabilitiesView");
+      host.innerHTML = "<h2>Capabilities</h2>";
+      const groups = new Map();
+      for (const asset of landscape.assets) {
+        for (const value of new Set(capabilityTagValues(asset))) {
+          if (!groups.has(value)) groups.set(value, new Set());
+          if (asset.kind === "system") groups.get(value).add(asset.id);
+        }
+      }
+      if (!groups.size) {
+        const hint = document.createElement("p");
+        hint.textContent = "Add capability:<name> tags to assets to catalogue business capabilities here.";
+        host.appendChild(hint);
+      }
+      const list = document.createElement("div");
+      list.className = "capability-list";
+      for (const [name, systems] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
+        const button = document.createElement("button");
+        const label = document.createElement("span");
+        label.textContent = name;
+        const count = document.createElement("span");
+        count.textContent = systems.size + " systems";
+        button.append(label, count);
+        button.addEventListener("click", () => {
+          filter = "all";
+          document.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c.dataset.kind === "all")));
+          navigateView("systems", name);
+        });
+        list.appendChild(button);
+      }
+      host.appendChild(list);
     }
 
     function mountExtensions(slot, extensions) {
@@ -1443,7 +1582,7 @@
         const header = document.createElement("header");
         header.textContent = ext.title || ext.id || "Extension";
         panel.appendChild(header);
-        if (ext.mount && ext.mount.url) {
+        if (ext.mount && validFragmentUrl(ext.mount.url)) {
           // The content is the extension's, isolated in a fully sandboxed frame so it never runs in the
           // host origin — the client hosts the frame but never carries or trusts the view.
           const frame = document.createElement("iframe");
@@ -1506,6 +1645,7 @@
 
     function closeAccountPanel() {
       el("accountBackdrop").hidden = true;
+      loadExtensions();
       const trigger = el("accountTrigger");
       if (trigger) trigger.focus();
     }
@@ -1639,7 +1779,8 @@
         landscape = await res.json();
         landscape.assets ||= [];
         landscape.relationships ||= [];
-        el("toolbar").hidden = false;
+        landscapeLoaded = true;
+        renderRoute();
         el("summaryMetrics").hidden = false;
         await Promise.all([loadSetupCopilot(), loadAiAllowances(), loadAiModule(), loadTargets()]);
         render();
@@ -1741,7 +1882,8 @@
     }
 
     function visibleAssets() {
-      return filter === "all" ? landscape.assets : landscape.assets.filter(a => a.kind === filter);
+      return landscape.assets.filter(a => (filter === "all" || a.kind === filter) &&
+        (!capabilityFilter || capabilityTagValues(a).includes(capabilityFilter)));
     }
 
     // An owner is a HELD FACT (atlas#158): an application's business owner, a
@@ -1777,6 +1919,7 @@
     }
 
     function render() {
+      renderCapabilitiesView();
       renderSummary();
       if (targetMode && selectedTarget()) {
         const target = selectedTarget();
@@ -1951,7 +2094,10 @@
       const cols = [
         { key: "name", label: "Name" },
         { key: "kind", label: "Kind" },
+        { key: "domain", label: "Domain" },
+        { key: "owner", label: "Owner" },
         { key: "lifecycle", label: "Lifecycle" },
+        { key: "stack", label: "Stack" },
         { key: "id", label: "ID" },
       ];
       for (const col of cols) {
@@ -1973,6 +2119,7 @@
       const tbody = document.createElement("tbody");
       for (const a of sorted) {
         const tr = document.createElement("tr");
+        tr.dataset.id = a.id;
         if (a.id === selectedId) tr.classList.add("selected");
 
         const tdName = document.createElement("td");
@@ -1987,11 +2134,29 @@
         tdKind.style.textTransform = "capitalize";
         tr.appendChild(tdKind);
 
+        for (const key of ["domain", "owner"]) {
+          const td = document.createElement("td");
+          td.textContent = tableValue(a, key);
+          tr.appendChild(td);
+        }
+
         const tdLifecycle = document.createElement("td");
-        tdLifecycle.textContent = a.lifecycle || "—";
+        if (a.lifecycle) {
+          const pill = document.createElement("span");
+          pill.className = "pill" + (lifecycleIsWarn(a.lifecycle) ? " warn" : "");
+          const statusDot = document.createElement("span");
+          statusDot.className = "pill-dot";
+          pill.append(statusDot, document.createTextNode(a.lifecycle));
+          tdLifecycle.appendChild(pill);
+        }
         tr.appendChild(tdLifecycle);
 
+        const tdStack = document.createElement("td");
+        tdStack.textContent = tableValue(a, "stack");
+        tr.appendChild(tdStack);
+
         const tdId = document.createElement("td");
+        tdId.className = "asset-id";
         const code = document.createElement("code");
         code.textContent = a.id;
         tdId.appendChild(code);
@@ -2007,13 +2172,22 @@
       canvas.appendChild(container);
     }
 
+    function tableValue(a, key) {
+      if (key === "name") return a.name || a.id;
+      if (key === "domain") return firstTagValue(a, "domain");
+      if (key === "owner") return assetOwnerLabel(a);
+      if (key === "stack") {
+        const os = String(a.server?.operatingSystem || "").trim();
+        const app = [a.application?.version, a.application?.vendor]
+          .map(v => String(v || "").trim()).filter(Boolean).join(" · ");
+        return os || app || firstTagValue(a, "stack");
+      }
+      return String(a[key] || "");
+    }
+
     function sortAssets(assets) {
       return [...assets].sort((a, b) => {
-        let va, vb;
-        if (tableSort.key === "name") { va = a.name || a.id; vb = b.name || b.id; }
-        else if (tableSort.key === "kind") { va = a.kind; vb = b.kind; }
-        else if (tableSort.key === "lifecycle") { va = a.lifecycle || ""; vb = b.lifecycle || ""; }
-        else { va = a.id; vb = b.id; }
+        const va = tableValue(a, tableSort.key), vb = tableValue(b, tableSort.key);
         const cmp = va.localeCompare(vb);
         return tableSort.dir === "asc" ? cmp : -cmp;
       });
@@ -2026,6 +2200,8 @@
     }
 
     function applySelection() {
+      canvas.querySelectorAll(".asset-table tbody tr").forEach(row =>
+        row.classList.toggle("selected", row.dataset.id === selectedId));
       const svg = canvas.querySelector("svg");
       if (!svg) return;
       const neighbours = new Set([selectedId]);
@@ -3609,13 +3785,14 @@
     });
     el("refresh").addEventListener("click", load);
     el("newAsset").addEventListener("click", () => openAssetForm());
-    el("viewToggle").querySelectorAll("button").forEach(btn => {
+    document.querySelectorAll("[data-route]").forEach(btn => {
       btn.addEventListener("click", () => {
-        currentView = btn.dataset.view;
-        el("viewToggle").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === btn)));
-        render();
+        navigateView(btn.dataset.route);
+        if (enterpriseViews[btn.dataset.route] && !enabledViews.has(btn.dataset.route)) openAccountPanel();
       });
     });
+    window.addEventListener("hashchange", readRoute);
+    readRoute();
     el("contextPack").addEventListener("click", () => renderContextPack());
     el("aiChatButton").addEventListener("click", () => openAiPanel("chat"));
     el("setupCopilot").addEventListener("click", renderSetupCopilot);
