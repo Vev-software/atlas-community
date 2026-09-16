@@ -244,7 +244,7 @@ UI extensions. The response is explicitly versioned and typed:
 
 ```json
 {
-  "contractVersion": "1",
+  "contractVersion": "2",
   "extensions": [
     {
       "id": "com.vev.atlas.portfolio-health",
@@ -275,6 +275,19 @@ Compatibility is fail-closed:
 - The browser mounts only the same known `kind` + `contractVersion` pairs and ignores anything else.
 - Adding a new mount kind or making a breaking change to the mount shape requires a new ADR and a new
   contract version; it is not an in-place widening of V1.
+
+Host-offer **V2** adds `view-roadmaps`, `view-lifecycle`, and `view-reviews` alongside
+`landscape-right-rail`. Fragment mounts remain exact version `"1"`; unknown slots are ignored.
+The browser accepts V1 offers for the rail only. See [ADR 0005](adr/0005-named-view-slots.md).
+
+Configure `Atlas:Extensions:Roadmaps:FragmentUrl`, `Atlas:Extensions:Lifecycle:FragmentUrl`,
+and `Atlas:Extensions:Reviews:FragmentUrl` with the corresponding served fragment URL, for example
+`/api/v1/extensions/roadmaps`. The separately supplied endpoint returns self-contained `text/html`
+and must enforce its entitlement on every GET. The host mounts it in an iframe with an empty sandbox
+and no referrer. No analysis logic is shipped in the host.
+
+Named views use `#landscape`, `#systems`, `#capabilities`, `#roadmaps`, `#lifecycle`, and `#reviews`.
+Capability links use `#systems?capability=<encoded-name>` and filter held `capability` tags.
 
 ### Compatibility & versioning
 
@@ -684,3 +697,23 @@ threat model discussion.
 
 See [Usage privacy](USAGE-PRIVACY.md) for the opt-in controls, exact event schema, receiver setup,
 local heatmap dashboard, and how to disable collection. There is no default analytics endpoint.
+
+### Security and quality gates
+
+CodeQL scans C# on PRs and main; findings appear in GitHub's Security / Code scanning tab.
+SonarCloud runs the tests with Cobertura reports (download the `sonar-coverage` artifact) and
+OpenCover reports for C# coverage ingestion. The job waits for the project's quality gate and
+also rejects any new unresolved blocker/critical issues, independently of project gate settings.
+See [Sonar's C# coverage guide](https://docs.sonarsource.com/sonarqube-cloud/enriching/test-coverage/dotnet-test-coverage).
+
+Set repository secret `SONAR_TOKEN` to a SonarCloud analysis token. Import the public project in
+SonarCloud and disable automatic analysis when enabling this CI analysis. Defaults are organization
+`vev-software` and project `Vev-software_atlas-community`; override them with repository variables
+`SONAR_ORGANIZATION` and `SONAR_PROJECT_KEY`. Configure the new-code quality gate and coverage target
+in SonarCloud. Require `SonarCloud quality gate`, `CodeQL (C#)`, and the existing build/test check in
+branch protection to prevent merging failed checks. If CodeQL default setup is enabled, disable it
+before using this advanced workflow.
+
+Without a token (including fork and Dependabot runs where secrets are unavailable), the Sonar job
+skips cleanly and the configuration job explains why. CodeQL and ordinary build/test checks still run.
+All .NET packages and scanner tools restore using the repository's nuget.org-only configuration.

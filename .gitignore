@@ -438,3 +438,7 @@ src/**/atlas.db
 *.db-wal
 # Agent/session tooling artifacts (not source)
 .gstack/
+
+# Local quality analysis output
+.sonar/
+.sonarqube/
