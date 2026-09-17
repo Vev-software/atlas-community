@@ -698,6 +698,21 @@ threat model discussion.
 See [Usage privacy](USAGE-PRIVACY.md) for the opt-in controls, exact event schema, receiver setup,
 local heatmap dashboard, and how to disable collection. There is no default analytics endpoint.
 
+### Target architecture: a manual free taste
+
+`GET /api/v1/targets` returns saved snapshots and their entitlement allowance; authors save via
+`POST /api/v1/targets` with a `name` and `changes`. Each change carries `entity` (`asset` or
+`relationship`), `id`, `intent` (`planned-add`, `planned-change`, `planned-retire`) and a short
+`rationale`. Additions include a matching public-contract `asset` or `relationship` object.
+Changes and retirements reference held facts. Saved snapshots are immutable and tenant-scoped;
+they never modify the current catalogue. SQLite migrations add the durable version store.
+
+The `atlas.target.versions` allowance includes two lifetime saved versions by default. Its provider
+may grant an unlimited allowance; the third default save returns `entitlement_limit_exhausted`.
+The UI displays the counter and entitlement upgrade path and offers a read-only SVG overlay.
+Catalogued retired assets can seed a replacement sketch. These are manual intentions, not EOL
+analysis. Gap analysis, AI drafting, approval workflows and EA export belong to Atlas Enterprise.
+
 ### Security and quality gates
 
 CodeQL scans C# on PRs and main; findings appear in GitHub's Security / Code scanning tab.

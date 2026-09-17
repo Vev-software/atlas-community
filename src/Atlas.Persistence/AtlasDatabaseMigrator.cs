@@ -54,7 +54,9 @@ public static class AtlasDatabaseMigrator
                 "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = '__EFMigrationsHistory';",
                 ct) > 0;
 
-            return historyExists && !aiModuleTableExists;
+            var assetsTableExists = await ScalarAsync<long>(connection,
+                "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'assets';", ct) > 0;
+            return historyExists && !aiModuleTableExists && !assetsTableExists;
         }
         catch
         {
@@ -74,7 +76,7 @@ public static class AtlasDatabaseMigrator
             """CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" ("MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY, "ProductVersion" TEXT NOT NULL);""",
             ct);
 
-        var migrations = new[] { "20260817075545_AddAssetNumericId", "20260817082107_AddAiModuleSettings", CurrentMigrationId };
+        var migrations = db.Database.GetMigrations();
         foreach (var migration in migrations)
         {
             await db.Database.ExecuteSqlAsync(
@@ -157,7 +159,10 @@ public static class AtlasDatabaseMigrator
                 """CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" ("MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY, "ProductVersion" TEXT NOT NULL);""",
                 ct);
 
-            var migrations = new[] { "20260817075545_AddAssetNumericId", "20260817082107_AddAiModuleSettings", CurrentMigrationId };
+            var migrations = new List<string> { "20260817075545_AddAssetNumericId", CurrentMigrationId };
+            if (await ScalarAsync<long>(connection,
+                "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'ai_module_settings';", ct) > 0)
+                migrations.Add("20260817082107_AddAiModuleSettings");
             foreach (var migration in migrations)
             {
                 await db.Database.ExecuteSqlAsync(

@@ -121,6 +121,11 @@ public sealed class CommunityEntitlementService : IEntitlementService, IEntitlem
 
         lock (sync)
         {
+            if (!hasConfiguredSource && request.Capability.Value == "atlas.target.versions" &&
+                fallbackAllowances?.ContainsKey(request.Capability.Value) != true)
+            {
+                return EntitlementAllowanceSnapshot.FixedWindow(2, EntitlementAllowanceWindows.Lifetime, CommunitySource);
+            }
             // Test-configured fallback allowances apply only in pure community mode (no snapshot source).
             if (!hasConfiguredSource &&
                 fallbackAllowances?.TryGetValue(request.Capability.Value, out var explicitAllowance) == true)

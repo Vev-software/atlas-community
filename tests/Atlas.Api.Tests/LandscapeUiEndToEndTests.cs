@@ -35,54 +35,6 @@ public sealed class LandscapeUiEndToEndTests(AtlasUiTestHost host) : IClassFixtu
     }
 
     [Fact]
-    public async Task Named_views_group_tags_and_fail_closed_on_extension_changes()
-    {
-        await using var context = await _browser!.NewContextAsync(new BrowserNewContextOptions
-        {
-            BaseURL = host.RootUri.ToString(),
-            ExtraHTTPHeaders = new Dictionary<string, string>
-            {
-                ["X-Tenant-Id"] = "t-ui-shell",
-                ["X-Principal-Id"] = "viewer",
-                ["X-Principal-Roles"] = "AtlasCustomer"
-            }
-        });
-        var page = await context.NewPageAsync();
-        var entitled = true;
-        await page.RouteAsync("**/api/v1/entitlements/summary", route => route.FulfillAsync(new()
-        {
-            ContentType = "application/json",
-            Body = "{\"capabilities\":[{\"capability\":\"atlas.analysis.roadmap\",\"enabled\":" + (entitled ? "true" : "false") + "}]}"
-        }));
-        await page.RouteAsync("**/api/v1/extensions/ui", route => route.FulfillAsync(new()
-        {
-            ContentType = "application/json",
-            Body = """{"contractVersion":"2","extensions":[{"kind":"ui-extension","id":"test-roadmap","slot":"view-roadmaps","mount":{"kind":"fragment","contractVersion":"1","url":"/api/v1/extensions/roadmaps"}}]}"""
-        }));
-        await page.RouteAsync("**/api/v1/extensions/roadmaps", route => route.FulfillAsync(new()
-        {
-            ContentType = "text/html",
-            Body = "<h1>Entitled roadmap fragment</h1>"
-        }));
-        await page.GotoAsync("/#roadmaps");
-        await page.WaitForSelectorAsync("#ext-slot-view-roadmaps iframe");
-        Assert.Equal("", await page.Locator("#ext-slot-view-roadmaps iframe").GetAttributeAsync("sandbox"));
-        Assert.False(await page.Locator("#toolbar").IsVisibleAsync());
-        Assert.False(await page.Locator("#detailRail").IsVisibleAsync());
-        entitled = false;
-        await page.EvaluateAsync("closeAccountPanel()");
-        await page.WaitForSelectorAsync("#viewTeaser button");
-        Assert.Equal(0, await page.Locator("#ext-slot-view-roadmaps iframe").CountAsync());
-        await page.GetByRole(AriaRole.Button, new() { Name = "Capabilities", Exact = true }).ClickAsync();
-        Assert.Contains("capability:<name>", await page.Locator("#capabilitiesView").InnerTextAsync());
-        await page.EvaluateAsync("""() => { landscape.assets = [{id:'s1', name:'Tagged system', kind:'system', tags:[{key:'capability',value:'Billing'},{key:'capability',value:'Billing'}]}, {id:'s2',name:'Other system',kind:'system'}]; render(); }""");
-        await page.GetByRole(AriaRole.Button, new() { Name = "Billing 1 systems" }).ClickAsync();
-        Assert.EndsWith("#systems?capability=Billing", page.Url);
-        Assert.Equal(1, await page.Locator(".asset-table tbody tr").CountAsync());
-        Assert.Contains("Tagged system", await page.Locator(".asset-table tbody").InnerTextAsync());
-    }
-
-    [Fact]
     public async Task Usage_collection_requires_consent_and_sends_only_allowlisted_fields()
     {
         using var author = host.CreateBrowserClient(tenant: "t-private-usage");
@@ -158,6 +110,95 @@ public sealed class LandscapeUiEndToEndTests(AtlasUiTestHost host) : IClassFixtu
         await page.GetByTitle("Table view").ClickAsync();
         await page.WaitForTimeoutAsync(700);
         Assert.Equal(sent, received.Count);
+    }
+
+    [Fact]
+    public async Task Named_views_group_tags_and_fail_closed_on_extension_changes()
+    {
+        await using var context = await _browser!.NewContextAsync(new BrowserNewContextOptions
+        {
+            BaseURL = host.RootUri.ToString(),
+            ExtraHTTPHeaders = new Dictionary<string, string>
+            {
+                ["X-Tenant-Id"] = "t-ui-shell",
+                ["X-Principal-Id"] = "viewer",
+                ["X-Principal-Roles"] = "AtlasCustomer"
+            }
+        });
+        var page = await context.NewPageAsync();
+        var entitled = true;
+        await page.RouteAsync("**/api/v1/entitlements/summary", route => route.FulfillAsync(new()
+        {
+            ContentType = "application/json",
+            Body = "{\"capabilities\":[{\"capability\":\"atlas.analysis.roadmap\",\"enabled\":" + (entitled ? "true" : "false") + "}]}"
+        }));
+        await page.RouteAsync("**/api/v1/extensions/ui", route => route.FulfillAsync(new()
+        {
+            ContentType = "application/json",
+            Body = """{"contractVersion":"2","extensions":[{"kind":"ui-extension","id":"test-roadmap","slot":"view-roadmaps","mount":{"kind":"fragment","contractVersion":"1","url":"/api/v1/extensions/roadmaps"}}]}"""
+        }));
+        await page.RouteAsync("**/api/v1/extensions/roadmaps", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = "<h1>Entitled roadmap fragment</h1>"
+        }));
+        await page.GotoAsync("/#roadmaps");
+        await page.WaitForSelectorAsync("#ext-slot-view-roadmaps iframe");
+        Assert.Equal("", await page.Locator("#ext-slot-view-roadmaps iframe").GetAttributeAsync("sandbox"));
+        Assert.False(await page.Locator("#toolbar").IsVisibleAsync());
+        Assert.False(await page.Locator("#detailRail").IsVisibleAsync());
+        entitled = false;
+        await page.EvaluateAsync("closeAccountPanel()");
+        await page.WaitForSelectorAsync("#viewTeaser button");
+        Assert.Equal(0, await page.Locator("#ext-slot-view-roadmaps iframe").CountAsync());
+        await page.GetByRole(AriaRole.Button, new() { Name = "Capabilities", Exact = true }).ClickAsync();
+        Assert.Contains("capability:<name>", await page.Locator("#capabilitiesView").InnerTextAsync());
+        await page.EvaluateAsync("""() => { landscape.assets = [{id:'s1', name:'Tagged system', kind:'system', tags:[{key:'capability',value:'Billing'},{key:'capability',value:'Billing'}]}, {id:'s2',name:'Other system',kind:'system'}]; render(); }""");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Billing 1 systems" }).ClickAsync();
+        Assert.EndsWith("#systems?capability=Billing", page.Url);
+        Assert.Equal(1, await page.Locator(".asset-table tbody tr").CountAsync());
+        Assert.Contains("Tagged system", await page.Locator(".asset-table tbody").InnerTextAsync());
+    }
+
+    [Fact]
+    public async Task Concurrent_target_saves_cannot_exceed_the_allowance()
+    {
+        using var author = host.CreateBrowserClient(tenant: "t-target-race");
+        var request = new Vev.Atlas.Domain.TargetSketchRequest("Next", [new("asset", "new-system", "planned-add", "Planned addition",
+            new Asset("new-system", AssetKind.System, "New system", Lifecycle.Draft))]);
+        var responses = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => author.PostAsJsonAsync("/api/v1/targets", request)));
+        Assert.Equal(2, responses.Count(r => r.StatusCode == HttpStatusCode.Created));
+        Assert.Equal(3, responses.Count(r => r.StatusCode == HttpStatusCode.Forbidden));
+    }
+
+    [Fact]
+    public async Task Retired_assets_seed_a_saved_read_only_target_overlay()
+    {
+        using var author = host.CreateBrowserClient(tenant: "t-ui-target");
+        await author.PostAsJsonAsync("/api/v1/assets", new Asset("retired-system", AssetKind.System, "Retired system", Lifecycle.Retired));
+        await using var context = await _browser!.NewContextAsync(new BrowserNewContextOptions
+        {
+            BaseURL = host.RootUri.ToString(),
+            ExtraHTTPHeaders = new Dictionary<string, string>
+            {
+                ["X-Tenant-Id"] = "t-ui-target",
+                ["X-Principal-Id"] = "author",
+                ["X-Principal-Roles"] = "AtlasArchitect"
+            }
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("/");
+        await page.Locator("#targetSeed").ClickAsync();
+        await page.WaitForSelectorAsync("#canvas .node.planned-retire");
+        Assert.Contains("1 / 2", await page.Locator("#targetAllowance").InnerTextAsync());
+        await page.Locator("#canvas .node.planned-retire").ClickAsync();
+        Assert.Contains("Plan replacement", await page.Locator("#detail").InnerTextAsync());
+        Assert.Equal(0, await page.Locator("#detail button").CountAsync());
+        await page.Locator("#targetAsIs").ClickAsync();
+        Assert.Equal(0, await page.Locator("#canvas .planned-retire").CountAsync());
+        await page.ReloadAsync();
+        await page.Locator("#targetToBe").ClickAsync();
+        await page.WaitForSelectorAsync("#canvas .node.planned-retire");
     }
 
     [Fact]
