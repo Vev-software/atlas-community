@@ -16,7 +16,7 @@ namespace Vev.Atlas.Architecture.Tests;
 public sealed class TenantIsolationTests
 {
     /// <summary>The tenant-scoped tables the global query filter must cover.</summary>
-    private static readonly string[] TenantScopedTables = ["assets", "relationships"];
+    private static readonly string[] TenantScopedTables = ["assets", "relationships", "target_versions"];
 
     [Fact]
     public void A_query_that_omits_the_tenant_predicate_is_still_scoped_by_the_global_filter()
@@ -133,6 +133,7 @@ public sealed class TenantIsolationTests
             await using (var ctx = new AtlasDbContext(options, new MutableRequestContext { TenantId = "tenant-a" }))
             {
                 await AtlasDatabaseMigrator.MigrateAsync(ctx);
+                Assert.Empty(await ctx.TargetVersions.ToListAsync());
             }
 
             await using (var verify = new AtlasDbContext(options, new MutableRequestContext { TenantId = "tenant-a" }))

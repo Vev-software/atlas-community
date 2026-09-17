@@ -19,6 +19,14 @@ public static class AssetEndpoints
         // UsePathBase, so it composes on top of these routes without being baked in here.
         var v1 = $"/{apiBasePath.Trim('/')}/v1";
 
+        app.MapGet($"{v1}/targets", async (TargetSketchService service, CancellationToken ct) =>
+            Results.Ok(await service.GetAsync(ct))).WithTags("Targets").WithName("ListTargetVersions");
+        app.MapPost($"{v1}/targets", async (TargetSketchRequest request, TargetSketchService service, CancellationToken ct) =>
+        {
+            var saved = await service.SaveAsync(request, ct);
+            return Results.Created($"{v1}/targets", saved);
+        }).WithTags("Targets").WithName("SaveTargetVersion");
+
         var assets = app.MapGroup($"{v1}/assets").WithTags("Assets");
 
         assets.MapGet("", async (string? kind, AssetService service, CancellationToken ct) =>
