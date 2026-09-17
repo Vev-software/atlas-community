@@ -35,6 +35,84 @@ public sealed class LandscapeUiEndToEndTests(AtlasUiTestHost host) : IClassFixtu
     }
 
     [Fact]
+    public async Task Usage_collection_requires_consent_and_sends_only_allowlisted_fields()
+    {
+        using var author = host.CreateBrowserClient(tenant: "t-private-usage");
+        await author.PostAsJsonAsync("/api/v1/assets", new Asset("private-asset-id", AssetKind.System, "Private landscape name", Lifecycle.Active));
+        await using var context = await _browser!.NewContextAsync(new BrowserNewContextOptions
+        {
+            BaseURL = host.RootUri.ToString(),
+            ExtraHTTPHeaders = new Dictionary<string, string>
+            {
+                ["X-Tenant-Id"] = "t-private-usage",
+                ["X-Principal-Id"] = "private-person",
+                ["X-Principal-Roles"] = "AtlasCustomer"
+            }
+        });
+        await context.AddCookiesAsync([new Microsoft.Playwright.Cookie { Name = "private-cookie", Value = "secret", Domain = "collector.example", Path = "/", Secure = true }]);
+        await context.AddInitScriptAsync("sessionStorage.setItem('atlas_token', 'private-token')");
+        var page = await context.NewPageAsync();
+        var received = new System.Collections.Concurrent.ConcurrentQueue<IRequest>();
+        await page.RouteAsync("**/app-config.js", route => route.FulfillAsync(new()
+        {
+            ContentType = "application/javascript",
+            Body = "window.__ATLAS__={apiBase:'/api',loginPath:'/login',usageAnalytics:{endpoint:'https://collector.example/events'}};"
+        }));
+        await page.RouteAsync("https://collector.example/events", route =>
+        {
+            if (route.Request.Method == "POST") received.Enqueue(route.Request);
+            return route.FulfillAsync(new()
+            {
+                Status = 204,
+                Headers = new Dictionary<string, string>
+                {
+                    ["Access-Control-Allow-Origin"] = "*",
+                    ["Access-Control-Allow-Methods"] = "POST, OPTIONS",
+                    ["Access-Control-Allow-Headers"] = "content-type"
+                }
+            });
+        });
+        await page.GotoAsync("/");
+        await page.WaitForSelectorAsync("#usageConsent[open]");
+        Assert.Equal("usageDecline", await page.EvaluateAsync<string>("document.activeElement.id"));
+        await page.Keyboard.PressAsync("Escape");
+        await page.GetByTitle("Table view").ClickAsync();
+        await page.Locator(".asset-table tbody tr").ClickAsync();
+        await page.WaitForTimeoutAsync(700);
+        Assert.Empty(received);
+        await page.Locator("#usagePrivacy").ClickAsync();
+        await page.Locator("#usageAccept").ClickAsync();
+        await page.GetByTitle("Graph view").ClickAsync();
+        await page.Locator("#search").FillAsync("Private search text");
+        await page.Locator("#canvas .node").ClickAsync();
+        await page.WaitForTimeoutAsync(800);
+        Assert.NotEmpty(received);
+        foreach (var request in received)
+        {
+            var body = request.PostData!;
+            Assert.DoesNotContain("private", body, StringComparison.OrdinalIgnoreCase);
+            var headers = await request.AllHeadersAsync();
+            Assert.False(headers.ContainsKey("authorization"));
+            Assert.False(headers.ContainsKey("cookie"));
+            Assert.False(headers.ContainsKey("referer"));
+            using var json = System.Text.Json.JsonDocument.Parse(body);
+            foreach (var item in json.RootElement.GetProperty("events").EnumerateArray())
+                Assert.Equal(new[] { "cell", "control", "elapsed", "from", "step", "to", "view" },
+                    item.EnumerateObject().Select(p => p.Name).Order().ToArray());
+        }
+        await page.Locator("#usagePrivacy").ClickAsync();
+        await page.Locator("#usageDashboard summary").ClickAsync();
+        Assert.Equal(24, await page.Locator("#usageGrid span").CountAsync());
+        Assert.Contains("asset-open", await page.Locator("#usageCounts").InnerTextAsync());
+        await page.Locator("#usageWithdraw").ClickAsync();
+        await page.Locator("#usageClose").ClickAsync();
+        var sent = received.Count;
+        await page.GetByTitle("Table view").ClickAsync();
+        await page.WaitForTimeoutAsync(700);
+        Assert.Equal(sent, received.Count);
+    }
+
+    [Fact]
     public async Task Named_views_group_tags_and_fail_closed_on_extension_changes()
     {
         await using var context = await _browser!.NewContextAsync(new BrowserNewContextOptions

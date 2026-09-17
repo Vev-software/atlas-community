@@ -693,6 +693,11 @@ are sent to the configured `Atlas:Portic:BaseUrl`. The `BaseUrl` is always opera
 never hard-codes a Portic endpoint. See [ADR 0003](./adr/0003-portic-community-module.md) for the
 threat model discussion.
 
+### Optional usage heatmap
+
+See [Usage privacy](USAGE-PRIVACY.md) for the opt-in controls, exact event schema, receiver setup,
+local heatmap dashboard, and how to disable collection. There is no default analytics endpoint.
+
 ### Target architecture: a manual free taste
 
 `GET /api/v1/targets` returns saved snapshots and their entitlement allowance; authors save via
