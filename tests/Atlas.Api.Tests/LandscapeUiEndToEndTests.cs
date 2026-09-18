@@ -79,6 +79,9 @@ public sealed class LandscapeUiEndToEndTests(AtlasUiTestHost host) : IClassFixtu
     public async Task Structure_endpoint_rejects_oversized_http_body_before_binding()
     {
         using var client = host.CreateBrowserClient("t-document-oversize");
+        // Wait for the header-only rejection instead of racing an 8 MiB upload against
+        // Kestrel closing the connection (Linux reports that race as a broken pipe).
+        client.DefaultRequestHeaders.ExpectContinue = true;
         using var content = new StringContent(new string(' ', 8 * 1024 * 1024 + 1), System.Text.Encoding.UTF8, "application/json");
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, (await client.PostAsync("/api/v1/structure/draft", content)).StatusCode);
     }
