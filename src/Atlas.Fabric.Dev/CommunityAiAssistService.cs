@@ -42,8 +42,13 @@ public sealed class CommunityAiAssistService(
 
         if (_extensions.TryGetValue(provider, out var extension))
         {
+            if (request.Attachments?.Any(a => !extension.SupportsAttachment(a.ContentType)) == true)
+                return AiAssistResult.Unavailable(Source);
             return extension.Assist(request);
         }
+
+        // These built-in transports send text only. Never silently drop supplied attachments.
+        if (request.Attachments?.Count > 0) return AiAssistResult.Unavailable(Source);
 
         var apiKey = configuration.ApiKey;
         if (string.IsNullOrWhiteSpace(apiKey))

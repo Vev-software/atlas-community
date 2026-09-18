@@ -35,6 +35,55 @@ public sealed class LandscapeUiEndToEndTests(AtlasUiTestHost host) : IClassFixtu
     }
 
     [Fact]
+    public async Task Document_upload_can_be_reviewed_edited_and_explicitly_imported()
+    {
+        await using var context = await _browser!.NewContextAsync(new BrowserNewContextOptions
+        {
+            BaseURL = host.RootUri.ToString(),
+            ExtraHTTPHeaders = new Dictionary<string, string>
+            {
+                ["X-Tenant-Id"] = "t-document-browser",
+                ["X-Principal-Id"] = "author",
+                ["X-Principal-Roles"] = "AtlasArchitect"
+            }
+        });
+        var page = await context.NewPageAsync();
+        string? submitted = null;
+        await page.RouteAsync("**/api/v1/structure/draft", route =>
+        {
+            submitted = route.Request.PostData;
+            return route.FulfillAsync(new()
+            {
+                ContentType = "application/json",
+                Body = """{"mode":"ai","status":"available","source":"ai:test","summary":"Review the document draft","reviewRequired":true,"proposal":{"assets":[{"id":"document-app","name":"From document","kind":"application","lifecycle":"draft"}],"relationships":[],"mode":"merge"}}"""
+            });
+        });
+        await page.GotoAsync("/");
+        await page.Locator("#pasteLandscape").ClickAsync();
+        await page.Locator("#pasteImages").SetInputFilesAsync(new FilePayload
+        { Name = "inventory.csv", MimeType = "", Buffer = System.Text.Encoding.UTF8.GetBytes("name,kind\nFrom document,application") });
+        await page.WaitForSelectorAsync("#pasteImageList .crumb");
+        await page.Locator("#pasteGenerate").ClickAsync();
+        await page.WaitForSelectorAsync("#draftBackdrop:not([hidden])");
+        using var payload = System.Text.Json.JsonDocument.Parse(submitted!);
+        Assert.Equal("text/csv", payload.RootElement.GetProperty("documents")[0].GetProperty("contentType").GetString());
+        using var client = host.CreateBrowserClient("t-document-browser");
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/v1/assets/document-app")).StatusCode);
+        await page.GetByLabel("Asset name", new() { Exact = true }).FillAsync("Reviewed document app");
+        await page.Locator("#draftImport").ClickAsync();
+        await page.WaitForSelectorAsync("#draftBackdrop[hidden]", new() { State = WaitForSelectorState.Attached });
+        Assert.Contains("Reviewed document app", await (await client.GetAsync("/api/v1/assets/document-app")).Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Structure_endpoint_rejects_oversized_http_body_before_binding()
+    {
+        using var client = host.CreateBrowserClient("t-document-oversize");
+        using var content = new StringContent(new string(' ', 8 * 1024 * 1024 + 1), System.Text.Encoding.UTF8, "application/json");
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, (await client.PostAsync("/api/v1/structure/draft", content)).StatusCode);
+    }
+
+    [Fact]
     public async Task Usage_collection_requires_consent_and_sends_only_allowlisted_fields()
     {
         using var author = host.CreateBrowserClient(tenant: "t-private-usage");

@@ -383,14 +383,15 @@ public static class AssetEndpoints
                 return Results.Json(
                     ToAiAllowancePayload(
                         allowance,
-                        "Paste supplied notes or images into a draft landscape import bundle for review."),
+                        "Paste notes or attach images and documents to draft a landscape for review."),
                     statusCode: StatusCodes.Status402PaymentRequired);
             }
 
             return Results.Ok(await service.GenerateAsync(request, ct));
         })
             .WithName("GenerateStructureDraft")
-            .WithSummary("Turn pasted text or uploaded images into a draft atlas-contracts import proposal for review.");
+            .WithMetadata(new RequestSizeLimitAttribute(8 * 1024 * 1024))
+            .WithSummary("Turn pasted text, images or documents into a draft atlas-contracts import proposal for review.");
 
         portability.MapPost("/deliverables/draft", async (
             DeliverableDraftRequest request,
