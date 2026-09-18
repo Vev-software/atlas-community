@@ -108,6 +108,9 @@ public interface IAiProviderExtension
     /// <summary>Stable, lowercase provider identifier used for configuration and routing (e.g. "portic").</summary>
     string ProviderId { get; }
 
+    /// <summary>Whether this configured provider/model can consume the media type; text-only by default.</summary>
+    bool SupportsAttachment(string contentType) => false;
+
     /// <summary>Produce grounded assistance, or return <c>AiAssistResult.Unavailable</c> when the provider cannot serve the request.</summary>
     AiAssistResult Assist(AiAssistRequest request);
 }

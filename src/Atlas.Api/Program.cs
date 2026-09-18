@@ -100,6 +100,22 @@ app.UseStaticFiles();
 // is wired, rather than trusting caller-supplied identity headers (atlas#34).
 app.UseAtlasRequestIdentity();
 
+app.Use(async (http, next) =>
+{
+    if (http.Request.Path.Equals($"/{urls.ApiBasePath.Trim('/')}/v1/structure/draft", StringComparison.OrdinalIgnoreCase))
+    {
+        const long limit = 8 * 1024 * 1024;
+        if (http.Request.ContentLength > limit)
+        {
+            http.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            return;
+        }
+        var feature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+        if (feature is { IsReadOnly: false }) feature.MaxRequestBodySize = limit;
+    }
+    await next(http);
+});
+
 app.UseRateLimiter();
 
 app.MapOpenApi();

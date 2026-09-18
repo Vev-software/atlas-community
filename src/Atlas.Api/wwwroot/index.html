@@ -1286,12 +1286,12 @@
         <p class="placeholder">Paste what you already have — a doc, a sheet, an email — and get a first draft of your landscape you can review and accept.</p>
         <div class="field">
           <label for="pasteText">Your content</label>
-          <textarea id="pasteText" placeholder="Paste notes, a wiki page, an email thread…" rows="6"></textarea>
+          <textarea id="pasteText" placeholder="Paste notes, a wiki page, an email thread…" rows="6" maxlength="65536"></textarea>
         </div>
         <div class="field">
-          <label for="pasteImages">Images (optional)</label>
-          <input id="pasteImages" type="file" accept="image/*" multiple />
-          <p class="hint">Whiteboard photos, diagrams, screenshots — anything that helps AI understand your landscape.</p>
+          <label for="pasteImages">Images and documents (optional)</label>
+          <input id="pasteImages" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.csv" multiple />
+          <p class="hint">Up to four files: PDF, Word, Excel, CSV or images. At most 2 MiB each and 4 MiB total. Your configured provider must support every attached format.</p>
           <div id="pasteImageList" class="crumbs"></div>
         </div>
         <div class="note" id="pasteAiNote" hidden></div>
@@ -3904,6 +3904,8 @@
 
     // --- Paste-to-landscape (issue #27): AI-assisted structuring of unstructured input. ---------------
     let pasteImages = [];
+    let pasteDocuments = [];
+    let pasteReadVersion = 0;
     let pendingDraft = null;
 
     function openPaste() {
@@ -3913,6 +3915,9 @@
       el("pasteImageList").innerHTML = "";
       el("pasteAiNote").hidden = true;
       pasteImages = [];
+      pasteDocuments = [];
+      pasteReadVersion++;
+      el("pasteGenerate").disabled = false;
       // Show AI config note if AI is not ready
       if (!aiModule || !aiModule.ready) {
         el("pasteAiNote").textContent = "AI is not configured yet. You can still paste content — the draft will be generated manually without AI assistance.";
@@ -3921,29 +3926,52 @@
       el("pasteBackdrop").hidden = false;
       el("pasteText").focus();
     }
-    function closePaste() { el("pasteBackdrop").hidden = true; }
+    function closePaste() { el("pasteBackdrop").hidden = true; pasteReadVersion++; }
 
-    el("pasteImages").addEventListener("change", e => {
+    el("pasteImages").addEventListener("change", async e => {
       const files = Array.from(e.target.files);
+      const version = ++pasteReadVersion;
+      let loaded = false;
       pasteImages = [];
+      pasteDocuments = [];
       el("pasteImageList").innerHTML = "";
-      files.forEach(f => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          pasteImages.push({ name: f.name, contentType: f.type, contentBase64: reader.result.split(",")[1] });
+      el("pasteError").hidden = true;
+      el("pasteGenerate").disabled = true;
+      const types = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif",
+        pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", csv: "text/csv" };
+      try {
+        if (files.length > 4 || files.some(f => f.size === 0 || f.size > 2 * 1024 * 1024 || f.name.length > 128 || !types[f.name.split('.').pop().toLowerCase()]) ||
+            files.reduce((sum, f) => sum + f.size, 0) > 4 * 1024 * 1024)
+          throw new Error("Choose up to four supported, nonempty files: 2 MiB each and 4 MiB total.");
+        const attachments = await Promise.all(files.map(f => new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = () => reject(new Error("Could not read the selected file."));
+          reader.onabort = reader.onerror;
+          reader.onload = () => resolve({ name: f.name, contentType: types[f.name.split('.').pop().toLowerCase()], contentBase64: reader.result.split(",")[1] });
+          reader.readAsDataURL(f);
+        })));
+        if (version !== pasteReadVersion) return;
+        pasteImages = attachments.filter(a => a.contentType.startsWith("image/"));
+        pasteDocuments = attachments.filter(a => !a.contentType.startsWith("image/"));
+        loaded = true;
+        for (const f of files) {
           const chip = document.createElement("span");
           chip.className = "crumb";
           chip.textContent = f.name;
           el("pasteImageList").appendChild(chip);
-        };
-        reader.readAsDataURL(f);
-      });
+        }
+      } catch (err) {
+        if (version === pasteReadVersion) showFormError("pasteError", err.message);
+      } finally {
+        if (version === pasteReadVersion) el("pasteGenerate").disabled = !loaded;
+      }
     });
 
     async function generateDraft() {
       const text = el("pasteText").value.trim();
-      if (!text && pasteImages.length === 0) {
-        showFormError("pasteError", "Paste some text or upload at least one image.");
+      if (!text && pasteImages.length === 0 && pasteDocuments.length === 0) {
+        showFormError("pasteError", "Paste some text or attach an image or document.");
         return;
       }
       el("pasteError").hidden = true;
@@ -3954,7 +3982,7 @@
         const res = await fetchWithAuth(api("/v1/structure/draft"), {
           method: "POST",
           headers: { "Content-Type": "application/json", "Accept": "application/json" },
-          body: JSON.stringify({ text: text || null, images: pasteImages.length ? pasteImages : null }),
+          body: JSON.stringify({ text: text || null, images: pasteImages.length ? pasteImages : null, documents: pasteDocuments.length ? pasteDocuments : null }),
         });
 
         if (res.status === 402) {
@@ -3991,6 +4019,13 @@
           const card = document.createElement("div");
           card.className = "mini";
           card.innerHTML = `<strong>${escapeHtml(a.name || a.id)}</strong><span class="meta">${escapeHtml(a.kind)} · ${escapeHtml(a.id)} · ${escapeHtml(a.lifecycle || "draft")}</span>`;
+          const nameLabel = document.createElement("label");
+          nameLabel.textContent = "Asset name";
+          const nameInput = document.createElement("input");
+          nameInput.value = a.name || "";
+          nameInput.addEventListener("input", () => { a.name = nameInput.value; });
+          nameLabel.appendChild(nameInput);
+          card.appendChild(nameLabel);
           assetsList.appendChild(card);
         }
       } else {
@@ -4010,6 +4045,13 @@
           const fromLabel = label(r.fromId) || r.fromId;
           const toLabel = label(r.toId) || r.toId;
           card.innerHTML = `<span class="meta">${escapeHtml(fromLabel)} <span style="color:var(--accent);font-weight:600;">${escapeHtml(r.type)}</span> ${escapeHtml(toLabel)}</span>`;
+          const typeLabel = document.createElement("label");
+          typeLabel.textContent = "Relationship type";
+          const typeInput = document.createElement("input");
+          typeInput.value = r.type || "";
+          typeInput.addEventListener("input", () => { r.type = typeInput.value; });
+          typeLabel.appendChild(typeInput);
+          card.appendChild(typeLabel);
           relsList.appendChild(card);
         }
       } else {
@@ -4025,6 +4067,7 @@
       }
 
       el("draftBackdrop").hidden = false;
+      el("draftImport").disabled = assets.length === 0 && rels.length === 0;
     }
 
     function closeDraftReview() {

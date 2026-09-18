@@ -695,6 +695,9 @@ threat model discussion.
 
 ### Optional usage heatmap
 
+Document/image drafting supports bounded attachments and explicit review before import.
+See [Document input](DOCUMENT-INPUT.md) for formats, limits and provider compatibility.
+
 See [Usage privacy](USAGE-PRIVACY.md) for the opt-in controls, exact event schema, receiver setup,
 local heatmap dashboard, and how to disable collection. There is no default analytics endpoint.
 
