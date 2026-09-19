@@ -56,6 +56,8 @@ public sealed class ReservedPaidTaxonomyAlignmentTests
         Assert.Equal("atlas.analysis.roadmap", AtlasCapabilities.RoadmapGeneration.Value);
         Assert.Equal("atlas.ai.review", AtlasCapabilities.AiReview.Value);
         Assert.Equal("atlas.ai.generate", AtlasCapabilities.AiGenerate.Value);
+        Assert.Equal("atlas.ai.structure.bulk", AtlasCapabilities.AiStructureBulk.Value);
+        Assert.False(AtlasCapabilities.IsReservedPaid(AtlasCapabilities.AiStructure));
         Assert.Equal("atlas.data.introspection", AtlasCapabilities.DataIntrospection.Value);
         Assert.Equal("atlas.data.overlap", AtlasCapabilities.DataOverlap.Value);
         Assert.Equal("atlas.data.quality", AtlasCapabilities.DataQuality.Value);

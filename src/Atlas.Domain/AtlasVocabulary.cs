@@ -86,6 +86,9 @@ public static class AtlasCapabilities
     /// <summary>AI-assisted draft structuring of pasted or uploaded customer content into Atlas assets and relationships.</summary>
     public static readonly CapabilityId AiStructure = new("atlas.ai.structure");
 
+    /// <summary>Reserved capability for batch document structuring.</summary>
+    public static readonly CapabilityId AiStructureBulk = AtlasTaxonomy.AiStructureBulk;
+
     /// <summary>Deterministic export of a selected landscape slice as a portable context pack.</summary>
     public static readonly CapabilityId ContextExport = new("atlas.context.export");
 
@@ -118,6 +121,7 @@ public static class AtlasCapabilities
         RoadmapGeneration,
         AiReview,
         AiGenerate,
+        AiStructureBulk,
         DataIntrospection,
         DataOverlap,
         DataQuality,
