@@ -162,6 +162,8 @@ public static class RequestIdentityConfiguration
             .AddJwtBearer(jwt =>
             {
                 jwt.Authority = authority;
+                if (builder.Configuration["Atlas:Identity:Oidc:MetadataAddress"] is { Length: > 0 } metadata) jwt.MetadataAddress = metadata;
+                jwt.TokenValidationParameters.ValidIssuer = authority;
                 jwt.RequireHttpsMetadata = requireHttpsMetadata;
 
                 // Keep JWT claim types verbatim (sub, tenant, roles, name) rather than remapping them to
@@ -237,7 +239,24 @@ public static class RequestIdentityConfiguration
                 // tenant + principal and fails closed on an unauthenticated or tenant-less request.
                 app.UseAuthentication();
                 app.UseAuthorization();
-                app.UseMiddleware<OidcRequestContextMiddleware>(OidcIdentityOptions.FromConfiguration(app.Configuration));
+                if (app.Configuration.GetValue<bool>("Atlas:Identity:ServiceAssertion:Enabled"))
+                {
+                    var validator = ServiceAssertionValidator.FromPem(
+                        app.Configuration[ServiceAssertionKeyIdKey] ?? throw new InvalidOperationException("Service assertion key id required."),
+                        app.Configuration[ServiceAssertionPublicKeyKey] ?? throw new InvalidOperationException("Service assertion public key required."),
+                        app.Configuration[ServiceAssertionIssuerKey] ?? throw new InvalidOperationException("Service assertion issuer required."),
+                        app.Configuration[ServiceAssertionAudienceKey] ?? throw new InvalidOperationException("Service assertion audience required."));
+                    var machineRoles = Value(app, ServiceAssertionRolesKey, AtlasRoles.Architect)
+                        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    app.UseWhen(http => http.Request.Headers.ContainsKey(ServiceAssertionContextMiddleware.AssertionHeader),
+                        branch => branch.UseMiddleware<ServiceAssertionContextMiddleware>(validator, machineRoles));
+                    app.UseWhen(http => !http.Request.Headers.ContainsKey(ServiceAssertionContextMiddleware.AssertionHeader),
+                        branch => branch.UseMiddleware<OidcRequestContextMiddleware>(OidcIdentityOptions.FromConfiguration(app.Configuration)));
+                }
+                else
+                {
+                    app.UseMiddleware<OidcRequestContextMiddleware>(OidcIdentityOptions.FromConfiguration(app.Configuration));
+                }
                 return app;
 
             case ServiceToken:

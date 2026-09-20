@@ -100,6 +100,18 @@ public sealed class EfAssetRepository(AtlasDbContext db) : IAssetRepository
         await db.SaveChangesAsync(ct);
     }
 
+    public async Task<bool> UpdateRelationshipAsync(TenantContext tenant, Relationship relationship, CancellationToken ct = default)
+    {
+        var updated = await db.Relationships
+            .Where(r => r.TenantId == tenant.TenantId && r.Id == relationship.Id)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(r => r.FromId, relationship.FromId)
+                .SetProperty(r => r.ToId, relationship.ToId)
+                .SetProperty(r => r.Type, Wire(relationship.Type))
+                .SetProperty(r => r.Description, relationship.Description), ct);
+        return updated > 0;
+    }
+
     public async Task<bool> DeleteRelationshipAsync(TenantContext tenant, string id, CancellationToken ct = default)
     {
         var deleted = await db.Relationships

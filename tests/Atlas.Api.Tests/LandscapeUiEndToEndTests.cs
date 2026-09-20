@@ -12,6 +12,49 @@ namespace Vev.Atlas.Api.Tests;
 /// </summary>
 public sealed class LandscapeUiEndToEndTests(AtlasUiTestHost host) : IClassFixture<AtlasUiTestHost>, IAsyncLifetime
 {
+    [Fact]
+    public async Task Anonymous_oidc_visit_goes_directly_to_login_without_racing_api_challenges()
+    {
+        await using var context = await _browser!.NewContextAsync();
+        var page = await context.NewPageAsync();
+        var apiRequests = 0;
+        page.Request += (_, request) => { if (new Uri(request.Url).AbsolutePath.StartsWith("/api/", StringComparison.Ordinal)) Interlocked.Increment(ref apiRequests); };
+        await page.RouteAsync("**/app-config.js", route => route.FulfillAsync(new()
+        {
+            ContentType = "application/javascript",
+            Body = "window.__ATLAS__={apiBase:'/api',loginPath:'/login',oidcAuthority:'https://id.example/realms/test'};"
+        }));
+        await page.GotoAsync(host.RootUri.ToString());
+        await page.Locator("#username").WaitForAsync();
+        Assert.Equal(0, apiRequests);
+    }
+
+    [Fact]
+    public async Task Same_origin_fragments_receive_bearer_credentials_inside_an_unchanged_sandbox()
+    {
+        await using var context = await _browser!.NewContextAsync();
+        await context.AddInitScriptAsync("if (!location.pathname.startsWith('/login')) sessionStorage.setItem('atlas_token', 'synthetic-browser-token')");
+        var page = await context.NewPageAsync();
+        string? authorization = null;
+        await page.RouteAsync("**/api/v1/extensions/ui", route => route.FulfillAsync(new()
+        {
+            ContentType = "application/json",
+            Body = """{"contractVersion":"1","extensions":[{"kind":"ui-extension","id":"test","slot":"landscape-right-rail","mount":{"kind":"fragment","contractVersion":"1","url":"/test-fragment"}}]}"""
+        }));
+        await page.RouteAsync("**/test-fragment", async route =>
+        {
+            authorization = (await route.Request.AllHeadersAsync()).GetValueOrDefault("authorization");
+            await route.FulfillAsync(new() { ContentType = "text/html", Body = "<p>Authenticated fragment</p><script>document.body.textContent='unsafe';</script>" });
+        });
+        await page.GotoAsync(host.RootUri.ToString());
+        await page.FrameLocator(".ext-frame").GetByText("Authenticated fragment").WaitForAsync();
+        Assert.Equal("Bearer synthetic-browser-token", authorization);
+        Assert.Equal("", await page.Locator(".ext-frame").GetAttributeAsync("sandbox"));
+        await page.Locator("#signOut").ClickAsync();
+        await page.Locator("#username").WaitForAsync();
+        Assert.Null(await page.EvaluateAsync<string?>("sessionStorage.getItem('atlas_token')"));
+    }
+
     private IPlaywright? _playwright;
     private IBrowser? _browser;
 

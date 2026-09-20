@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using ModelContextProtocol.Server;
 using Vev.Atlas.Api;
@@ -12,7 +13,11 @@ using Vev.Atlas.Persistence;
 var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = builder.Configuration.GetConnectionString("Atlas") ?? "Data Source=atlas.db";
-builder.Services.AddDataProtection();
+var dataProtection = builder.Services.AddDataProtection();
+if (builder.Configuration["Atlas:DataProtection:KeyPath"] is { Length: > 0 } keyPath)
+{
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keyPath));
+}
 builder.Services.Configure<AtlasEntitlementOptions>(builder.Configuration.GetSection(AtlasEntitlementOptions.SectionName));
 builder.Services.AddAtlasCommunity(connectionString, builder.Configuration);
 builder.Services.AddMcpServer()
