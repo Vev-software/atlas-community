@@ -17,7 +17,7 @@ namespace Vev.Atlas.Api;
 /// by the tenant bound here (see the tenant query filter in <c>AtlasDbContext</c>).
 /// </para>
 /// </summary>
-public sealed class OidcRequestContextMiddleware(RequestDelegate next, OidcIdentityOptions options)
+public sealed class OidcRequestContextMiddleware(RequestDelegate next, OidcIdentityOptions options, IConfiguration configuration)
 {
     public async Task InvokeAsync(HttpContext http)
     {
@@ -42,7 +42,9 @@ public sealed class OidcRequestContextMiddleware(RequestDelegate next, OidcIdent
         // A verified token with no tenant claim cannot be scoped to a tenant, so it is refused rather than
         // run unscoped. This is a provider/token misconfiguration, not a credential problem.
         var tenantId = user.FindFirst(options.TenantClaim)?.Value;
-        if (string.IsNullOrWhiteSpace(tenantId))
+        var allowedTenant = configuration["Atlas:Identity:AllowedTenant"];
+        if (string.IsNullOrWhiteSpace(tenantId) ||
+            (!string.IsNullOrEmpty(allowedTenant) && tenantId != allowedTenant))
         {
             http.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;

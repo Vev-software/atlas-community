@@ -917,6 +917,7 @@
         <span class="caret" aria-hidden="true">▾</span>
       </button>
       <a href="/login/?action=admin" id="usersLink">Users</a>
+      <button type="button" id="signOut">Sign out</button>
     </div>
   </header>
 
@@ -1587,7 +1588,18 @@
           // host origin — the client hosts the frame but never carries or trusts the view.
           const frame = document.createElement("iframe");
           frame.className = "ext-frame";
-          frame.src = ext.mount.url;
+          const fragmentUrl = new URL(ext.mount.url, location.href);
+          if (fragmentUrl.origin === location.origin) {
+            // Bearer credentials stay on this origin. Fetch before sandboxing the returned document.
+            fetchWithAuth(fragmentUrl.href, { redirect: "error" }).then(async response => {
+              if (!response.ok) throw new Error("Fragment unavailable");
+              const html = await response.text();
+              if (frame.isConnected) frame.srcdoc = html;
+            }).catch(() => { if (frame.isConnected) frame.remove(); });
+          } else {
+            // External fragments retain their own authentication; never forward our bearer token.
+            frame.src = fragmentUrl.href;
+          }
           frame.title = ext.title || ext.id || "Extension";
           frame.setAttribute("sandbox", "");
           frame.setAttribute("referrerpolicy", "no-referrer");
@@ -1606,7 +1618,7 @@
     // --- Session identity (atlas#80): shows who is logged in and their roles. --------------------------
     async function loadSession() {
       try {
-        const res = await fetch(api("/v1/session"), { headers: { "Accept": "application/json" } });
+        const res = await fetchWithAuth(api("/v1/session"), { headers: { "Accept": "application/json" } });
         if (res.ok) {
           const session = await res.json();
           principalId = session.principalId || "";
@@ -1635,7 +1647,7 @@
       body.innerHTML = '<p class="acct-loading">Loading…</p>';
       el("accountDone").focus();
       try {
-        const res = await fetch(api("/v1/entitlements/summary"), { headers: { "Accept": "application/json" } });
+        const res = await fetchWithAuth(api("/v1/entitlements/summary"), { headers: { "Accept": "application/json" } });
         if (!res.ok) throw new Error("HTTP " + res.status);
         renderAccountSummary(await res.json());
       } catch (err) {
@@ -2248,7 +2260,7 @@
 
     async function ensureAssetHistory(id) {
       if (!id || assetHistoryCache.has(id) || assetHistoryPending.has(id)) return;
-      const pending = fetch(api(`/v1/assets/${encodeURIComponent(id)}/history`), { headers: { "Accept": "application/json" } })
+      const pending = fetchWithAuth(api(`/v1/assets/${encodeURIComponent(id)}/history`), { headers: { "Accept": "application/json" } })
         .then(async res => {
           if (!res.ok) throw new Error("HTTP " + res.status);
           return await res.json();
@@ -2353,8 +2365,8 @@
     async function loadAiModule() {
       try {
         const [moduleRes, providersRes] = await Promise.all([
-          fetch(api("/v1/ai/module"), { headers: { "Accept": "application/json" } }),
-          fetch(api("/v1/ai/providers"), { headers: { "Accept": "application/json" } })
+          fetchWithAuth(api("/v1/ai/module"), { headers: { "Accept": "application/json" } }),
+          fetchWithAuth(api("/v1/ai/providers"), { headers: { "Accept": "application/json" } })
         ]);
         if (!moduleRes.ok) throw new Error("HTTP " + moduleRes.status);
         aiModule = await moduleRes.json();
@@ -2536,7 +2548,7 @@
       aiBusy = true;
       renderAiPanel();
       try {
-        const res = await fetch(api("/v1/ai/module"), {
+        const res = await fetchWithAuth(api("/v1/ai/module"), {
           method: "PUT",
           headers: { "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify({ enabled: true, consentAccepted, provider, apiKey: requiresKey ? apiKey : undefined }),
@@ -2568,7 +2580,7 @@
       renderAiPanel();
 
       try {
-        const res = await fetch(api("/v1/ai/chat"), {
+        const res = await fetchWithAuth(api("/v1/ai/chat"), {
           method: "POST",
           headers: { "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify({
@@ -3112,7 +3124,11 @@
             del.className = "rel-del"; del.textContent = "Remove";
             del.title = "Remove this relationship";
             del.addEventListener("click", () => deleteRelationship(r));
-            li.appendChild(del);
+            const edit = document.createElement("button");
+            edit.className = "rel-edit"; edit.textContent = "Edit";
+            edit.title = "Edit this relationship";
+            edit.addEventListener("click", () => openRelForm(r.fromId, r));
+            li.append(edit, del);
           }
           ul.appendChild(li);
         }
@@ -3476,15 +3492,20 @@
     }
 
     // --- Relationship form ---------------------------------------------------------------------------
-    function openRelForm(fromId) {
+    let editingRelationshipId = null;
+    function openRelForm(fromId, relationship = null) {
+      editingRelationshipId = relationship?.id || null;
+      el("relFormTitle").textContent = relationship ? "Edit relationship" : "New relationship";
+      el("relSubmit").textContent = relationship ? "Save link" : "Create link";
       el("relError").hidden = true;
       el("rFrom").value = label(fromId);
       el("rFrom").dataset.fromId = fromId;
       const source = landscape.assets.find(a => a.id === fromId);
-      el("rType").value = defaultRelationshipType(source);
-      el("rNote").value = "";
+      el("rType").value = relationship?.type || defaultRelationshipType(source);
+      el("rNote").value = relationship?.description || "";
 
       populateRelationshipTargets();
+      if (relationship) el("rTo").value = relationship.toId;
       el("relBackdrop").hidden = false;
     }
 
@@ -3499,7 +3520,7 @@
       const note = el("rNote").value.trim();
       const body = {
         // Client-supplied id, like the API's other create surfaces. Opaque and unique.
-        id: "rel-" + Math.random().toString(36).slice(2, 10),
+        id: editingRelationshipId || "rel-" + Math.random().toString(36).slice(2, 10),
         fromId,
         toId,
         type: el("rType").value,
@@ -3509,8 +3530,8 @@
       const submit = el("relSubmit");
       submit.disabled = true;
       try {
-        const res = await fetchWithAuth(api("/v1/relationships"), {
-          method: "POST",
+        const res = await fetchWithAuth(api("/v1/relationships" + (editingRelationshipId ? "/" + encodeURIComponent(editingRelationshipId) : "")), {
+          method: editingRelationshipId ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
@@ -3518,7 +3539,7 @@
         closeRelForm();
         await load();
         if (landscape.assets.some(a => a.id === fromId)) select(fromId);
-        toast("Relationship created.");
+        toast(editingRelationshipId ? "Relationship updated." : "Relationship created.");
       } catch (err) {
         showFormError("relError", "Could not reach the API (" + err.message + ").");
       } finally {
@@ -4139,6 +4160,19 @@
     el("confirmBackdrop").addEventListener("click", e => { if (e.target === el("confirmBackdrop")) closeConfirm(false); });
 
     // Account / licence panel wiring (atlas#147).
+    el("signOut").hidden = !getToken();
+    el("signOut").addEventListener("click", async () => {
+      const refresh = sessionStorage.getItem("atlas_refresh_token");
+      sessionStorage.removeItem("atlas_token");
+      sessionStorage.removeItem("atlas_refresh_token");
+      try {
+        if (refresh && ATLAS.oidcAuthority) await fetch(ATLAS.oidcAuthority.replace(/\/+$/, "") + "/protocol/openid-connect/logout", {
+          method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ client_id: ATLAS.oidcClientId || "atlas-api", refresh_token: refresh }),
+          signal: AbortSignal.timeout(5000)
+        });
+      } finally { location.replace(ATLAS.loginPath + "/"); }
+    });
     el("accountTrigger").addEventListener("click", openAccountPanel);
     el("accountClose").addEventListener("click", closeAccountPanel);
     el("accountDone").addEventListener("click", closeAccountPanel);

@@ -44,6 +44,9 @@ public interface IAssetRepository
     /// <summary>Insert a manual relationship.</summary>
     Task AddRelationshipAsync(TenantContext tenant, Relationship relationship, CancellationToken ct = default);
 
+    /// <summary>Update an existing relationship within the tenant; never creates a missing row.</summary>
+    Task<bool> UpdateRelationshipAsync(TenantContext tenant, Relationship relationship, CancellationToken ct = default);
+
     /// <summary>Delete a relationship by id; returns false if it did not exist.</summary>
     Task<bool> DeleteRelationshipAsync(TenantContext tenant, string id, CancellationToken ct = default);
 

@@ -21,7 +21,7 @@ namespace Vev.Atlas.Api;
 /// </para>
 /// </summary>
 public sealed class ServiceAssertionContextMiddleware(
-    RequestDelegate next, ServiceAssertionValidator validator, string[] roles)
+    RequestDelegate next, ServiceAssertionValidator validator, string[] roles, IConfiguration configuration)
 {
     public const string AssertionHeader = ServiceIdentity.AssertionHeaderName;
 
@@ -42,6 +42,12 @@ public sealed class ServiceAssertionContextMiddleware(
         }
 
         var assertion = result.Assertion!;
+        var allowedTenant = configuration["Atlas:Identity:AllowedTenant"];
+        if (!string.IsNullOrEmpty(allowedTenant) && assertion.TenantId != allowedTenant)
+        {
+            await FailAsync(http, "tenant_not_allowed");
+            return;
+        }
         var tenant = new TenantContext(assertion.TenantId);
 
         // Tenant + subject are cryptographically verified; roles are fixed by Atlas config so a caller

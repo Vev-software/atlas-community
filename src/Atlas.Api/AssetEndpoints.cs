@@ -456,6 +456,11 @@ public static class AssetEndpoints
             .WithName("CreateRelationship")
             .WithSummary("Create a manual relationship between two existing assets.");
 
+        relationships.MapPut("/{id}", async (string id, Relationship relationship, AssetService service, CancellationToken ct) =>
+            await service.UpdateRelationshipAsync(id, relationship, ct) ? Results.Ok(relationship) : Results.NotFound())
+            .WithName("UpdateRelationship")
+            .WithSummary("Update an existing manual relationship without changing its identifier.");
+
         relationships.MapDelete("/{id}", async (string id, AssetService service, CancellationToken ct) =>
             await service.DeleteRelationshipAsync(id, ct) ? Results.NoContent() : Results.NotFound())
             .WithName("DeleteRelationship")

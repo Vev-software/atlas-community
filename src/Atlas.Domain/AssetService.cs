@@ -405,6 +405,20 @@ public sealed class AssetService(
         return relationship;
     }
 
+    /// <summary>Edit a held relationship, preserving its stable id and tenant boundary.</summary>
+    public async Task<bool> UpdateRelationshipAsync(string id, Relationship relationship, CancellationToken ct = default)
+    {
+        var resource = RelationshipResource(id);
+        AuthorizeWrite(resource);
+        if (id != relationship.Id) throw new CatalogueValidationException("Path and relationship id must match.");
+        if (!await repository.AssetExistsAsync(context.Tenant, relationship.FromId, ct) ||
+            !await repository.AssetExistsAsync(context.Tenant, relationship.ToId, ct))
+            throw new CatalogueValidationException("Both relationship endpoints must exist in this tenant.");
+        var updated = await repository.UpdateRelationshipAsync(context.Tenant, relationship, ct);
+        if (updated) await EmitAsync("atlas.relationship.updated", resource, ct);
+        return updated;
+    }
+
     /// <summary>Delete a manual relationship. Requires write authorization; audited when removed.</summary>
     public async Task<bool> DeleteRelationshipAsync(string id, CancellationToken ct = default)
     {
