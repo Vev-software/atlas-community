@@ -13,6 +13,23 @@ namespace Vev.Atlas.Api.Tests;
 public sealed class LandscapeUiEndToEndTests(AtlasUiTestHost host) : IClassFixture<AtlasUiTestHost>, IAsyncLifetime
 {
     [Fact]
+    public async Task Anonymous_oidc_visit_goes_directly_to_login_without_racing_api_challenges()
+    {
+        await using var context = await _browser!.NewContextAsync();
+        var page = await context.NewPageAsync();
+        var apiRequests = 0;
+        page.Request += (_, request) => { if (new Uri(request.Url).AbsolutePath.StartsWith("/api/", StringComparison.Ordinal)) Interlocked.Increment(ref apiRequests); };
+        await page.RouteAsync("**/app-config.js", route => route.FulfillAsync(new()
+        {
+            ContentType = "application/javascript",
+            Body = "window.__ATLAS__={apiBase:'/api',loginPath:'/login',oidcAuthority:'https://id.example/realms/test'};"
+        }));
+        await page.GotoAsync(host.RootUri.ToString());
+        await page.Locator("#username").WaitForAsync();
+        Assert.Equal(0, apiRequests);
+    }
+
+    [Fact]
     public async Task Same_origin_fragments_receive_bearer_credentials_inside_an_unchanged_sandbox()
     {
         await using var context = await _browser!.NewContextAsync();

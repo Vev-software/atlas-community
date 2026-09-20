@@ -1369,8 +1369,18 @@
 
     // --- Auth helpers (issue #78): inject bearer token, redirect to login on 401 ---
     function getToken() { return sessionStorage.getItem("atlas_token"); }
+    let redirectingToLogin = false;
+
+    function redirectToLogin() {
+      if (redirectingToLogin) return;
+      redirectingToLogin = true;
+      sessionStorage.removeItem("atlas_token");
+      sessionStorage.removeItem("atlas_refresh_token");
+      location.replace(ATLAS.loginPath + "/?return_to=" + encodeURIComponent(location.pathname + location.search));
+    }
 
     async function fetchWithAuth(url, init = {}) {
+      if (redirectingToLogin) throw new Error("Unauthorized");
       const token = getToken();
       const headers = { ...init.headers };
       if (token) {
@@ -1380,9 +1390,7 @@
       const res = await fetch(url, { ...init, headers });
       if (res.status === 401) {
         // Token expired or missing — redirect to login.
-        sessionStorage.removeItem("atlas_token");
-        sessionStorage.removeItem("atlas_refresh_token");
-        location.href = ATLAS.loginPath + "/?return_to=" + encodeURIComponent(location.pathname + location.search);
+        redirectToLogin();
         throw new Error("Unauthorized");
       }
       return res;
@@ -4192,7 +4200,14 @@
 
     // Learn the principal's capability and identity first, then draw — so the first paint already reflects
     // author vs. read-only, shows who is logged in, and never flashes controls a read-only user may not use.
-    (async () => { await Promise.all([loadCapabilities(), loadSession()]); await load(); loadExtensions(); })();
+    (async () => {
+      // An anonymous OIDC visit goes straight to login. Parallel 401 responses must not race
+      // repeated navigations against the sign-in form as it becomes visible.
+      if (ATLAS.oidcAuthority && !getToken()) { redirectToLogin(); return; }
+      await Promise.all([loadCapabilities(), loadSession()]);
+      await load();
+      loadExtensions();
+    })();
   </script>
   <script src="usage-analytics.js"></script>
 </body>
