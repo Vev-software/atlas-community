@@ -1,0 +1,60 @@
+{
+  "digest": {
+    "contractVersion": "1",
+    "digestId": "0195f2a4-7c3e-7000-8000-000000000043",
+    "generatedAt": "2026-09-28T12:00:00Z",
+    "sourceInstanceId": "atlas-instance-conformance",
+    "sequence": 1,
+    "scope": {
+      "kinds": ["system", "application", "platform", "vendor"],
+      "tags": [{ "key": "shared", "value": "true" }]
+    },
+    "items": [
+      {
+        "kind": "system",
+        "name": "Payments platform",
+        "lifecycle": "active",
+        "integrationCount": 5
+      },
+      {
+        "kind": "application",
+        "name": "Checkout service",
+        "lifecycle": "active",
+        "vendor": "in-house",
+        "plannedChange": "replace",
+        "integrationCount": 3
+      },
+      {
+        "kind": "application",
+        "name": "Legacy billing",
+        "lifecycle": "retired",
+        "vendor": "Example Corp",
+        "plannedChange": "retire"
+      },
+      {
+        "kind": "platform",
+        "name": "EU production compute",
+        "lifecycle": "active",
+        "vendor": "Example Cloud"
+      },
+      {
+        "kind": "platform",
+        "name": "Azure OpenAI",
+        "lifecycle": "draft",
+        "vendor": "Example Cloud",
+        "plannedChange": "add"
+      },
+      {
+        "kind": "vendor",
+        "name": "Example Corp",
+        "lifecycle": "active"
+      }
+    ]
+  },
+  "signature": {
+    "algorithm": "rsa-pkcs1-v1_5-sha256",
+    "keyId": "atlas-conformance-test-key",
+    "publicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyEK_l3nAXi2hnjZpC_czznEOJnrpulBNxGP-KHnVh_5scaNOoMfqroAfSMYzV7gskKMX8qDHi9RAIudqnkBKFKYUtg5GZ4VhmiytqQNEt1RxcT4uHAjpH8ywxBf4Nhg2UKlleE9JqHV3PvbfAxrXKRx9OEyfu-VDOf8mVcw4j1WwfRGN6fy18lC4R7mkPrvMVl_Cg_r8jeyXnyQkE3GJmmVx7ncfnjbV6mbg59QHd0hpw2hBZBjfPa1cjwflzhChxd91eNZ_OFBET7gDUFHLGWR2uNmUzlQEKgqGeeol49EPQj0pt0qxVOv8K7mJH0LK_BAItzKFo8hxjKU2rbRc6QIDAQAB",
+    "value": "h5tqd4qNjFeMVG15wbFE9Ppi2mdSsTc4Ha3mS5VUsM0lNcRj0OP0RXzaDjJgvzUmlil1QlBIqIz02QwQU71wJV71v2ImUjiShUEEm_EqHRXKLPsgvRbbeXzk6m7qt_fyPzwmv2MG1_VNf384aWQCLo-TdlbgU-62gyD5JlAcADkmT2UTfsL7BmMLSYt80ZrSeHOjE_h22dVaEzq44FiJ3jolUFwNQUiCtcsEvcbQmGJ_fMiVwHbmglCCBfBU3jnfMMF7oGP-5JIZYtDeOhLd2D4ljGJXuMclk91L2hWZaVqX0UAYI56w3VIavVWGje6P_n5Dp-icgYYzf_z-eS3ICw"
+  }
+}

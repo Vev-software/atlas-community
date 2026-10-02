@@ -75,6 +75,27 @@ builder.Services.AddRateLimiter(options =>
     });
 });
 
+var sharePermitLimit = builder.Configuration.GetValue(ShareRateLimit.PermitLimitKey, ShareRateLimit.DefaultPermitLimit);
+var shareWindowSeconds = builder.Configuration.GetValue(ShareRateLimit.WindowSecondsKey, ShareRateLimit.DefaultWindowSeconds);
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy(ShareRateLimit.PolicyName, http =>
+    {
+        var tenant = http.Request.Headers["X-Tenant-Id"].ToString();
+        if (string.IsNullOrWhiteSpace(tenant))
+        {
+            tenant = "global";
+        }
+
+        return RateLimitPartition.GetFixedWindowLimiter(tenant, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = sharePermitLimit,
+            Window = TimeSpan.FromSeconds(shareWindowSeconds),
+            QueueLimit = 0
+        });
+    });
+});
+
 var app = builder.Build();
 var urls = app.Services.GetRequiredService<AtlasUrls>();
 

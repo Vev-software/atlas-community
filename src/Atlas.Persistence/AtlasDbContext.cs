@@ -21,6 +21,8 @@ public sealed class AtlasDbContext(DbContextOptions<AtlasDbContext> options, IRe
     internal DbSet<AssetRow> Assets => Set<AssetRow>();
     internal DbSet<RelationshipRow> Relationships => Set<RelationshipRow>();
     internal DbSet<AiModuleSettingsRow> AiModuleSettings => Set<AiModuleSettingsRow>();
+    internal DbSet<DigestStateRow> DigestStates => Set<DigestStateRow>();
+    internal DbSet<DigestKeyRow> DigestKeys => Set<DigestKeyRow>();
 
     /// <summary>
     /// The tenant for the current request. Read lazily through a property so the global query filter is
@@ -75,6 +77,22 @@ public sealed class AtlasDbContext(DbContextOptions<AtlasDbContext> options, IRe
             e.Property(r => r.Type).HasMaxLength(32);
             e.HasIndex(r => new { r.TenantId, r.FromId });
             e.HasQueryFilter(r => r.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<DigestStateRow>(e =>
+        {
+            e.ToTable("digest_state");
+            e.HasKey(r => r.TenantId);
+            e.Property(r => r.SourceInstanceId).HasMaxLength(128);
+            e.HasQueryFilter(r => r.TenantId == CurrentTenantId);
+        });
+
+        // One signing key for the installation, so deliberately not tenant-scoped.
+        modelBuilder.Entity<DigestKeyRow>(e =>
+        {
+            e.ToTable("digest_key");
+            e.HasKey(r => r.Id);
+            e.Property(r => r.KeyId).HasMaxLength(128);
         });
 
         modelBuilder.Entity<AiModuleSettingsRow>(e =>

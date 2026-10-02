@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
@@ -14,6 +15,13 @@
     <PackageReference Include="coverlet.collector" PrivateAssets="all" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The published digest schemas are read from the NuGet cache, so the test validates against the contract itself. -->
+    <AssemblyMetadata Include="AtlasContractsSchemas" Value="$(NuGetPackageRoot)vev.atlas.contracts/$(AtlasContractsVersion)/schemas/v1" />
+    <!-- A signed digest published with the contract as a test vector (a fixed test key, not a secret). -->
+    <None Include="Fixtures/landscape-digest.signed.valid.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

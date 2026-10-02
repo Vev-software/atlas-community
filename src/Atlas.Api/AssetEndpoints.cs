@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Vev.Atlas.Contracts;
 using Vev.Atlas.Domain;
 using Vev.Atlas.Domain.Portability;
+using Vev.Atlas.Domain.Sharing;
 using Vev.Atlas.Fabric;
 
 namespace Vev.Atlas.Api;
@@ -430,6 +431,41 @@ public static class AssetEndpoints
             .WithSummary("Export the tenant landscape as a downloadable atlas-contracts document (customer-owned export).")
             // Throttle so the whole landscape cannot be pulled in a tight loop (atlas#36).
             .RequireRateLimiting(ExportRateLimit.PolicyName);
+
+        // The landscape share digest (atlas#175): a minimized, signed summary for a consented consumer, delivered as a file.
+        // Elevated like the export, audited once per digest, and throttled per tenant.
+        portability.MapGet("/share/digest/preview", async (string[]? kinds, string[]? tag, LandscapeShareService service, CancellationToken ct) =>
+        {
+            try
+            {
+                return Results.Ok(await service.PreviewAsync(LandscapeShareService.ParseScope(kinds, tag), ct));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { message = ex.Message });
+            }
+        })
+            .WithName("PreviewLandscapeDigest")
+            .WithSummary("Show exactly which items and fields a landscape digest would hold, without creating one.");
+
+        portability.MapGet("/share/digest", async (string[]? kinds, string[]? tag, LandscapeShareService service, CancellationToken ct) =>
+        {
+            LandscapeDigestScope scope;
+            try
+            {
+                scope = LandscapeShareService.ParseScope(kinds, tag);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { message = ex.Message });
+            }
+
+            var signed = await service.CreateAsync(scope, ct);
+            return Results.File(LandscapeShareService.Render(signed), "application/json", "atlas-landscape-digest.json");
+        })
+            .WithName("CreateLandscapeDigest")
+            .WithSummary("Create a signed landscape share digest (atlas-contracts landscape digest v1) as a downloadable file.")
+            .RequireRateLimiting(ShareRateLimit.PolicyName);
 
         portability.MapPost("/import", async (string? format, HttpRequest request, AssetService service, LandscapeFormatRegistry formats, CancellationToken ct) =>
         {
