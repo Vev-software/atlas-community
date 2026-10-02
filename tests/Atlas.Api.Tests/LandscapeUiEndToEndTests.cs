@@ -119,6 +119,71 @@ public sealed class LandscapeUiEndToEndTests(AtlasUiTestHost host) : IClassFixtu
     }
 
     [Fact]
+    public async Task Share_summary_previews_the_scope_and_downloads_a_signed_digest()
+    {
+        using var client = host.CreateBrowserClient("t-share-browser");
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("share-app", AssetKind.Application, "Shared app", Lifecycle.Active, Application: new ApplicationDetails(Vendor: "Example Corp")))).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/assets",
+            new Asset("share-ds", AssetKind.Dataset, "Hidden dataset", Lifecycle.Active))).StatusCode);
+        await using var context = await _browser!.NewContextAsync(new BrowserNewContextOptions
+        {
+            BaseURL = host.RootUri.ToString(),
+            AcceptDownloads = true,
+            ExtraHTTPHeaders = new Dictionary<string, string>
+            {
+                ["X-Tenant-Id"] = "t-share-browser",
+                ["X-Principal-Id"] = "author",
+                ["X-Principal-Roles"] = "AtlasArchitect"
+            }
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("/");
+        await page.Locator("#shareDigest:not([hidden])").WaitForAsync();
+        await page.Locator("#shareDigest").ClickAsync();
+
+        // The preview lists what would leave the installation and what never can.
+        await page.Locator("#shareCount", new() { HasTextString = "2 items will be shared" }).WaitForAsync();
+        var preview = await page.Locator("#sharePreview").InnerTextAsync();
+        Assert.Contains("Shared app (application, active, Example Corp)", preview);
+        Assert.Contains("Example Corp (vendor, active)", preview);
+        Assert.DoesNotContain("Hidden dataset", preview);
+        Assert.Contains("hostnames", await page.Locator("#shareNever").InnerTextAsync());
+
+        // Narrowing the scope updates the preview.
+        await page.Locator("#shareKinds input[value=vendor]").UncheckAsync();
+        await page.Locator("#shareCount", new() { HasTextString = "1 item will be shared" }).WaitForAsync();
+
+        var download = await page.RunAndWaitForDownloadAsync(() => page.Locator("#shareDownload").ClickAsync());
+        Assert.Equal("atlas-landscape-digest.json", download.SuggestedFilename);
+        using var file = System.Text.Json.JsonDocument.Parse(await System.IO.File.ReadAllTextAsync((await download.PathAsync())!));
+        Assert.Equal("1", file.RootElement.GetProperty("digest").GetProperty("contractVersion").GetString());
+        Assert.Equal("Shared app", file.RootElement.GetProperty("digest").GetProperty("items")[0].GetProperty("name").GetString());
+        Assert.Equal("rsa-pkcs1-v1_5-sha256", file.RootElement.GetProperty("signature").GetProperty("algorithm").GetString());
+        await page.Locator("#shareBackdrop[hidden]").WaitForAsync(new() { State = WaitForSelectorState.Attached });
+    }
+
+    [Fact]
+    public async Task Share_summary_is_not_offered_to_a_read_only_user()
+    {
+        await using var context = await _browser!.NewContextAsync(new BrowserNewContextOptions
+        {
+            BaseURL = host.RootUri.ToString(),
+            ExtraHTTPHeaders = new Dictionary<string, string>
+            {
+                ["X-Tenant-Id"] = "t-share-readonly",
+                ["X-Principal-Id"] = "reader",
+                ["X-Principal-Roles"] = "AtlasCustomer"
+            }
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("/");
+        await page.Locator("#export").WaitForAsync();
+        await page.WaitForFunctionAsync("document.querySelector('#newAsset') && document.querySelector('#newAsset').hidden");
+        Assert.True(await page.Locator("#shareDigest").IsHiddenAsync());
+    }
+
+    [Fact]
     public async Task Structure_endpoint_rejects_oversized_http_body_before_binding()
     {
         using var client = host.CreateBrowserClient("t-document-oversize");

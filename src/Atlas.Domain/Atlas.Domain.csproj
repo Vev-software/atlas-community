@@ -11,6 +11,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Atlas.Api.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Vev.Atlas.Contracts" />
     <ProjectReference Include="../Atlas.Fabric.Abstractions/Atlas.Fabric.Abstractions.csproj" />
   </ItemGroup>

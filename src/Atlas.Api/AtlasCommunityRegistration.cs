@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Vev.Atlas.Domain;
 using Vev.Atlas.Domain.Portability;
+using Vev.Atlas.Domain.Sharing;
 using Vev.Atlas.Fabric;
 using Vev.Atlas.Fabric.Dev;
 using Vev.Atlas.Fabric.Portic;
@@ -31,7 +32,8 @@ public static class AtlasCommunityRegistration
         // the whole map (atlas#36).
         var policies = new AuthorizationPolicyRegistry()
             .Require(AtlasActions.AssetWrite, AtlasRoles.Architect)
-            .Require(AtlasActions.LandscapeExport, AtlasRoles.Architect);
+            .Require(AtlasActions.LandscapeExport, AtlasRoles.Architect)
+            .Require(AtlasActions.LandscapeShare, AtlasRoles.Architect);
         services.AddSingleton(policies);
         services.AddSingleton<IAuthorizer, DevAuthorizer>();
 
@@ -57,6 +59,9 @@ public static class AtlasCommunityRegistration
 
         // --- Domain ---
         services.AddScoped<AssetService>();
+        services.AddScoped<IDigestStateStore, EfDigestStateStore>();
+        services.AddScoped<IDigestSigner, EfDigestSigner>();
+        services.AddScoped<LandscapeShareService>();
         services.AddScoped<ContextPackService>();
         services.AddScoped<StructureDraftService>();
         services.AddScoped<DeliverableDraftService>();

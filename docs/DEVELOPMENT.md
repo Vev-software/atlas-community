@@ -200,6 +200,40 @@ curl -X POST http://localhost:5199/api/v1/import -H "Content-Type: application/j
   - `mode: replace` makes the tenant match the bundle: assets not in the bundle are removed. Use a
     self-contained bundle (a full export) for replace.
 
+### Sharing a summary: the landscape digest file
+
+A customer who wants to share a *summary* of their landscape with someone they trust can hand over a
+**signed file**. Nothing is sent from Atlas, so it works on an installation with no network connection to
+the recipient. The file is the public **landscape digest v1** from `atlas-contracts`
+(`docs/landscape-digest.md` there), not the portability export above: it holds far less.
+
+```bash
+# Preview exactly which items and fields a digest would hold (no file, no sequence number, no audit record)
+curl "http://localhost:5199/api/v1/share/digest/preview?kinds=application&kinds=vendor&tag=shared:true" -H "X-Tenant-Id: demo"
+
+# Create the signed digest as a download (atlas-landscape-digest.json)
+curl -OJ "http://localhost:5199/api/v1/share/digest?kinds=system&kinds=application" -H "X-Tenant-Id: demo"
+```
+
+- **Scope.** `kinds` is any of `system`, `application`, `platform`, `vendor` (default: all). `tag=key:value`
+  may repeat; an item qualifies when it has any of the tags. An unknown kind or malformed tag is a `400`,
+  never silently ignored. The UI has the same choices under **Share summary**, with the preview beside them.
+- **Minimization is enforced when the digest is built**, not only by the schema. The builder reads a name, a
+  kind, a lifecycle, tags (only to filter), the vendor of an application or the provider of an AI service or
+  model, and the number of `connects-to` relationships. It never reads descriptions, hostnames, environments,
+  operating systems, endpoints, locations, owners, attachments, people or data-layer assets, so a landscape
+  that holds them still cannot leak them. Servers, infrastructure and AI services are shared as `platform`;
+  vendor entries are derived from the items that qualified. `plannedChange` is not filled in yet.
+- **Authorization and audit.** Like the export it is elevated: `atlas.landscape.share` (the architect role);
+  a read-only `AtlasCustomer` is denied (`403` + `role_missing`). Each digest writes exactly one
+  `atlas.landscape.shared` audit record with counts and kinds only, never item names, and is rate-limited per
+  tenant (`Atlas:Share:PermitLimit` / `Atlas:Share:WindowSeconds`).
+- **Signature and replay protection.** The digest is signed (RSA 3072, PKCS#1 v1.5, SHA-256) over its
+  RFC 8785 canonical form, with the installation's key, created on first use and stored protected with the
+  application's data protection keys. The public key and key id travel in the file. Each digest has a
+  `sequence` that only rises per tenant, under an opaque `sourceInstanceId` that says nothing about the tenant;
+  a recipient rejects a sequence it has already seen.
+
 ### The format-adapter seam
 
 The **core portability boundary is the canonical contract form** — `LandscapeDocument` out,

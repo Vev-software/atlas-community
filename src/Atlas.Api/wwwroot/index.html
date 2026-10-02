@@ -955,6 +955,7 @@
     <button class="action" id="setupCopilot" title="Grounded suggestions for where to start">Getting started</button>
     <button class="action" id="refresh" title="Reload the landscape">Refresh</button>
     <button class="action" id="export" title="Download the landscape as a portable JSON document">Export JSON</button>
+    <button class="action" id="shareDigest" hidden title="Share a minimized, signed summary of the landscape as a file">Share summary</button>
     <button class="action" id="import" hidden title="Import a landscape from a JSON or Markdown file">Import</button>
     <button class="action ai-entry" id="pasteLandscape" hidden title="Paste notes or upload images to generate a draft landscape">✦ Paste to landscape</button>
   </div>
@@ -1274,6 +1275,44 @@
     </div>
   </div>
 
+  <!-- Share landscape summary (atlas#175): a minimized, signed digest delivered as a file. The user picks the scope and
+       sees exactly which items and fields would leave the installation before downloading. The API owns every rule
+       (authorization -> 403, validation -> 400, throttling -> 429). -->
+  <div class="backdrop" id="shareBackdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="shareTitle" style="max-width: 640px;">
+      <header>
+        <h2 id="shareTitle">Share landscape summary</h2>
+        <button class="close" id="shareClose" type="button" aria-label="Close">&times;</button>
+      </header>
+      <div class="body">
+        <div class="form-error" id="shareError" hidden></div>
+        <p class="hint">A minimized, signed summary for someone you trust. It is a file you hand over: nothing is sent from here. It is not the full export.</p>
+        <fieldset class="field" id="shareKinds">
+          <legend>What to include</legend>
+          <label><input type="checkbox" value="system" checked /> Systems</label>
+          <label><input type="checkbox" value="application" checked /> Applications</label>
+          <label><input type="checkbox" value="platform" checked /> Platforms (servers, infrastructure, AI services)</label>
+          <label><input type="checkbox" value="vendor" checked /> Vendors</label>
+        </fieldset>
+        <div class="field">
+          <label for="shareTags">Only items with a tag (optional)</label>
+          <input id="shareTags" type="text" autocomplete="off" placeholder="key:value, key:value" />
+          <p class="hint">Comma-separated. An item qualifies when it has any of these tags.</p>
+        </div>
+        <div class="field">
+          <strong id="shareCount">Preview</strong>
+          <ul id="sharePreview" style="max-height: 180px; overflow:auto; margin: 6px 0; padding-left: 18px;"></ul>
+        </div>
+        <p class="hint"><strong>Shared:</strong> <span id="shareShared"></span></p>
+        <p class="hint"><strong>Never shared:</strong> <span id="shareNever"></span></p>
+      </div>
+      <footer>
+        <button class="action" id="shareCancel" type="button">Cancel</button>
+        <button class="primary" id="shareDownload" type="button">Download signed file</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- Paste-to-landscape modal (issue #27): paste notes or upload images to generate a draft landscape.
        Routes through POST /api/v1/structure/draft. Draft-only — nothing auto-applied without approval. -->
   <div class="backdrop" id="pasteBackdrop" hidden>
@@ -1450,6 +1489,7 @@
       el("newAsset").hidden = !canAuthor;
       // Import writes to the landscape (merge/replace), so it is an author-only affordance (issue #108).
       el("import").hidden = !canAuthor;
+      el("shareDigest").hidden = !canAuthor;
       // Paste-to-landscape creates draft assets, so it is also an author-only affordance (issue #27).
       el("pasteLandscape").hidden = !canAuthor;
     }
@@ -3924,6 +3964,83 @@
       }
     }
 
+    // --- Share landscape summary (atlas#175): scope -> preview -> signed file. -------------------------
+    let shareBusy = false;
+    let sharePreviewTimer = null;
+
+    function shareQuery() {
+      const params = new URLSearchParams();
+      const kinds = [...el("shareKinds").querySelectorAll("input:checked")].map(i => i.value);
+      for (const kind of kinds) params.append("kinds", kind);
+      for (const tag of el("shareTags").value.split(",").map(t => t.trim()).filter(Boolean)) params.append("tag", tag);
+      return { params, kinds };
+    }
+
+    async function refreshSharePreview() {
+      const { params, kinds } = shareQuery();
+      el("shareError").hidden = true;
+      el("shareDownload").disabled = kinds.length === 0;
+      if (kinds.length === 0) { el("shareCount").textContent = "Choose at least one kind to include."; el("sharePreview").replaceChildren(); return; }
+      try {
+        const res = await fetchWithAuth(api("/v1/share/digest/preview?" + params));
+        if (!res.ok) { showFormError("shareError", await apiError(res)); return; }
+        const preview = await res.json();
+        el("shareCount").textContent = preview.items.length === 1 ? "1 item will be shared" : preview.items.length + " items will be shared";
+        el("sharePreview").replaceChildren(...preview.items.map(item => {
+          const li = document.createElement("li");
+          const details = [item.kind, item.lifecycle];
+          if (item.vendor) details.push(item.vendor);
+          if (item.integrationCount) details.push(item.integrationCount + " integrations");
+          li.textContent = item.name + " (" + details.join(", ") + ")";
+          return li;
+        }));
+        el("shareShared").textContent = preview.shared.join("; ");
+        el("shareNever").textContent = preview.neverShared.join("; ");
+      } catch (err) {
+        showFormError("shareError", "The preview could not be loaded (" + err.message + ").");
+      }
+    }
+
+    function scheduleSharePreview() {
+      clearTimeout(sharePreviewTimer);
+      sharePreviewTimer = setTimeout(refreshSharePreview, 250);
+    }
+
+    function openShare() {
+      el("shareBackdrop").hidden = false;
+      refreshSharePreview();
+    }
+    function closeShare() { el("shareBackdrop").hidden = true; }
+
+    async function downloadShare() {
+      if (shareBusy) return;
+      shareBusy = true;
+      el("shareDownload").disabled = true;
+      try {
+        const res = await fetchWithAuth(api("/v1/share/digest?" + shareQuery().params));
+        if (!res.ok) { showFormError("shareError", await apiError(res)); return; }
+        const url = URL.createObjectURL(await res.blob());
+        const a = document.createElement("a");
+        a.href = url; a.download = "atlas-landscape-digest.json"; a.click();
+        URL.revokeObjectURL(url);
+        closeShare();
+        toast("Summary file created. Each file has its own sequence number and is recorded in the audit trail.");
+      } catch (err) {
+        showFormError("shareError", "The summary could not be created (" + err.message + ").");
+      } finally {
+        shareBusy = false;
+        el("shareDownload").disabled = false;
+      }
+    }
+
+    el("shareDigest").addEventListener("click", openShare);
+    el("shareClose").addEventListener("click", closeShare);
+    el("shareCancel").addEventListener("click", closeShare);
+    el("shareDownload").addEventListener("click", downloadShare);
+    el("shareKinds").addEventListener("change", scheduleSharePreview);
+    el("shareTags").addEventListener("input", scheduleSharePreview);
+    el("shareBackdrop").addEventListener("click", e => { if (e.target === el("shareBackdrop")) closeShare(); });
+
     el("import").addEventListener("click", openImport);
     el("importClose").addEventListener("click", closeImport);
     el("importCancel").addEventListener("click", closeImport);
@@ -4193,6 +4310,7 @@
         if (!el("assetBackdrop").hidden) closeAssetForm();
         if (!el("relBackdrop").hidden) closeRelForm();
         if (!el("importBackdrop").hidden) closeImport();
+        if (!el("shareBackdrop").hidden) closeShare();
         if (!el("confirmBackdrop").hidden) closeConfirm(false);
       }
     });

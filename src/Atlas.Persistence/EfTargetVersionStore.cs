@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Vev.Atlas.Contracts;
 using Vev.Atlas.Domain;
 using Vev.Atlas.Fabric;
+// Contracts 0.1.5 publishes a TargetVersion of its own; the store works with the domain one.
+using TargetVersion = Vev.Atlas.Domain.TargetVersion;
 
 namespace Vev.Atlas.Persistence;
 

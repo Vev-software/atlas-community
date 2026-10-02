@@ -31,6 +31,12 @@ public static class AtlasActions
     /// (atlas#36).
     /// </summary>
     public const string LandscapeExport = "atlas.landscape.export";
+
+    /// <summary>
+    /// Share a minimized, signed landscape summary (the landscape digest) with a consented consumer. Like the
+    /// export it is an elevated, recorded action, not plain read; the digest holds far less than the export.
+    /// </summary>
+    public const string LandscapeShare = "atlas.landscape.share";
 }
 
 /// <summary>
