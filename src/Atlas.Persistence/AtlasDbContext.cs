@@ -23,6 +23,7 @@ public sealed class AtlasDbContext(DbContextOptions<AtlasDbContext> options, IRe
     internal DbSet<AiModuleSettingsRow> AiModuleSettings => Set<AiModuleSettingsRow>();
     internal DbSet<DigestStateRow> DigestStates => Set<DigestStateRow>();
     internal DbSet<DigestKeyRow> DigestKeys => Set<DigestKeyRow>();
+    internal DbSet<ConnectedConsumerRow> ConnectedConsumers => Set<ConnectedConsumerRow>();
 
     /// <summary>
     /// The tenant for the current request. Read lazily through a property so the global query filter is
@@ -84,6 +85,23 @@ public sealed class AtlasDbContext(DbContextOptions<AtlasDbContext> options, IRe
             e.ToTable("digest_state");
             e.HasKey(r => r.TenantId);
             e.Property(r => r.SourceInstanceId).HasMaxLength(128);
+            e.HasQueryFilter(r => r.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<ConnectedConsumerRow>(e =>
+        {
+            e.ToTable("connected_consumers");
+            e.HasKey(r => new { r.TenantId, r.Id });
+            e.Property(r => r.Id).HasMaxLength(64);
+            e.Property(r => r.Name).HasMaxLength(80);
+            e.Property(r => r.DestinationUrl).HasMaxLength(2048);
+            e.Property(r => r.EnrollmentId).HasMaxLength(128);
+            e.Property(r => r.State).HasMaxLength(16);
+            e.Property(r => r.StopReason).HasMaxLength(64);
+            e.Property(r => r.CreatedBy).HasMaxLength(128);
+            e.Property(r => r.LastError).HasMaxLength(512);
+            e.Property(r => r.LastContentFingerprint).HasMaxLength(64);
+            e.HasIndex(r => r.State);
             e.HasQueryFilter(r => r.TenantId == CurrentTenantId);
         });
 

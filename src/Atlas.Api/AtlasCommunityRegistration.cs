@@ -3,6 +3,8 @@ using Microsoft.Extensions.Configuration;
 using Vev.Atlas.Domain;
 using Vev.Atlas.Domain.Portability;
 using Vev.Atlas.Domain.Sharing;
+using Vev.Atlas.Api.Sharing;
+using Vev.Atlas.Domain.Sharing.Push;
 using Vev.Atlas.Fabric;
 using Vev.Atlas.Fabric.Dev;
 using Vev.Atlas.Fabric.Portic;
@@ -62,6 +64,21 @@ public static class AtlasCommunityRegistration
         services.AddScoped<IDigestStateStore, EfDigestStateStore>();
         services.AddScoped<IDigestSigner, EfDigestSigner>();
         services.AddScoped<LandscapeShareService>();
+        services.AddScoped<IConnectedConsumerStore, EfConnectedConsumerStore>();
+        services.AddScoped<ConnectedConsumerService>();
+        services.AddScoped<LandscapePushService>();
+
+        // Outbound push of the share digest to connected consumers (atlas#176). Nothing runs against a consumer until an admin has connected
+        // one, and the transport only ever contacts the destination that admin entered.
+        var pushSettings = new LandscapePushSettings();
+        configuration?.GetSection("Atlas:Share:Push").Bind(pushSettings);
+        services.AddSingleton(pushSettings);
+        services.AddSingleton<LandscapeChangeNotifier>();
+        services.AddSingleton<ILandscapeChangeNotifier>(sp => sp.GetRequiredService<LandscapeChangeNotifier>());
+        services.AddScoped<IShareConsumerClient, HttpShareConsumerClient>();
+        services.AddHttpClient(HttpShareConsumerClient.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(30))
+            .ConfigurePrimaryHttpMessageHandler(() => HttpShareConsumerClient.CreateHandler(pushSettings));
+        services.AddHostedService<LandscapePushBackgroundService>();
         services.AddScoped<ContextPackService>();
         services.AddScoped<StructureDraftService>();
         services.AddScoped<DeliverableDraftService>();

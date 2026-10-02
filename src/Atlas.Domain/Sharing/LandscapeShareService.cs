@@ -85,6 +85,39 @@ public sealed class LandscapeShareService(
     public async Task<SignedLandscapeDigest> CreateAsync(LandscapeDigestScope scope, CancellationToken ct = default)
     {
         Authorize();
+        var signed = await BuildSignedAsync(scope, ct);
+
+        // Counts and kinds only: no item name or customer content in the audit trail.
+        await audit.WriteAsync(AtlasAudit.Event(context, clock, "atlas.landscape.shared",
+            $"atlas:landscape/share?digest={signed.Digest.DigestId}&kinds={string.Join(',', scope.Kinds.Select(Wire))}&tags={scope.Tags.Length}&items={signed.Digest.Items.Length}&sequence={signed.Digest.Sequence}"), ct);
+        return signed;
+    }
+
+    /// <summary>
+    /// A signed digest for an outbound push (atlas#176). It is authorized like the file and uses a sequence number, but it does
+    /// not write the file's audit record: the push writes its own, exactly one per push.
+    /// </summary>
+    public async Task<SignedLandscapeDigest> CreateForPushAsync(LandscapeDigestScope scope, CancellationToken ct = default)
+    {
+        Authorize();
+        return await BuildSignedAsync(scope, ct);
+    }
+
+    /// <summary>
+    /// A fingerprint of what a digest with this scope would hold now, without a sequence number. Equal fingerprints mean nothing
+    /// the consumer can see has changed, so an on-change push can be skipped.
+    /// </summary>
+    public async Task<string> ContentFingerprintAsync(LandscapeDigestScope scope, CancellationToken ct = default)
+    {
+        Authorize();
+        var (assets, relationships) = await ReadAsync(ct);
+        var items = LandscapeDigestBuilder.BuildItems(assets, relationships, scope);
+        var json = JsonSerializer.Serialize(new { kinds = scope.Kinds.Select(Wire), tags = scope.Tags.Select(t => new[] { t.Key, t.Value }), items }, Json);
+        return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json)));
+    }
+
+    private async Task<SignedLandscapeDigest> BuildSignedAsync(LandscapeDigestScope scope, CancellationToken ct)
+    {
         var (assets, relationships) = await ReadAsync(ct);
         var (sourceInstanceId, sequence) = await state.NextAsync(context.Tenant, ct);
         var now = clock.GetUtcNow();
@@ -92,12 +125,7 @@ public sealed class LandscapeShareService(
 
         // The signature is over the canonical form of exactly the digest that is delivered.
         var canonical = Jcs.CanonicalizeUtf8(JsonSerializer.SerializeToNode(digest, Json)!);
-        var signature = await signer.SignAsync(canonical, ct);
-
-        // Counts and kinds only: no item name or customer content in the audit trail.
-        await audit.WriteAsync(AtlasAudit.Event(context, clock, "atlas.landscape.shared",
-            $"atlas:landscape/share?digest={digest.DigestId}&kinds={string.Join(',', scope.Kinds.Select(Wire))}&tags={scope.Tags.Length}&items={digest.Items.Length}&sequence={sequence}"), ct);
-        return new SignedLandscapeDigest(digest, signature);
+        return new SignedLandscapeDigest(digest, await signer.SignAsync(canonical, ct));
     }
 
     /// <summary>The delivered file: the signed wrapper, in the same JSON options the canonical form was computed with.</summary>

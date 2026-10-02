@@ -27,6 +27,12 @@ public sealed class AtlasExceptionHandler(IProblemDetailsService problemDetails)
                     ["source"] = denied.Decision.Source
                 }
             },
+            Vev.Atlas.Domain.Sharing.Push.ConnectedConsumerException consumer => new ProblemDetails
+            {
+                Status = consumer.NotFound ? StatusCodes.Status404NotFound : StatusCodes.Status400BadRequest,
+                Title = consumer.NotFound ? "Not found" : "Invalid request",
+                Detail = consumer.Message
+            },
             CatalogueConflictException conflict => new ProblemDetails
             {
                 Status = StatusCodes.Status409Conflict,

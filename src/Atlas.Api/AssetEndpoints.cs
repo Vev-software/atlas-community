@@ -3,6 +3,7 @@ using Vev.Atlas.Contracts;
 using Vev.Atlas.Domain;
 using Vev.Atlas.Domain.Portability;
 using Vev.Atlas.Domain.Sharing;
+using Vev.Atlas.Domain.Sharing.Push;
 using Vev.Atlas.Fabric;
 
 namespace Vev.Atlas.Api;
@@ -467,6 +468,61 @@ public static class AssetEndpoints
             .WithSummary("Create a signed landscape share digest (atlas-contracts landscape digest v1) as a downloadable file.")
             .RequireRateLimiting(ShareRateLimit.PolicyName);
 
+        // Connected consumers (atlas#176): keep a consenting consumer up to date by pushing the same digest outbound. Same elevated
+        // authorization as the file, and nothing is pushed until an admin has connected a consumer with its one-time code.
+        var consumers = portability.MapGroup("/share/consumers");
+
+        consumers.MapGet("/", async (ConnectedConsumerService service, CancellationToken ct) => Results.Ok(await service.ListAsync(ct)))
+            .WithName("ListConnectedConsumers")
+            .WithSummary("List the consumers this installation pushes its landscape digest to, with the status of the last pushes.");
+
+        consumers.MapPost("/", async (ConnectConsumerRequest request, ConnectedConsumerService service, CancellationToken ct) =>
+        {
+            LandscapeDigestScope scope;
+            try
+            {
+                scope = LandscapeShareService.ParseScope(request.Kinds, request.Tags);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { message = ex.Message });
+            }
+
+            var consumer = await service.ConnectAsync(request.Name, request.DestinationUrl, request.ActivationCode, scope, ct);
+            return Results.Created($"{v1}/share/consumers/{consumer.Id}", consumer);
+        })
+            .WithName("ConnectConsumer")
+            .WithSummary("Connect a consumer: redeem its one-time activation code at the destination and store the credential.")
+            .RequireRateLimiting(ShareRateLimit.PolicyName);
+
+        consumers.MapPut("/{id}/scope", async (string id, ScopeRequest request, ConnectedConsumerService service, CancellationToken ct) =>
+        {
+            try
+            {
+                return Results.Ok(await service.UpdateScopeAsync(id, LandscapeShareService.ParseScope(request.Kinds, request.Tags), ct));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { message = ex.Message });
+            }
+        })
+            .WithName("UpdateConsumerScope")
+            .WithSummary("Change what is shared with a consumer. It takes effect on the next push.");
+
+        consumers.MapPost("/{id}/pause", async (string id, ConnectedConsumerService service, CancellationToken ct) => Results.Ok(await service.PauseAsync(id, ct)))
+            .WithName("PauseConsumer").WithSummary("Pause pushing to a consumer.");
+
+        consumers.MapPost("/{id}/resume", async (string id, ConnectedConsumerService service, CancellationToken ct) => Results.Ok(await service.ResumeAsync(id, ct)))
+            .WithName("ResumeConsumer").WithSummary("Resume pushing to a paused consumer.");
+
+        consumers.MapPost("/{id}/revoke", async (string id, ConnectedConsumerService service, CancellationToken ct) => Results.Ok(await service.RevokeAsync(id, ct)))
+            .WithName("RevokeConsumer").WithSummary("Revoke the sharing from this side: pushes stop at once and the credential is forgotten.");
+
+        consumers.MapPost("/{id}/push", async (string id, LandscapePushService service, CancellationToken ct) => Results.Ok(await service.PushAsync(id, force: true, ct)))
+            .WithName("PushToConsumerNow")
+            .WithSummary("Push the digest to one consumer now.")
+            .RequireRateLimiting(ShareRateLimit.PolicyName);
+
         portability.MapPost("/import", async (string? format, HttpRequest request, AssetService service, LandscapeFormatRegistry formats, CancellationToken ct) =>
         {
             var importer = formats.ResolveImporter(format);
@@ -579,3 +635,9 @@ public static class AssetEndpoints
         relationships = landscape.Relationships
     };
 }
+
+/// <summary>Connect a consumer: where it listens, the one-time code it showed, and what to share (kinds, and tags as key:value).</summary>
+public sealed record ConnectConsumerRequest(string? Name, string? DestinationUrl, string? ActivationCode, string[]? Kinds, string[]? Tags);
+
+/// <summary>What to share with a consumer: kinds, and tags as key:value.</summary>
+public sealed record ScopeRequest(string[]? Kinds, string[]? Tags);
