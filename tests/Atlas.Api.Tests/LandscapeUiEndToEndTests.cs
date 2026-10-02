@@ -132,7 +132,9 @@ public sealed class LandscapeUiEndToEndTests(AtlasUiTestHost host) : IClassFixtu
             AcceptDownloads = true,
             ExtraHTTPHeaders = new Dictionary<string, string>
             {
-                ["X-Tenant-Id"] = "t-share-browser", ["X-Principal-Id"] = "author", ["X-Principal-Roles"] = "AtlasArchitect"
+                ["X-Tenant-Id"] = "t-share-browser",
+                ["X-Principal-Id"] = "author",
+                ["X-Principal-Roles"] = "AtlasArchitect"
             }
         });
         var page = await context.NewPageAsync();
@@ -169,7 +171,9 @@ public sealed class LandscapeUiEndToEndTests(AtlasUiTestHost host) : IClassFixtu
             BaseURL = host.RootUri.ToString(),
             ExtraHTTPHeaders = new Dictionary<string, string>
             {
-                ["X-Tenant-Id"] = "t-share-readonly", ["X-Principal-Id"] = "reader", ["X-Principal-Roles"] = "AtlasCustomer"
+                ["X-Tenant-Id"] = "t-share-readonly",
+                ["X-Principal-Id"] = "reader",
+                ["X-Principal-Roles"] = "AtlasCustomer"
             }
         });
         var page = await context.NewPageAsync();
