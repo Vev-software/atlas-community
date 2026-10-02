@@ -54,8 +54,16 @@ public sealed class EfConnectedConsumerStore(AtlasDbContext db, IDataProtectionP
     {
         var row = new ConnectedConsumerRow
         {
-            TenantId = tenant.TenantId, Id = consumer.Id, Name = consumer.Name, DestinationUrl = consumer.DestinationUrl, EnrollmentId = consumer.EnrollmentId,
-            State = consumer.State.ToString(), KindsJson = "[]", TagsJson = "[]", CreatedAt = consumer.CreatedAt, CreatedBy = consumer.CreatedBy,
+            TenantId = tenant.TenantId,
+            Id = consumer.Id,
+            Name = consumer.Name,
+            DestinationUrl = consumer.DestinationUrl,
+            EnrollmentId = consumer.EnrollmentId,
+            State = consumer.State.ToString(),
+            KindsJson = "[]",
+            TagsJson = "[]",
+            CreatedAt = consumer.CreatedAt,
+            CreatedBy = consumer.CreatedBy,
             ProtectedCredential = _protector.Protect(credential),
         };
         Apply(row, consumer);

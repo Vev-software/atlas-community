@@ -82,33 +82,38 @@ public sealed class LandscapePushService(
         switch (result.Outcome)
         {
             case PushOutcome.Accepted:
-            {
-                var updated = consumer with
                 {
-                    LastAttemptAt = now, LastSuccessAt = now, LastSuccessSequence = signed.Digest.Sequence, LastError = null,
-                    FailureCount = 0, NextAttemptAt = null, LastContentFingerprint = fingerprint,
-                };
-                await store.UpdateAsync(context.Tenant, updated, ct);
-                await EmitAsync(DataSharingAuditVocabulary.PushAcceptAction, resource, AuditOutcome.Success, ct);
-                return new PushReport(PushStatus.Accepted, updated);
-            }
+                    var updated = consumer with
+                    {
+                        LastAttemptAt = now,
+                        LastSuccessAt = now,
+                        LastSuccessSequence = signed.Digest.Sequence,
+                        LastError = null,
+                        FailureCount = 0,
+                        NextAttemptAt = null,
+                        LastContentFingerprint = fingerprint,
+                    };
+                    await store.UpdateAsync(context.Tenant, updated, ct);
+                    await EmitAsync(DataSharingAuditVocabulary.PushAcceptAction, resource, AuditOutcome.Success, ct);
+                    return new PushReport(PushStatus.Accepted, updated);
+                }
 
             case PushOutcome.Denied:
-            {
-                var reason = string.IsNullOrWhiteSpace(result.ReasonCode) ? "denied" : result.ReasonCode!;
-                await EmitAsync(DataSharingAuditVocabulary.PushDenyAction, $"{resource}&reason={SafeCode(reason)}", AuditOutcome.Denied, ct);
-                return await StopAsync(consumer, reason, Explain(reason), now, ct, audited: true);
-            }
+                {
+                    var reason = string.IsNullOrWhiteSpace(result.ReasonCode) ? "denied" : result.ReasonCode!;
+                    await EmitAsync(DataSharingAuditVocabulary.PushDenyAction, $"{resource}&reason={SafeCode(reason)}", AuditOutcome.Denied, ct);
+                    return await StopAsync(consumer, reason, Explain(reason), now, ct, audited: true);
+                }
 
             default:
-            {
-                var failures = consumer.FailureCount + 1;
-                var detail = result.Outcome == PushOutcome.Replayed ? "The consumer saw a digest it had already seen; the next push uses a higher sequence." : result.Error ?? "The push failed.";
-                var updated = consumer with { LastAttemptAt = now, LastError = detail, FailureCount = failures, NextAttemptAt = now + Backoff(failures, settings.MaxBackoffMinutes) };
-                await store.UpdateAsync(context.Tenant, updated, ct);
-                await EmitAsync("atlas.landscape.share.push.fail", $"{resource}&failures={failures}", AuditOutcome.Failure, ct);
-                return new PushReport(PushStatus.WillRetry, updated, detail);
-            }
+                {
+                    var failures = consumer.FailureCount + 1;
+                    var detail = result.Outcome == PushOutcome.Replayed ? "The consumer saw a digest it had already seen; the next push uses a higher sequence." : result.Error ?? "The push failed.";
+                    var updated = consumer with { LastAttemptAt = now, LastError = detail, FailureCount = failures, NextAttemptAt = now + Backoff(failures, settings.MaxBackoffMinutes) };
+                    await store.UpdateAsync(context.Tenant, updated, ct);
+                    await EmitAsync("atlas.landscape.share.push.fail", $"{resource}&failures={failures}", AuditOutcome.Failure, ct);
+                    return new PushReport(PushStatus.WillRetry, updated, detail);
+                }
         }
     }
 

@@ -171,7 +171,9 @@ public sealed class LandscapeUiEndToEndTests(AtlasUiTestHost host) : IClassFixtu
             BaseURL = host.RootUri.ToString(),
             ExtraHTTPHeaders = new Dictionary<string, string>
             {
-                ["X-Tenant-Id"] = "t-consumers-browser", ["X-Principal-Id"] = "author", ["X-Principal-Roles"] = "AtlasArchitect"
+                ["X-Tenant-Id"] = "t-consumers-browser",
+                ["X-Principal-Id"] = "author",
+                ["X-Principal-Roles"] = "AtlasArchitect"
             }
         });
         var page = await context.NewPageAsync();
