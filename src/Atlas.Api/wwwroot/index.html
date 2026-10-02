@@ -568,6 +568,8 @@
       display: grid; place-items: center; padding: 24px; z-index: 50;
     }
     .backdrop[hidden] { display: none; }
+    /* A confirmation opened from another dialog (for example revoking a connected consumer) must sit above it. */
+    #confirmBackdrop { z-index: 60; }
     .modal {
       background: var(--panel); border-radius: 14px; box-shadow: var(--shadow-lg);
       width: 100%; max-width: 520px; max-height: calc(100vh - 48px);
@@ -956,6 +958,7 @@
     <button class="action" id="refresh" title="Reload the landscape">Refresh</button>
     <button class="action" id="export" title="Download the landscape as a portable JSON document">Export JSON</button>
     <button class="action" id="shareDigest" hidden title="Share a minimized, signed summary of the landscape as a file">Share summary</button>
+    <button class="action" id="consumersButton" hidden title="Keep a consenting consumer up to date by pushing the summary to it">Connected consumers</button>
     <button class="action" id="import" hidden title="Import a landscape from a JSON or Markdown file">Import</button>
     <button class="action ai-entry" id="pasteLandscape" hidden title="Paste notes or upload images to generate a draft landscape">✦ Paste to landscape</button>
   </div>
@@ -1313,6 +1316,55 @@
     </div>
   </div>
 
+  <!-- Connected consumers (atlas#176): keep a consenting consumer up to date by pushing the signed summary to it. Off until an admin
+       connects one with the one-time activation code the consumer showed. The API owns every rule. -->
+  <div class="backdrop" id="consumersBackdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="consumersTitle" style="max-width: 720px;">
+      <header>
+        <h2 id="consumersTitle">Connected consumers</h2>
+        <button class="close" id="consumersClose" type="button" aria-label="Close">&times;</button>
+      </header>
+      <div class="body">
+        <div class="form-error" id="consumersError" hidden></div>
+        <p class="hint">Nothing is pushed until you connect a consumer. Atlas only sends out, to the one address you enter, and you can pause or revoke at any time.</p>
+        <ul id="consumersList" style="list-style:none; padding:0; margin:0 0 12px 0; display:grid; gap:10px;"></ul>
+        <p class="hint" id="consumersEmpty">No consumers connected.</p>
+        <hr />
+        <h3 id="consumersFormTitle" style="margin:8px 0;">Connect a consumer</h3>
+        <div id="consumersConnectFields">
+          <div class="field">
+            <label for="consumerUrl">Destination <span class="req">*</span></label>
+            <input id="consumerUrl" type="url" autocomplete="off" placeholder="https://consumer.example/api/atlas" />
+          </div>
+          <div class="field">
+            <label for="consumerCode">One-time activation code <span class="req">*</span></label>
+            <input id="consumerCode" type="text" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" />
+          </div>
+          <div class="field">
+            <label for="consumerName">Name (optional)</label>
+            <input id="consumerName" type="text" autocomplete="off" maxlength="80" />
+          </div>
+        </div>
+        <fieldset class="field" id="consumerKinds">
+          <legend>What to share</legend>
+          <label><input type="checkbox" value="system" checked /> Systems</label>
+          <label><input type="checkbox" value="application" checked /> Applications</label>
+          <label><input type="checkbox" value="platform" checked /> Platforms (servers, infrastructure, AI services)</label>
+          <label><input type="checkbox" value="vendor" checked /> Vendors</label>
+        </fieldset>
+        <div class="field">
+          <label for="consumerTags">Only items with a tag (optional)</label>
+          <input id="consumerTags" type="text" autocomplete="off" placeholder="key:value, key:value" />
+        </div>
+        <p class="hint"><strong id="consumerCount">Preview</strong> &middot; <span id="consumerNever"></span></p>
+      </div>
+      <footer>
+        <button class="action" id="consumersCancelEdit" type="button" hidden>Cancel</button>
+        <button class="primary" id="consumersSubmit" type="button">Connect</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- Paste-to-landscape modal (issue #27): paste notes or upload images to generate a draft landscape.
        Routes through POST /api/v1/structure/draft. Draft-only — nothing auto-applied without approval. -->
   <div class="backdrop" id="pasteBackdrop" hidden>
@@ -1490,6 +1542,7 @@
       // Import writes to the landscape (merge/replace), so it is an author-only affordance (issue #108).
       el("import").hidden = !canAuthor;
       el("shareDigest").hidden = !canAuthor;
+      el("consumersButton").hidden = !canAuthor;
       // Paste-to-landscape creates draft assets, so it is also an author-only affordance (issue #27).
       el("pasteLandscape").hidden = !canAuthor;
     }
@@ -4033,6 +4086,165 @@
       }
     }
 
+    // --- Connected consumers (atlas#176) -----------------------------------------------------------------
+    let consumersBusy = false;
+    let editingConsumerId = null;
+    let consumerPreviewTimer = null;
+
+    function consumerScopeQuery() {
+      const params = new URLSearchParams();
+      const kinds = [...el("consumerKinds").querySelectorAll("input:checked")].map(i => i.value);
+      for (const kind of kinds) params.append("kinds", kind);
+      for (const tag of el("consumerTags").value.split(",").map(t => t.trim()).filter(Boolean)) params.append("tag", tag);
+      return { params, kinds, tags: params.getAll("tag") };
+    }
+
+    function consumerStatusText(c) {
+      const when = c.lastSuccessAt ? new Date(c.lastSuccessAt).toLocaleString() : null;
+      if (c.state === "Active") {
+        if (c.lastError) return "Active, retrying: " + c.lastError;
+        return when ? "Active. Last accepted push: " + when + " (sequence " + c.lastSuccessSequence + ")." : "Active. The first push is on its way.";
+      }
+      if (c.state === "Paused") return "Paused. Nothing is pushed.";
+      if (c.state === "Revoked") return "Revoked from this side.";
+      return "Stopped" + (c.lastError ? ": " + c.lastError : ".");
+    }
+
+    async function consumerAction(id, action, confirmed) {
+      if (consumersBusy) return;
+      consumersBusy = true;
+      el("consumersError").hidden = true;
+      try {
+        const res = await fetchWithAuth(api("/v1/share/consumers/" + encodeURIComponent(id) + "/" + action), { method: "POST" });
+        if (!res.ok) { showFormError("consumersError", await apiError(res)); return; }
+        if (action === "push") {
+          const report = await res.json();
+          toast(report.status === "Accepted" ? "Pushed." : report.detail || "Nothing was pushed.");
+        }
+      } catch (err) {
+        showFormError("consumersError", "That could not be done (" + err.message + ").");
+      } finally {
+        consumersBusy = false;
+        await loadConsumers();
+      }
+    }
+
+    async function loadConsumers() {
+      try {
+        const res = await fetchWithAuth(api("/v1/share/consumers"));
+        if (!res.ok) { showFormError("consumersError", await apiError(res)); return; }
+        const consumers = await res.json();
+        el("consumersEmpty").hidden = consumers.length > 0;
+        el("consumersList").replaceChildren(...consumers.map(c => {
+          const li = document.createElement("li");
+          li.setAttribute("aria-label", "Consumer: " + c.name);
+          li.style.cssText = "border:1px solid var(--line, #d0d7de); border-radius:8px; padding:10px;";
+          const title = document.createElement("strong");
+          title.textContent = c.name;
+          const where = document.createElement("div");
+          where.className = "hint";
+          where.textContent = c.destinationUrl + " \u00b7 " + c.scope.kinds.join(", ");
+          const status = document.createElement("div");
+          status.textContent = consumerStatusText(c);
+          const actions = document.createElement("div");
+          actions.style.cssText = "display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;";
+          const add = (label, handler) => { const b = document.createElement("button"); b.type = "button"; b.className = "action"; b.textContent = label; b.addEventListener("click", handler); actions.append(b); };
+          if (c.state === "Active") { add("Push now", () => consumerAction(c.id, "push")); add("Pause", () => consumerAction(c.id, "pause")); }
+          if (c.state === "Paused") add("Resume", () => consumerAction(c.id, "resume"));
+          if (c.state === "Active" || c.state === "Paused") add("Change what is shared", () => startEditConsumer(c));
+          if (c.state !== "Revoked") add("Revoke", async () => {
+            const ok = await confirmDestructiveAction("Revoke this consumer?", "Pushing stops at once and the credential is deleted. To share again, the consumer must give you a new activation code.", "Revoke");
+            if (ok) await consumerAction(c.id, "revoke");
+          });
+          li.append(title, where, status, actions);
+          return li;
+        }));
+      } catch (err) {
+        showFormError("consumersError", "The consumers could not be loaded (" + err.message + ").");
+      }
+    }
+
+    async function refreshConsumerPreview() {
+      const { params, kinds } = consumerScopeQuery();
+      if (kinds.length === 0) { el("consumerCount").textContent = "Choose at least one kind to share."; return; }
+      try {
+        const res = await fetchWithAuth(api("/v1/share/digest/preview?" + params));
+        if (!res.ok) return;
+        const preview = await res.json();
+        el("consumerCount").textContent = preview.items.length === 1 ? "1 item will be shared" : preview.items.length + " items will be shared";
+        el("consumerNever").textContent = "Never shared: " + preview.neverShared.join("; ");
+      } catch { /* the preview is a convenience; the push itself is governed by the server */ }
+    }
+
+    function scheduleConsumerPreview() {
+      clearTimeout(consumerPreviewTimer);
+      consumerPreviewTimer = setTimeout(refreshConsumerPreview, 250);
+    }
+
+    function resetConsumerForm() {
+      editingConsumerId = null;
+      el("consumersFormTitle").textContent = "Connect a consumer";
+      el("consumersConnectFields").hidden = false;
+      el("consumersSubmit").textContent = "Connect";
+      el("consumersCancelEdit").hidden = true;
+      el("consumerUrl").value = ""; el("consumerCode").value = ""; el("consumerName").value = ""; el("consumerTags").value = "";
+      el("consumerKinds").querySelectorAll("input").forEach(i => { i.checked = true; });
+    }
+
+    function startEditConsumer(c) {
+      editingConsumerId = c.id;
+      el("consumersFormTitle").textContent = "Change what is shared with " + c.name;
+      el("consumersConnectFields").hidden = true;
+      el("consumersSubmit").textContent = "Save";
+      el("consumersCancelEdit").hidden = false;
+      el("consumerKinds").querySelectorAll("input").forEach(i => { i.checked = c.scope.kinds.includes(i.value); });
+      el("consumerTags").value = c.scope.tags.map(t => t.key + ":" + t.value).join(", ");
+      refreshConsumerPreview();
+    }
+
+    async function submitConsumer() {
+      if (consumersBusy) return;
+      const { kinds, tags } = consumerScopeQuery();
+      el("consumersError").hidden = true;
+      if (kinds.length === 0) { showFormError("consumersError", "Choose at least one kind to share."); return; }
+      consumersBusy = true;
+      el("consumersSubmit").disabled = true;
+      try {
+        const editing = editingConsumerId !== null;
+        const res = await fetchWithAuth(api(editing ? "/v1/share/consumers/" + encodeURIComponent(editingConsumerId) + "/scope" : "/v1/share/consumers"), {
+          method: editing ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(editing ? { kinds, tags } : { name: el("consumerName").value, destinationUrl: el("consumerUrl").value, activationCode: el("consumerCode").value, kinds, tags }),
+        });
+        if (!res.ok) { showFormError("consumersError", await apiError(res)); return; }
+        toast(editing ? "Saved. It applies from the next push." : "Connected. The first push is on its way.");
+        resetConsumerForm();
+        await loadConsumers();
+      } catch (err) {
+        showFormError("consumersError", "That could not be saved (" + err.message + ").");
+      } finally {
+        consumersBusy = false;
+        el("consumersSubmit").disabled = false;
+      }
+    }
+
+    function openConsumers() {
+      resetConsumerForm();
+      el("consumersError").hidden = true;
+      el("consumersBackdrop").hidden = false;
+      loadConsumers();
+      refreshConsumerPreview();
+    }
+    function closeConsumers() { el("consumersBackdrop").hidden = true; }
+
+    el("consumersButton").addEventListener("click", openConsumers);
+    el("consumersClose").addEventListener("click", closeConsumers);
+    el("consumersSubmit").addEventListener("click", submitConsumer);
+    el("consumersCancelEdit").addEventListener("click", resetConsumerForm);
+    el("consumerKinds").addEventListener("change", scheduleConsumerPreview);
+    el("consumerTags").addEventListener("input", scheduleConsumerPreview);
+    el("consumersBackdrop").addEventListener("click", e => { if (e.target === el("consumersBackdrop")) closeConsumers(); });
+
     el("shareDigest").addEventListener("click", openShare);
     el("shareClose").addEventListener("click", closeShare);
     el("shareCancel").addEventListener("click", closeShare);
@@ -4311,6 +4523,7 @@
         if (!el("relBackdrop").hidden) closeRelForm();
         if (!el("importBackdrop").hidden) closeImport();
         if (!el("shareBackdrop").hidden) closeShare();
+        if (!el("consumersBackdrop").hidden) closeConsumers();
         if (!el("confirmBackdrop").hidden) closeConfirm(false);
       }
     });

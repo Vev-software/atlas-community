@@ -17,7 +17,8 @@ public sealed class AssetService(
     IAtlasAuditSink audit,
     IAuditQueryService auditQuery,
     IAssetRepository repository,
-    TimeProvider clock)
+    TimeProvider clock,
+    Sharing.Push.ILandscapeChangeNotifier? changes = null)
 {
     /// <summary>
     /// Describe what the current principal may do in the catalogue, so a pure API client (the landscape
@@ -467,9 +468,14 @@ public sealed class AssetService(
         }
     }
 
-    private ValueTask EmitAsync(string action, ResourceId resource, CancellationToken ct) =>
+    private ValueTask EmitAsync(string action, ResourceId resource, CancellationToken ct)
+    {
+        // Every audited action except the export is a change to the landscape; connected consumers are told so they can be updated (atlas#176).
+        if (action != "atlas.landscape.exported") changes?.Notify(context.Tenant.TenantId);
+
         // No secrets, no customer content — only the actor, action and the resource identifier (E4/E5).
-        audit.WriteAsync(AtlasAudit.Event(context, clock, action, resource.Value), ct);
+        return audit.WriteAsync(AtlasAudit.Event(context, clock, action, resource.Value), ct);
+    }
 
     private static ResourceId AssetResource(string id) => new($"atlas:asset/{id}");
 

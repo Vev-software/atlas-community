@@ -234,6 +234,9 @@ curl -OJ "http://localhost:5199/api/v1/share/digest?kinds=system&kinds=applicati
   `sequence` that only rises per tenant, under an opaque `sourceInstanceId` that says nothing about the tenant;
   a recipient rejects a sequence it has already seen.
 
+To keep a consenting consumer up to date without handing over files, an admin can **connect** it and Atlas will push the same digest
+outbound: see [Pushing the landscape digest to a connected consumer](./landscape-share-push.md).
+
 ### The format-adapter seam
 
 The **core portability boundary is the canonical contract form** — `LandscapeDocument` out,

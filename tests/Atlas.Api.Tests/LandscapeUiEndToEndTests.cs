@@ -164,6 +164,108 @@ public sealed class LandscapeUiEndToEndTests(AtlasUiTestHost host) : IClassFixtu
     }
 
     [Fact]
+    public async Task Connected_consumers_lists_status_and_connects_pauses_and_revokes()
+    {
+        await using var context = await _browser!.NewContextAsync(new BrowserNewContextOptions
+        {
+            BaseURL = host.RootUri.ToString(),
+            ExtraHTTPHeaders = new Dictionary<string, string>
+            {
+                ["X-Tenant-Id"] = "t-consumers-browser", ["X-Principal-Id"] = "author", ["X-Principal-Roles"] = "AtlasArchitect"
+            }
+        });
+        var page = await context.NewPageAsync();
+        var calls = new List<(string Method, string Path, string? Body)>();
+        var connected = false;
+        await page.RouteAsync("**/api/v1/share/consumers**", route =>
+        {
+            var request = route.Request;
+            var path = new Uri(request.Url).AbsolutePath;
+            calls.Add((request.Method, path, request.PostData));
+            if (request.Method == "GET")
+            {
+                var extra = connected ? """,{"id":"c3","name":"Newly connected","destinationUrl":"https://new.example/api","enrollmentId":"e3","state":"Active","scope":{"kinds":["application"],"tags":[]},"failureCount":0}""" : "";
+                return route.FulfillAsync(new()
+                {
+                    ContentType = "application/json",
+                    Body = """[{"id":"c1","name":"Partner","destinationUrl":"https://partner.example/api","enrollmentId":"e1","state":"Active","scope":{"kinds":["system","application"],"tags":[]},"lastSuccessAt":"2026-10-02T10:00:00Z","lastSuccessSequence":7,"failureCount":0},"""
+                        + """{"id":"c2","name":"Auditor","destinationUrl":"https://auditor.example/api","enrollmentId":"e2","state":"Stopped","stopReason":"sharing_enrollment_revoked","lastError":"The consumer revoked the sharing. Pushing has stopped.","scope":{"kinds":["vendor"],"tags":[{"key":"shared","value":"true"}]},"failureCount":0}""" + extra + "]"
+                });
+            }
+
+            if (request.Method == "POST" && path.EndsWith("/api/v1/share/consumers", StringComparison.Ordinal))
+            {
+                if (request.PostData!.Contains("BADCODE"))
+                {
+                    return route.FulfillAsync(new() { Status = 400, ContentType = "application/problem+json", Body = """{"title":"Invalid request","status":400,"detail":"The consumer did not accept that code. Check it and try again."}""" });
+                }
+
+                connected = true;
+                return route.FulfillAsync(new() { Status = 201, ContentType = "application/json", Body = """{"id":"c3"}""" });
+            }
+
+            return route.FulfillAsync(new() { ContentType = "application/json", Body = """{"id":"c1"}""" });
+        });
+        await page.GotoAsync("/");
+        await page.Locator("#consumersButton:not([hidden])").WaitForAsync();
+        await page.Locator("#consumersButton").ClickAsync();
+
+        // Status is shown per consumer, with the reason when the consumer stopped it.
+        var partner = page.GetByLabel("Consumer: Partner");
+        await partner.WaitForAsync();
+        Assert.Contains("Last accepted push", await partner.InnerTextAsync());
+        Assert.Contains("(sequence 7)", await partner.InnerTextAsync());
+        var auditor = page.GetByLabel("Consumer: Auditor");
+        Assert.Contains("The consumer revoked the sharing", await auditor.InnerTextAsync());
+        Assert.Equal(0, await auditor.GetByRole(AriaRole.Button, new() { Name = "Pause" }).CountAsync());   // a stopped consumer cannot be paused or resumed
+
+        // A refused code is explained and nothing is added.
+        await page.Locator("#consumerUrl").FillAsync("https://new.example/api");
+        await page.Locator("#consumerCode").FillAsync("BADCODE");
+        await page.Locator("#consumersSubmit").ClickAsync();
+        await page.Locator("#consumersError:not([hidden])").WaitForAsync();
+        Assert.Contains("did not accept that code", await page.Locator("#consumersError").InnerTextAsync());
+
+        // A good code connects, with the chosen scope.
+        await page.Locator("#consumerCode").FillAsync("AAAA-BBBB");
+        await page.Locator("#consumerKinds input[value=system]").UncheckAsync();
+        await page.Locator("#consumerKinds input[value=platform]").UncheckAsync();
+        await page.Locator("#consumerKinds input[value=vendor]").UncheckAsync();
+        await page.Locator("#consumersSubmit").ClickAsync();
+        await page.GetByLabel("Consumer: Newly connected").WaitForAsync();
+        var post = calls.Last(c => c.Method == "POST" && c.Path.EndsWith("/api/v1/share/consumers", StringComparison.Ordinal));
+        using var body = System.Text.Json.JsonDocument.Parse(post.Body!);
+        Assert.Equal("AAAA-BBBB", body.RootElement.GetProperty("activationCode").GetString());
+        Assert.Equal(["application"], body.RootElement.GetProperty("kinds").EnumerateArray().Select(k => k.GetString()));
+
+        // Pause, change the scope, and revoke (after confirming) go to the consumer's own routes.
+        var listings = calls.Count(c => c.Method == "GET");
+        await partner.GetByRole(AriaRole.Button, new() { Name = "Pause" }).ClickAsync();
+        await Eventually(() => calls.Any(c => c.Path.EndsWith("/c1/pause", StringComparison.Ordinal)));
+        await Eventually(() => calls.Count(c => c.Method == "GET") > listings);   // the list is redrawn after the action
+        await partner.GetByRole(AriaRole.Button, new() { Name = "Change what is shared" }).ClickAsync();
+        await page.Locator("#consumerKinds input[value=application]").UncheckAsync();
+        await page.Locator("#consumersSubmit").ClickAsync();
+        await Eventually(() => calls.Any(c => c.Method == "PUT"));
+        await Eventually(() => calls.Count(c => c.Method == "GET") > listings + 1);
+        await partner.GetByRole(AriaRole.Button, new() { Name = "Revoke" }).ClickAsync();
+        await page.Locator("#confirmAccept").ClickAsync();
+        await Eventually(() => calls.Any(c => c.Path.EndsWith("/c1/revoke", StringComparison.Ordinal)));
+
+        Assert.Contains(calls, c => c.Method == "POST" && c.Path.EndsWith("/api/v1/share/consumers/c1/pause", StringComparison.Ordinal));
+        var scope = calls.Single(c => c.Method == "PUT" && c.Path.EndsWith("/api/v1/share/consumers/c1/scope", StringComparison.Ordinal));
+        using var scopeBody = System.Text.Json.JsonDocument.Parse(scope.Body!);
+        Assert.Equal(["system"], scopeBody.RootElement.GetProperty("kinds").EnumerateArray().Select(k => k.GetString()));
+        Assert.Contains(calls, c => c.Method == "POST" && c.Path.EndsWith("/api/v1/share/consumers/c1/revoke", StringComparison.Ordinal));
+    }
+
+    private static async Task Eventually(Func<bool> condition, Func<string>? describe = null)
+    {
+        for (var i = 0; i < 100 && !condition(); i++) await Task.Delay(50);
+        Assert.True(condition(), "The expected request was not made. " + describe?.Invoke());
+    }
+
+    [Fact]
     public async Task Share_summary_is_not_offered_to_a_read_only_user()
     {
         await using var context = await _browser!.NewContextAsync(new BrowserNewContextOptions
