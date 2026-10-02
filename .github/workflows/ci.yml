@@ -9,10 +9,20 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same PR supersedes the run still going; main pushes always finish.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_NOLOGO: '1'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+
 jobs:
   build-test-fitness:
     name: build · test · fitness (public feeds only)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -22,20 +32,36 @@ jobs:
         with:
           global-json-file: global.json
 
+      # Main writes the caches on push; PRs read them.
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Packages.props', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
       - name: Restore
         run: dotnet restore Atlas.slnx
+
+      # Fail fast: formatting needs only the restore, so a style error is reported in seconds
+      # instead of after the build.
+      - name: Lint (format verify)
+        run: dotnet format Atlas.slnx --verify-no-changes --no-restore
 
       # Build enforces analyzers + TreatWarningsAsErrors (Directory.Build.props). NuGet audit
       # advisories stay warnings (NU19xx) by design — tracked in #9.
       - name: Build
         run: dotnet build Atlas.slnx -c Release --no-restore
 
-      - name: Lint (format verify)
-        run: dotnet format Atlas.slnx --verify-no-changes --no-restore
-
       # The landscape UI end-to-end test (issue #134) drives the shipped UI in a real browser via
       # Playwright, so CI must install the Chromium build the test project references. --with-deps
       # pulls the OS libraries the headless browser needs on ubuntu-latest.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('Directory.Packages.props') }}
+
       - name: Install Playwright browser (Chromium)
         run: pwsh tests/Atlas.Api.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
 
@@ -51,6 +77,7 @@ jobs:
   sonar-configuration:
     name: SonarCloud configuration
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       enabled: ${{ steps.configuration.outputs.enabled }}
     steps:
