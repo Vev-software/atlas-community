@@ -39,7 +39,9 @@ public sealed record ConnectedConsumer(
     string? LastError = null,
     int FailureCount = 0,
     DateTimeOffset? NextAttemptAt = null,
-    string? LastContentFingerprint = null);
+    string? LastContentFingerprint = null,
+    /// <summary>The admin's opt-in to share relations (runsOn, suppliedBy, layer) with this consumer. Off unless explicitly turned on; the separate grant is checked at every push.</summary>
+    bool ShareRelations = false);
 
 /// <summary>A due consumer found by the scheduler, with the tenant it belongs to.</summary>
 public sealed record DueConsumer(string TenantId, string ConsumerId);

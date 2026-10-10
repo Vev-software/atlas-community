@@ -18,6 +18,15 @@ The code and the data-sharing enrollment it belongs to are defined by the public
 tenant-bound credential that binds one source tenant to one consumer account, with a single-use, expiring activation code, and that either
 side can revoke.
 
+## Sharing relations with a consumer
+
+Connecting (or changing the scope of) a consumer has an optional **Share relations** switch, off by default. With it on, pushes carry the
+[v2 digest](./DEVELOPMENT.md#sharing-relations-digest-v2-stage-1) (`runsOn`, `suppliedBy`, `layer`); with it off they are the v1 digest as before.
+Turning it on needs the separate `atlas.landscape.share.relations` grant on top of `atlas.landscape.share`; turning it off needs nothing.
+The stored switch is consent, not authorization: **every push checks the grant again**, and a push for a consumer whose grant has lapsed is
+sent as v1 without relations. A change to the relations or layers counts as a change worth pushing, and each push's audit record says whether
+relations were included and the edge counts by kind.
+
 ## What Atlas calls
 
 Only these three calls, only to the destination the admin entered (`{base}`), and never with any content except the signed digest:

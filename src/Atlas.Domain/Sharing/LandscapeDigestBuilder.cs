@@ -33,7 +33,13 @@ public static class LandscapeDigestBuilder
 
     /// <summary>The items a digest with this scope would hold, in a stable order.</summary>
     public static ImmutableArray<LandscapeDigestItem> BuildItems(
-        IEnumerable<Asset> assets, IEnumerable<Relationship> relationships, LandscapeDigestScope scope)
+        IEnumerable<Asset> assets, IEnumerable<Relationship> relationships, LandscapeDigestScope scope) =>
+        [.. Select(assets, relationships, scope).Select(entry => entry.Item)];
+
+    /// <summary>One selected digest item, with the asset it came from (null for a synthesized vendor entry). The asset never leaves the builder.</summary>
+    private sealed record Entry(Asset? Asset, LandscapeDigestItem Item);
+
+    private static List<Entry> Select(IEnumerable<Asset> assets, IEnumerable<Relationship> relationships, LandscapeDigestScope scope)
     {
         var integrations = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var relationship in relationships.Where(r => r.Type == RelationshipType.ConnectsTo))
@@ -42,7 +48,7 @@ public static class LandscapeDigestBuilder
             integrations[relationship.ToId] = integrations.GetValueOrDefault(relationship.ToId) + 1;
         }
 
-        var items = new List<LandscapeDigestItem>();
+        var entries = new List<Entry>();
         var vendors = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var asset in assets.OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase).ThenBy(a => a.Id, StringComparer.Ordinal))
         {
@@ -50,18 +56,92 @@ public static class LandscapeDigestBuilder
             var vendor = VendorOf(asset);
             if (vendor is not null) vendors.Add(vendor);
             var count = integrations.GetValueOrDefault(asset.Id);
-            items.Add(new LandscapeDigestItem(kind, Clip(asset.Name, MaxName), asset.Lifecycle, vendor,
-                IntegrationCount: kind is DigestKind.System or DigestKind.Application && count > 0 ? count : null));
+            entries.Add(new Entry(asset, new LandscapeDigestItem(kind, Clip(asset.Name, MaxName), asset.Lifecycle, vendor,
+                IntegrationCount: kind is DigestKind.System or DigestKind.Application && count > 0 ? count : null)));
         }
 
         // A vendor entry summarizes a vendor present among the items that qualified, so the tag filter applies to it too.
         if (scope.Kinds.Contains(DigestKind.Vendor))
         {
-            items.AddRange(vendors.Select(vendor => new LandscapeDigestItem(DigestKind.Vendor, vendor, Lifecycle.Active)));
+            entries.AddRange(vendors.Select(vendor => new Entry(null, new LandscapeDigestItem(DigestKind.Vendor, vendor, Lifecycle.Active))));
         }
 
-        return [.. items];
+        return entries;
     }
+
+    /// <summary>The most edges a v2 digest may hold (the contract's limit).</summary>
+    public const int MaxRelations = 20000;
+
+    /// <summary>
+    /// The v2 digest (relations stage 1): the same minimized items plus an opaque per-digest <c>ref</c>, a <c>layer</c> hint derived from the asset kind
+    /// and the closed edges <c>runsOn</c> and <c>suppliedBy</c>. Only built when the sharer opted in to relations; with relations off the builder's v1
+    /// output is used unchanged. An edge is emitted only between two items that are in the digest, so a kind or tag filter can never be bypassed by an
+    /// edge, and nothing is read from a relationship beyond its two ends and its type. <c>connects-to</c> (stage 2), <c>depends-on</c>, <c>part-of</c>
+    /// and <c>joins-on</c> are never exported.
+    /// </summary>
+    public static LandscapeDigestV2 BuildV2(
+        IEnumerable<Asset> assets, IEnumerable<Relationship> relationships, LandscapeDigestScope scope,
+        string digestId, string sourceInstanceId, int sequence, DateTimeOffset generatedAt)
+    {
+        var relationshipList = relationships as IReadOnlyCollection<Relationship> ?? [.. relationships];
+        var entries = Select(assets, relationshipList, scope);
+
+        // Refs are minted here, in the builder's stable order, and mean nothing outside this digest: never the asset id.
+        var refs = new string[entries.Count];
+        var items = ImmutableArray.CreateBuilder<LandscapeDigestItemV2>(entries.Count);
+        var refOfAsset = new Dictionary<string, string>(StringComparer.Ordinal);
+        var refOfVendor = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var (asset, item) = (entries[i].Asset, entries[i].Item);
+            refs[i] = "c" + (i + 1);
+            if (asset is not null) refOfAsset[asset.Id] = refs[i];
+            else refOfVendor[item.Name] = refs[i];
+            items.Add(new LandscapeDigestItemV2(refs[i], item.Kind, item.Name, item.Lifecycle, item.Vendor, item.PlannedChange, item.IntegrationCount, LayerOf(item.Kind)));
+        }
+
+        var kindByRef = items.ToDictionary(i => i.Ref, i => i.Kind, StringComparer.Ordinal);
+        var edges = new SortedSet<(DigestRelationKind Kind, string From, string To)>(Comparer<(DigestRelationKind Kind, string From, string To)>.Create(CompareEdges));
+        foreach (var relationship in relationshipList)
+        {
+            // `hosts` is the same fact as `runs-on` read the other way round, so both become one runsOn edge.
+            var (systemId, platformId) = relationship.Type switch
+            {
+                RelationshipType.RunsOn => (relationship.FromId, relationship.ToId),
+                RelationshipType.Hosts => (relationship.ToId, relationship.FromId),
+                _ => ((string?)null, (string?)null),
+            };
+            if (systemId is null || platformId is null) continue;
+            if (!refOfAsset.TryGetValue(systemId, out var from) || !refOfAsset.TryGetValue(platformId, out var to) || from == to) continue;
+            if (kindByRef[from] is DigestKind.System or DigestKind.Application && kindByRef[to] == DigestKind.Platform) edges.Add((DigestRelationKind.RunsOn, from, to));
+        }
+
+        // A supplier edge follows the vendor name already in the digest; with vendor out of scope there is no vendor item and so no edge.
+        for (var i = 0; i < entries.Count; i++)
+        {
+            if (entries[i].Asset is null || entries[i].Item.Vendor is not { } vendor || !refOfVendor.TryGetValue(vendor, out var vendorRef)) continue;
+            edges.Add((DigestRelationKind.SuppliedBy, refs[i], vendorRef));
+        }
+
+        var relationsScope = new LandscapeDigestScopeV2(scope.Kinds, scope.Tags, Relations: true);
+        return new LandscapeDigestV2(digestId, generatedAt, sourceInstanceId, sequence, relationsScope, items.MoveToImmutable(),
+            [.. edges.Take(MaxRelations).Select(e => new LandscapeDigestRelation(e.From, e.To, e.Kind))]);
+    }
+
+    private static int CompareEdges((DigestRelationKind Kind, string From, string To) a, (DigestRelationKind Kind, string From, string To) b)
+    {
+        if (a.Kind != b.Kind) return a.Kind.CompareTo(b.Kind);
+        var from = string.CompareOrdinal(a.From, b.From);
+        return from != 0 ? from : string.CompareOrdinal(a.To, b.To);
+    }
+
+    /// <summary>A digest classification derived from the digest kind, not an ArchiMate claim. Vendor entries carry none.</summary>
+    private static DigestLayer? LayerOf(DigestKind kind) => kind switch
+    {
+        DigestKind.System or DigestKind.Application => DigestLayer.Application,
+        DigestKind.Platform => DigestLayer.Infrastructure,
+        _ => null,
+    };
 
     public static LandscapeDigest Build(
         IEnumerable<Asset> assets, IEnumerable<Relationship> relationships, LandscapeDigestScope scope,

@@ -159,6 +159,9 @@ namespace Vev.Atlas.Persistence.Migrations
                     b.Property<string>("ProtectedCredential")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("ShareRelations")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(16)
