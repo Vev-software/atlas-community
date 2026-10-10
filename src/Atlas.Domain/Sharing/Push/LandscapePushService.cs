@@ -57,7 +57,9 @@ public sealed class LandscapePushService(
         var credential = await store.GetCredentialAsync(context.Tenant, consumer.Id, ct);
         if (credential is null) return await StopAsync(consumer, "credential_missing", "The credential is missing. Connect again with a new activation code.", now, ct);
 
-        var fingerprint = await share.ContentFingerprintAsync(consumer.Scope, ct);
+        // The stored switch is consent, not authorization: relations travel only while the separate grant is also held, else the push is v1 as before.
+        var relations = consumer.ShareRelations && share.CanShareRelations();
+        var fingerprint = await share.ContentFingerprintAsync(consumer.Scope, relations, ct);
         var staleAfter = TimeSpan.FromHours(settings.DailyHours);
         var fresh = consumer.LastSuccessAt is { } last && now - last < staleAfter;
         if (!force && fresh && string.Equals(fingerprint, consumer.LastContentFingerprint, StringComparison.Ordinal))
@@ -65,7 +67,7 @@ public sealed class LandscapePushService(
             return new PushReport(PushStatus.Skipped, consumer, "Nothing has changed since the last accepted push.");
         }
 
-        var signed = await share.CreateForPushAsync(consumer.Scope, ct);
+        var signed = await share.CreateForPushAsync(consumer.Scope, relations, ct);
         var bytes = LandscapeShareService.Render(signed);
         PushResult result;
         try
@@ -78,7 +80,7 @@ public sealed class LandscapePushService(
             result = new PushResult(PushOutcome.Retry, Error: $"Could not reach the consumer ({ex.GetType().Name}).");
         }
 
-        var resource = $"atlas:landscape/share/push/{context.Tenant.TenantId}/{consumer.EnrollmentId}?digest={signed.Digest.DigestId}&sequence={signed.Digest.Sequence}&items={signed.Digest.Items.Length}";
+        var resource = $"atlas:landscape/share/push/{context.Tenant.TenantId}/{consumer.EnrollmentId}?digest={signed.DigestId}&sequence={signed.Sequence}&items={signed.ItemCount}{LandscapeShareService.RelationAudit(signed)}";
         switch (result.Outcome)
         {
             case PushOutcome.Accepted:
@@ -87,7 +89,7 @@ public sealed class LandscapePushService(
                     {
                         LastAttemptAt = now,
                         LastSuccessAt = now,
-                        LastSuccessSequence = signed.Digest.Sequence,
+                        LastSuccessSequence = signed.Sequence,
                         LastError = null,
                         FailureCount = 0,
                         NextAttemptAt = null,

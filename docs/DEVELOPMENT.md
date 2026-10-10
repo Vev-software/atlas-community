@@ -234,6 +234,25 @@ curl -OJ "http://localhost:5199/api/v1/share/digest?kinds=system&kinds=applicati
   `sequence` that only rises per tenant, under an opaque `sourceInstanceId` that says nothing about the tenant;
   a recipient rejects a sequence it has already seen.
 
+#### Sharing relations (digest v2, stage 1)
+
+By default the file is the v1 digest above. A sharer can additionally **opt in to relations** (`relations=true` on the preview and file
+endpoints; **Share relations** in the UI, off by default). The file is then the public **landscape digest v2** and adds only:
+
+- an opaque `ref` per item (`c1`, `c2`, ... in the builder's stable order, minted per digest and never an asset id),
+- a `layer` hint derived from the kind (`application` for systems and applications, `infrastructure` for platforms; vendors carry none), a
+  digest classification and not an ArchiMate claim,
+- the closed edges `runsOn` (system or application to platform, from `runs-on`, and from `hosts` read the other way round so one fact is one
+  edge) and `suppliedBy` (component to the vendor item already in the digest).
+
+Edges are emitted **only between two items that are in the digest**, so a kind or tag filter cannot be bypassed by an edge. `connects-to`,
+`depends-on`, `part-of`, `joins-on`, relationship descriptions and data-layer links are never exported, and `integrates` (stage 2) is not
+exported at all. With the switch off the output is exactly the v1 digest of before.
+
+Relations need the **separate Fabric grant** `atlas.landscape.share.relations` in addition to `atlas.landscape.share`: without it the preview and
+the file are denied with a reason code (`403`), no sequence number is used and nothing is audited. The switch records the admin's consent; a
+signed payload scope is never authorization. The audit record of the file adds `relations=true`, `runsOn` and `suppliedBy` counts (never names).
+
 To keep a consenting consumer up to date without handing over files, an admin can **connect** it and Atlas will push the same digest
 outbound: see [Pushing the landscape digest to a connected consumer](./landscape-share-push.md).
 

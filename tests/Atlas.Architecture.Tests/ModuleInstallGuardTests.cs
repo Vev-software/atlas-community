@@ -29,6 +29,7 @@ public sealed class ModuleInstallGuardTests
             "atlas.data.overlap",
             "atlas.data.quality",
             "atlas.export.archimate",
+            "atlas.landscape.share.relations",
         ];
         Assert.Equal(expected.OrderBy(v => v, StringComparer.Ordinal), reserved);
     }

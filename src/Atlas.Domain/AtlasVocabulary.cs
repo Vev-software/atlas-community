@@ -114,6 +114,12 @@ public static class AtlasCapabilities
     public static readonly CapabilityId ArchimateExport = AtlasTaxonomy.ExportArchiMate;
 
     /// <summary>
+    /// Share landscape relations (runsOn, suppliedBy, layer) in the landscape digest, on top of <see cref="AtlasActions.LandscapeShare"/>. The canonical
+    /// Fabric id (<c>atlas.landscape.share.relations</c>); a signed payload scope never substitutes for it.
+    /// </summary>
+    public static readonly CapabilityId LandscapeShareRelations = AtlasTaxonomy.LandscapeShareRelations;
+
+    /// <summary>
     /// The reserved paid capabilities, as one authoritative set. The free/paid line is entitlement-only:
     /// a Community-installed module may add value at the edges (importers/exporters, connectors, panels)
     /// but may never declare or satisfy one of these — that would be a back-door around the entitlement
@@ -132,6 +138,7 @@ public static class AtlasCapabilities
         DataOverlap,
         DataQuality,
         ArchimateExport,
+        LandscapeShareRelations,
     };
 
     /// <summary>Whether <paramref name="capability"/> is a reserved paid capability no module may claim.</summary>

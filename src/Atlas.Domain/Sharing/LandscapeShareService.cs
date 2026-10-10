@@ -16,8 +16,31 @@ public sealed record DigestSignature(
 
 /// <summary>The delivery wrapper of a signed digest, as documented with the digest contract.</summary>
 public sealed record SignedLandscapeDigest(
-    [property: JsonPropertyName("digest")] LandscapeDigest Digest,
-    [property: JsonPropertyName("signature")] DigestSignature Signature);
+    [property: JsonPropertyName("digest")] object Digest,
+    [property: JsonPropertyName("signature")] DigestSignature Signature)
+{
+    /// <summary>Contract version of the digest inside: 1, or 2 when the sharer opted in to relations.</summary>
+    [JsonIgnore]
+    public string ContractVersion => Digest is LandscapeDigestV2 ? "2" : "1";
+
+    [JsonIgnore]
+    public string DigestId => Digest is LandscapeDigestV2 v2 ? v2.DigestId : ((LandscapeDigest)Digest).DigestId;
+
+    [JsonIgnore]
+    public int Sequence => Digest is LandscapeDigestV2 v2 ? v2.Sequence : ((LandscapeDigest)Digest).Sequence;
+
+    [JsonIgnore]
+    public int ItemCount => Digest is LandscapeDigestV2 v2 ? v2.Items.Length : ((LandscapeDigest)Digest).Items.Length;
+
+    /// <summary>Edge counts by kind (zero for a v1 digest). Counts only, safe for an audit record.</summary>
+    [JsonIgnore]
+    public (int RunsOn, int SuppliedBy) RelationCounts => Digest is LandscapeDigestV2 { Relations: { } edges }
+        ? (edges.Count(e => e.Kind == DigestRelationKind.RunsOn), edges.Count(e => e.Kind == DigestRelationKind.SuppliedBy))
+        : (0, 0);
+}
+
+/// <summary>One edge as the sharer sees it before sharing: item names and the closed kind, nothing else.</summary>
+public sealed record PreviewRelation(string From, string To, string Kind);
 
 /// <summary>
 /// What a digest would hold, shown before anything leaves the installation. <see cref="Shared"/> and
@@ -27,7 +50,11 @@ public sealed record DigestPreview(
     LandscapeDigestScope Scope,
     ImmutableArray<LandscapeDigestItem> Items,
     ImmutableArray<string> Shared,
-    ImmutableArray<string> NeverShared);
+    ImmutableArray<string> NeverShared,
+    bool RelationsIncluded = false,
+    ImmutableArray<PreviewRelation>? Relations = null,
+    int RunsOnCount = 0,
+    int SuppliedByCount = 0);
 
 /// <summary>Signs a digest with the installation's key. The key itself never leaves the implementation.</summary>
 public interface IDigestSigner
@@ -58,6 +85,7 @@ public sealed class LandscapeShareService(
     IAssetRepository repository,
     IDigestSigner signer,
     IDigestStateStore state,
+    PaidCapabilityGate gate,
     TimeProvider clock)
 {
     public const string SignatureAlgorithm = "rsa-pkcs1-v1_5-sha256";
@@ -71,57 +99,85 @@ public sealed class LandscapeShareService(
     public static readonly ImmutableArray<string> SharedFields =
         ["kind", "name", "lifecycle", "vendor or provider (applications and AI services or models)", "number of connects-to relationships (systems and applications)"];
 
+    /// <summary>What an edge reveals; shown next to the "Share relations" switch and added to the preview when it is on.</summary>
+    public static readonly ImmutableArray<string> RelationFields =
+        ["which system or application runs on which platform", "which vendor supplies which component", "a layer hint (application or infrastructure) per item"];
+
     public static readonly ImmutableArray<string> NeverSharedFields =
         ["descriptions", "hostnames and IP addresses", "servers' environment and operating system", "endpoints and locations", "owners and people", "attachments",
          "data areas, datasets and columns", "relationship details", "credentials"];
 
-    public async Task<DigestPreview> PreviewAsync(LandscapeDigestScope scope, CancellationToken ct = default)
+    public async Task<DigestPreview> PreviewAsync(LandscapeDigestScope scope, bool relations = false, CancellationToken ct = default)
     {
         Authorize();
+        if (relations) RequireRelations();
         var (assets, relationships) = await ReadAsync(ct);
-        return new DigestPreview(scope, LandscapeDigestBuilder.BuildItems(assets, relationships, scope), SharedFields, NeverSharedFields);
+        var items = LandscapeDigestBuilder.BuildItems(assets, relationships, scope);
+        if (!relations) return new DigestPreview(scope, items, SharedFields, NeverSharedFields);
+
+        var v2 = LandscapeDigestBuilder.BuildV2(assets, relationships, scope, "preview", "preview", 0, clock.GetUtcNow());
+        var nameOf = v2.Items.ToDictionary(i => i.Ref, i => i.Name, StringComparer.Ordinal);
+        var edges = v2.Relations ?? [];
+        return new DigestPreview(scope, items, [.. SharedFields, .. RelationFields], NeverSharedFields, RelationsIncluded: true,
+            Relations: [.. edges.Select(e => new PreviewRelation(nameOf[e.From], nameOf[e.To], Wire(e.Kind)))],
+            RunsOnCount: edges.Count(e => e.Kind == DigestRelationKind.RunsOn), SuppliedByCount: edges.Count(e => e.Kind == DigestRelationKind.SuppliedBy));
     }
 
-    public async Task<SignedLandscapeDigest> CreateAsync(LandscapeDigestScope scope, CancellationToken ct = default)
+    public async Task<SignedLandscapeDigest> CreateAsync(LandscapeDigestScope scope, bool relations = false, CancellationToken ct = default)
     {
         Authorize();
-        var signed = await BuildSignedAsync(scope, ct);
+        if (relations) RequireRelations();
+        var signed = await BuildSignedAsync(scope, relations, ct);
 
-        // Counts and kinds only: no item name or customer content in the audit trail.
+        // Counts and kinds only: no item name or customer content in the audit trail. It records who shared what scope and whether relations were part of it.
         await audit.WriteAsync(AtlasAudit.Event(context, clock, "atlas.landscape.shared",
-            $"atlas:landscape/share?digest={signed.Digest.DigestId}&kinds={string.Join(',', scope.Kinds.Select(Wire))}&tags={scope.Tags.Length}&items={signed.Digest.Items.Length}&sequence={signed.Digest.Sequence}"), ct);
+            $"atlas:landscape/share?digest={signed.DigestId}&kinds={string.Join(',', scope.Kinds.Select(Wire))}&tags={scope.Tags.Length}&items={signed.ItemCount}&sequence={signed.Sequence}{RelationAudit(signed)}"), ct);
         return signed;
     }
+
+    /// <summary>The audit suffix for relations: whether they were included and the edge counts by kind.</summary>
+    public static string RelationAudit(SignedLandscapeDigest signed) =>
+        signed.ContractVersion == "2" ? $"&relations=true&runsOn={signed.RelationCounts.RunsOn}&suppliedBy={signed.RelationCounts.SuppliedBy}" : "&relations=false";
+
+    /// <summary>Whether this tenant holds the separate relations grant. A push with relations on falls back to v1 while it does not.</summary>
+    public bool CanShareRelations() => gate.Evaluate(AtlasCapabilities.LandscapeShareRelations, LandscapeResource).Allowed;
 
     /// <summary>
     /// A signed digest for an outbound push (atlas#176). It is authorized like the file and uses a sequence number, but it does
     /// not write the file's audit record: the push writes its own, exactly one per push.
     /// </summary>
-    public async Task<SignedLandscapeDigest> CreateForPushAsync(LandscapeDigestScope scope, CancellationToken ct = default)
+    public async Task<SignedLandscapeDigest> CreateForPushAsync(LandscapeDigestScope scope, bool relations = false, CancellationToken ct = default)
     {
         Authorize();
-        return await BuildSignedAsync(scope, ct);
+        if (relations) RequireRelations();
+        return await BuildSignedAsync(scope, relations, ct);
     }
 
     /// <summary>
     /// A fingerprint of what a digest with this scope would hold now, without a sequence number. Equal fingerprints mean nothing
     /// the consumer can see has changed, so an on-change push can be skipped.
     /// </summary>
-    public async Task<string> ContentFingerprintAsync(LandscapeDigestScope scope, CancellationToken ct = default)
+    public async Task<string> ContentFingerprintAsync(LandscapeDigestScope scope, bool relations = false, CancellationToken ct = default)
     {
         Authorize();
+        if (relations) RequireRelations();
         var (assets, relationships) = await ReadAsync(ct);
         var items = LandscapeDigestBuilder.BuildItems(assets, relationships, scope);
-        var json = JsonSerializer.Serialize(new { kinds = scope.Kinds.Select(Wire), tags = scope.Tags.Select(t => new[] { t.Key, t.Value }), items }, Json);
+        // With relations on the edges and layers are part of what the consumer can see, so a change to them is a change to push.
+        var edges = relations ? LandscapeDigestBuilder.BuildV2(assets, relationships, scope, "fingerprint", "fingerprint", 0, DateTimeOffset.UnixEpoch) : null;
+        var json = JsonSerializer.Serialize(new { kinds = scope.Kinds.Select(Wire), tags = scope.Tags.Select(t => new[] { t.Key, t.Value }), items, relations = edges?.Relations, layers = edges?.Items.Select(i => i.Layer) }, Json);
         return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json)));
     }
 
-    private async Task<SignedLandscapeDigest> BuildSignedAsync(LandscapeDigestScope scope, CancellationToken ct)
+    private async Task<SignedLandscapeDigest> BuildSignedAsync(LandscapeDigestScope scope, bool relations, CancellationToken ct)
     {
         var (assets, relationships) = await ReadAsync(ct);
         var (sourceInstanceId, sequence) = await state.NextAsync(context.Tenant, ct);
         var now = clock.GetUtcNow();
-        var digest = LandscapeDigestBuilder.Build(assets, relationships, scope, DigestId(now), sourceInstanceId, sequence, now);
+        // With relations off this is exactly the v1 digest of before. v2 is built only for an explicit, entitled opt-in.
+        object digest = relations
+            ? LandscapeDigestBuilder.BuildV2(assets, relationships, scope, DigestId(now), sourceInstanceId, sequence, now)
+            : LandscapeDigestBuilder.Build(assets, relationships, scope, DigestId(now), sourceInstanceId, sequence, now);
 
         // The signature is over the canonical form of exactly the digest that is delivered.
         var canonical = Jcs.CanonicalizeUtf8(JsonSerializer.SerializeToNode(digest, Json)!);
@@ -140,6 +196,12 @@ public sealed class LandscapeShareService(
         }
     }
 
+    /// <summary>
+    /// Relations need the separate Fabric grant on top of the sharing permission: a signed payload scope or a stored switch is never authorization.
+    /// Denied with a reason code (not entitled) rather than silently dropping the edges.
+    /// </summary>
+    private void RequireRelations() => gate.Require(AtlasCapabilities.LandscapeShareRelations, LandscapeResource);
+
     private async Task<(ImmutableArray<Asset> Assets, ImmutableArray<Relationship> Relationships)> ReadAsync(CancellationToken ct) =>
         (await repository.ListAssetsAsync(context.Tenant, kind: null, ct), await repository.ListRelationshipsAsync(context.Tenant, ct));
 
@@ -147,6 +209,8 @@ public sealed class LandscapeShareService(
     private static string DigestId(DateTimeOffset now) => $"{now.ToUnixTimeMilliseconds():x}-{Guid.NewGuid():N}";
 
     private static string Wire(DigestKind kind) => JsonSerializer.Serialize(kind).Trim('"');
+
+    private static string Wire(DigestRelationKind kind) => JsonSerializer.Serialize(kind).Trim('"');
 
     /// <summary>Parses the query form of a scope: kinds by name and tags as <c>key:value</c>. Unknown input is rejected, never ignored.</summary>
     public static LandscapeDigestScope ParseScope(IEnumerable<string>? kinds, IEnumerable<string>? tags)
