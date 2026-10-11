@@ -27,6 +27,10 @@ The stored switch is consent, not authorization: **every push checks the grant a
 sent as v1 without relations. A change to the relations or layers counts as a change worth pushing, and each push's audit record says whether
 relations were included and the edge counts by kind.
 
+Integrations (stage 2) are a **separate** switch on the same consumer, off by default and only available with relations on. An installation that
+already shares relations does not start sending integrations until an admin turns it on for that consumer; each push also checks the grant, and
+a lapsed grant removes both. See [Sharing integrations between systems](./DEVELOPMENT.md#sharing-integrations-between-systems-stage-2).
+
 ## What Atlas calls
 
 Only these three calls, only to the destination the admin entered (`{base}`), and never with any content except the signed digest:

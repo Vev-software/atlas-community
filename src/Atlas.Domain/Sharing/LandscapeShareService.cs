@@ -34,9 +34,23 @@ public sealed record SignedLandscapeDigest(
 
     /// <summary>Edge counts by kind (zero for a v1 digest). Counts only, safe for an audit record.</summary>
     [JsonIgnore]
-    public (int RunsOn, int SuppliedBy) RelationCounts => Digest is LandscapeDigestV2 { Relations: { } edges }
-        ? (edges.Count(e => e.Kind == DigestRelationKind.RunsOn), edges.Count(e => e.Kind == DigestRelationKind.SuppliedBy))
-        : (0, 0);
+    public (int RunsOn, int SuppliedBy, int Integrates) RelationCounts => Digest is LandscapeDigestV2 { Relations: { } edges }
+        ? (edges.Count(e => e.Kind == DigestRelationKind.RunsOn), edges.Count(e => e.Kind == DigestRelationKind.SuppliedBy), edges.Count(e => e.Kind == DigestRelationKind.Integrates))
+        : (0, 0, 0);
+}
+
+/// <summary>
+/// What relation sharing the sharer opted in to. <see cref="Relations"/> is stage 1 (runsOn, suppliedBy, layer); <see cref="Integrations"/> is the separate
+/// stage 2 consent (undirected integrates edges) and can only be on together with relations. Both are consent, never authorization.
+/// </summary>
+public readonly record struct RelationOptions(bool Relations = false, bool Integrations = false)
+{
+    public static readonly RelationOptions None = default;
+
+    /// <summary>Stage 2 needs stage 1: an integrations opt-in without relations is refused, not ignored.</summary>
+    public RelationOptions Validated() => Integrations && !Relations
+        ? throw new CatalogueValidationException("Sharing integrations between systems needs 'Share relations' to be on as well.")
+        : this;
 }
 
 /// <summary>One edge as the sharer sees it before sharing: item names and the closed kind, nothing else.</summary>
@@ -54,7 +68,8 @@ public sealed record DigestPreview(
     bool RelationsIncluded = false,
     ImmutableArray<PreviewRelation>? Relations = null,
     int RunsOnCount = 0,
-    int SuppliedByCount = 0);
+    int SuppliedByCount = 0,
+    int IntegratesCount = 0);
 
 /// <summary>Signs a digest with the installation's key. The key itself never leaves the implementation.</summary>
 public interface IDigestSigner
@@ -103,30 +118,37 @@ public sealed class LandscapeShareService(
     public static readonly ImmutableArray<string> RelationFields =
         ["which system or application runs on which platform", "which vendor supplies which component", "a layer hint (application or infrastructure) per item"];
 
+    /// <summary>What the separate stage 2 switch adds: which systems talk to each other, and nothing about how.</summary>
+    public static readonly ImmutableArray<string> IntegrationFields =
+        ["which systems and applications exchange data with each other (an undirected pair, with no direction, label, protocol or data description)"];
+
     public static readonly ImmutableArray<string> NeverSharedFields =
         ["descriptions", "hostnames and IP addresses", "servers' environment and operating system", "endpoints and locations", "owners and people", "attachments",
          "data areas, datasets and columns", "relationship details", "credentials"];
 
-    public async Task<DigestPreview> PreviewAsync(LandscapeDigestScope scope, bool relations = false, CancellationToken ct = default)
+    public async Task<DigestPreview> PreviewAsync(LandscapeDigestScope scope, RelationOptions relations = default, CancellationToken ct = default)
     {
         Authorize();
-        if (relations) RequireRelations();
+        relations.Validated();
+        if (relations.Relations) RequireRelations();
         var (assets, relationships) = await ReadAsync(ct);
         var items = LandscapeDigestBuilder.BuildItems(assets, relationships, scope);
-        if (!relations) return new DigestPreview(scope, items, SharedFields, NeverSharedFields);
+        if (!relations.Relations) return new DigestPreview(scope, items, SharedFields, NeverSharedFields);
 
-        var v2 = LandscapeDigestBuilder.BuildV2(assets, relationships, scope, "preview", "preview", 0, clock.GetUtcNow());
+        var v2 = LandscapeDigestBuilder.BuildV2(assets, relationships, scope, "preview", "preview", 0, clock.GetUtcNow(), relations.Integrations);
         var nameOf = v2.Items.ToDictionary(i => i.Ref, i => i.Name, StringComparer.Ordinal);
         var edges = v2.Relations ?? [];
-        return new DigestPreview(scope, items, [.. SharedFields, .. RelationFields], NeverSharedFields, RelationsIncluded: true,
+        return new DigestPreview(scope, items, [.. SharedFields, .. RelationFields, .. relations.Integrations ? IntegrationFields : []], NeverSharedFields, RelationsIncluded: true,
             Relations: [.. edges.Select(e => new PreviewRelation(nameOf[e.From], nameOf[e.To], Wire(e.Kind)))],
-            RunsOnCount: edges.Count(e => e.Kind == DigestRelationKind.RunsOn), SuppliedByCount: edges.Count(e => e.Kind == DigestRelationKind.SuppliedBy));
+            RunsOnCount: edges.Count(e => e.Kind == DigestRelationKind.RunsOn), SuppliedByCount: edges.Count(e => e.Kind == DigestRelationKind.SuppliedBy),
+            IntegratesCount: edges.Count(e => e.Kind == DigestRelationKind.Integrates));
     }
 
-    public async Task<SignedLandscapeDigest> CreateAsync(LandscapeDigestScope scope, bool relations = false, CancellationToken ct = default)
+    public async Task<SignedLandscapeDigest> CreateAsync(LandscapeDigestScope scope, RelationOptions relations = default, CancellationToken ct = default)
     {
         Authorize();
-        if (relations) RequireRelations();
+        relations.Validated();
+        if (relations.Relations) RequireRelations();
         var signed = await BuildSignedAsync(scope, relations, ct);
 
         // Counts and kinds only: no item name or customer content in the audit trail. It records who shared what scope and whether relations were part of it.
@@ -137,7 +159,7 @@ public sealed class LandscapeShareService(
 
     /// <summary>The audit suffix for relations: whether they were included and the edge counts by kind.</summary>
     public static string RelationAudit(SignedLandscapeDigest signed) =>
-        signed.ContractVersion == "2" ? $"&relations=true&runsOn={signed.RelationCounts.RunsOn}&suppliedBy={signed.RelationCounts.SuppliedBy}" : "&relations=false";
+        signed.ContractVersion == "2" ? $"&relations=true&runsOn={signed.RelationCounts.RunsOn}&suppliedBy={signed.RelationCounts.SuppliedBy}&integrates={signed.RelationCounts.Integrates}" : "&relations=false";
 
     /// <summary>Whether this tenant holds the separate relations grant. A push with relations on falls back to v1 while it does not.</summary>
     public bool CanShareRelations() => gate.Evaluate(AtlasCapabilities.LandscapeShareRelations, LandscapeResource).Allowed;
@@ -146,10 +168,11 @@ public sealed class LandscapeShareService(
     /// A signed digest for an outbound push (atlas#176). It is authorized like the file and uses a sequence number, but it does
     /// not write the file's audit record: the push writes its own, exactly one per push.
     /// </summary>
-    public async Task<SignedLandscapeDigest> CreateForPushAsync(LandscapeDigestScope scope, bool relations = false, CancellationToken ct = default)
+    public async Task<SignedLandscapeDigest> CreateForPushAsync(LandscapeDigestScope scope, RelationOptions relations = default, CancellationToken ct = default)
     {
         Authorize();
-        if (relations) RequireRelations();
+        relations.Validated();
+        if (relations.Relations) RequireRelations();
         return await BuildSignedAsync(scope, relations, ct);
     }
 
@@ -157,26 +180,27 @@ public sealed class LandscapeShareService(
     /// A fingerprint of what a digest with this scope would hold now, without a sequence number. Equal fingerprints mean nothing
     /// the consumer can see has changed, so an on-change push can be skipped.
     /// </summary>
-    public async Task<string> ContentFingerprintAsync(LandscapeDigestScope scope, bool relations = false, CancellationToken ct = default)
+    public async Task<string> ContentFingerprintAsync(LandscapeDigestScope scope, RelationOptions relations = default, CancellationToken ct = default)
     {
         Authorize();
-        if (relations) RequireRelations();
+        relations.Validated();
+        if (relations.Relations) RequireRelations();
         var (assets, relationships) = await ReadAsync(ct);
         var items = LandscapeDigestBuilder.BuildItems(assets, relationships, scope);
         // With relations on the edges and layers are part of what the consumer can see, so a change to them is a change to push.
-        var edges = relations ? LandscapeDigestBuilder.BuildV2(assets, relationships, scope, "fingerprint", "fingerprint", 0, DateTimeOffset.UnixEpoch) : null;
+        var edges = relations.Relations ? LandscapeDigestBuilder.BuildV2(assets, relationships, scope, "fingerprint", "fingerprint", 0, DateTimeOffset.UnixEpoch, relations.Integrations) : null;
         var json = JsonSerializer.Serialize(new { kinds = scope.Kinds.Select(Wire), tags = scope.Tags.Select(t => new[] { t.Key, t.Value }), items, relations = edges?.Relations, layers = edges?.Items.Select(i => i.Layer) }, Json);
         return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json)));
     }
 
-    private async Task<SignedLandscapeDigest> BuildSignedAsync(LandscapeDigestScope scope, bool relations, CancellationToken ct)
+    private async Task<SignedLandscapeDigest> BuildSignedAsync(LandscapeDigestScope scope, RelationOptions relations, CancellationToken ct)
     {
         var (assets, relationships) = await ReadAsync(ct);
         var (sourceInstanceId, sequence) = await state.NextAsync(context.Tenant, ct);
         var now = clock.GetUtcNow();
         // With relations off this is exactly the v1 digest of before. v2 is built only for an explicit, entitled opt-in.
-        object digest = relations
-            ? LandscapeDigestBuilder.BuildV2(assets, relationships, scope, DigestId(now), sourceInstanceId, sequence, now)
+        object digest = relations.Relations
+            ? LandscapeDigestBuilder.BuildV2(assets, relationships, scope, DigestId(now), sourceInstanceId, sequence, now, relations.Integrations)
             : LandscapeDigestBuilder.Build(assets, relationships, scope, DigestId(now), sourceInstanceId, sequence, now);
 
         // The signature is over the canonical form of exactly the digest that is delivered.

@@ -58,7 +58,9 @@ public sealed class LandscapePushService(
         if (credential is null) return await StopAsync(consumer, "credential_missing", "The credential is missing. Connect again with a new activation code.", now, ct);
 
         // The stored switch is consent, not authorization: relations travel only while the separate grant is also held, else the push is v1 as before.
-        var relations = consumer.ShareRelations && share.CanShareRelations();
+        // Stage 2 (integrations) rides on stage 1 and is never implied by it: it is sent only when the admin turned it on for this consumer too.
+        var granted = consumer.ShareRelations && share.CanShareRelations();
+        var relations = new RelationOptions(granted, granted && consumer.ShareIntegrations);
         var fingerprint = await share.ContentFingerprintAsync(consumer.Scope, relations, ct);
         var staleAfter = TimeSpan.FromHours(settings.DailyHours);
         var fresh = consumer.LastSuccessAt is { } last && now - last < staleAfter;

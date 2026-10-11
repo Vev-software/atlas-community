@@ -76,12 +76,13 @@ public static class LandscapeDigestBuilder
     /// The v2 digest (relations stage 1): the same minimized items plus an opaque per-digest <c>ref</c>, a <c>layer</c> hint derived from the asset kind
     /// and the closed edges <c>runsOn</c> and <c>suppliedBy</c>. Only built when the sharer opted in to relations; with relations off the builder's v1
     /// output is used unchanged. An edge is emitted only between two items that are in the digest, so a kind or tag filter can never be bypassed by an
-    /// edge, and nothing is read from a relationship beyond its two ends and its type. <c>connects-to</c> (stage 2), <c>depends-on</c>, <c>part-of</c>
-    /// and <c>joins-on</c> are never exported.
+    /// edge, and nothing is read from a relationship beyond its two ends and its type. <c>depends-on</c>, <c>part-of</c> and <c>joins-on</c> are never
+    /// exported. <c>connects-to</c> becomes an <c>integrates</c> edge only for the separate stage 2 opt-in (<paramref name="integrations"/>), between two
+    /// included systems or applications, undirected (the pair is ordered by ref, so A-B and B-A are one edge), carrying nothing but its two ends and kind.
     /// </summary>
     public static LandscapeDigestV2 BuildV2(
         IEnumerable<Asset> assets, IEnumerable<Relationship> relationships, LandscapeDigestScope scope,
-        string digestId, string sourceInstanceId, int sequence, DateTimeOffset generatedAt)
+        string digestId, string sourceInstanceId, int sequence, DateTimeOffset generatedAt, bool integrations = false)
     {
         var relationshipList = relationships as IReadOnlyCollection<Relationship> ?? [.. relationships];
         var entries = Select(assets, relationshipList, scope);
@@ -114,6 +115,17 @@ public static class LandscapeDigestBuilder
             if (systemId is null || platformId is null) continue;
             if (!refOfAsset.TryGetValue(systemId, out var from) || !refOfAsset.TryGetValue(platformId, out var to) || from == to) continue;
             if (kindByRef[from] is DigestKind.System or DigestKind.Application && kindByRef[to] == DigestKind.Platform) edges.Add((DigestRelationKind.RunsOn, from, to));
+        }
+
+        if (integrations)
+        {
+            foreach (var relationship in relationshipList.Where(r => r.Type == RelationshipType.ConnectsTo))
+            {
+                if (!refOfAsset.TryGetValue(relationship.FromId, out var a) || !refOfAsset.TryGetValue(relationship.ToId, out var b) || a == b) continue;
+                if (kindByRef[a] is not (DigestKind.System or DigestKind.Application) || kindByRef[b] is not (DigestKind.System or DigestKind.Application)) continue;
+                var (from, to) = string.CompareOrdinal(a, b) < 0 ? (a, b) : (b, a);
+                edges.Add((DigestRelationKind.Integrates, from, to));
+            }
         }
 
         // A supplier edge follows the vendor name already in the digest; with vendor out of scope there is no vendor item and so no edge.

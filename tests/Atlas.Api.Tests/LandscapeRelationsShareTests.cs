@@ -357,4 +357,143 @@ public sealed class LandscapeRelationsShareTests
         Assert.Equal(0, host.Consumer.Activations);
         Assert.Equal("[]", (await api.GetStringAsync("/api/v1/share/consumers")).Replace(" ", ""));
     }
+
+    // ---- Stage 2: integrates (atlas#181) ------------------------------------------------------------
+
+    private static readonly Relationship[] Connections =
+    [
+        // A-B and B-A are one undirected association, stated both ways.
+        new("c1", "app-checkout", "sys-payments", RelationshipType.ConnectsTo, "SECRET-RELATIONSHIP-TEXT"),
+        new("c2", "sys-payments", "app-checkout", RelationshipType.ConnectsTo),
+        new("c3", "app-checkout", "app-internal", RelationshipType.ConnectsTo),
+        // Platforms and data-layer assets are never integration endpoints.
+        new("c4", "app-checkout", "srv-1", RelationshipType.ConnectsTo),
+        new("c5", "app-internal", "area-1", RelationshipType.ConnectsTo),
+        // A self connection and a connection to an unknown asset carry nothing.
+        new("c6", "app-checkout", "app-checkout", RelationshipType.ConnectsTo),
+        new("c7", "app-checkout", "ghost", RelationshipType.ConnectsTo),
+    ];
+
+    private static LandscapeDigestV2 BuildStage2(LandscapeDigestScope? scope = null, bool integrations = true) =>
+        LandscapeDigestBuilder.BuildV2(Assets, [.. Relationships, .. Connections], scope ?? new LandscapeDigestScope(LandscapeDigestBuilder.AllKinds, []), "d1", "src", 1, DateTimeOffset.UnixEpoch, integrations);
+
+    [Fact]
+    public void Integrations_are_undirected_deduplicated_between_systems_and_applications_only()
+    {
+        var digest = BuildStage2();
+
+        var integrates = digest.Relations!.Value.Where(e => e.Kind == DigestRelationKind.Integrates).ToList();
+        Assert.Equal(["Checkout integrates Internal tool", "Checkout integrates Payments platform"], integrates.Select(e => string.Join(" integrates ", new[] { Name(digest, e.From), Name(digest, e.To) }.Order())).Order());
+        Assert.All(integrates, e => Assert.True(string.CompareOrdinal(e.From, e.To) < 0, "the pair is ordered by ref"));
+        Assert.Empty(LandscapeDigestV2Validation.Validate(digest));
+    }
+
+    private static string Name(LandscapeDigestV2 digest, string reference) => digest.Items.Single(i => i.Ref == reference).Name;
+
+    [Fact]
+    public void An_integration_never_reaches_an_item_the_filter_removed_and_stage_1_output_is_unchanged_with_the_switch_off()
+    {
+        var applicationsOnly = BuildStage2(new LandscapeDigestScope([DigestKind.Application], []));
+        Assert.DoesNotContain(applicationsOnly.Items, i => i.Name == "Payments platform");
+        Assert.Equal(["Checkout", "Internal tool"], applicationsOnly.Relations!.Value.Where(e => e.Kind == DigestRelationKind.Integrates)
+            .SelectMany(e => new[] { Name(applicationsOnly, e.From), Name(applicationsOnly, e.To) }).Distinct().Order());
+
+        var off = BuildStage2(integrations: false);
+        var stage1 = Build(relationships: [.. Relationships, .. Connections]);
+        Assert.DoesNotContain(off.Relations!.Value, e => e.Kind == DigestRelationKind.Integrates);
+        Assert.Equal(JsonSerializer.Serialize(stage1, Json), JsonSerializer.Serialize(off, Json));
+    }
+
+    private static async Task SeedConnectionsAsync(HttpClient client)
+    {
+        await SeedAsync(client);
+        foreach (var relationship in Connections.Where(r => r.Id is "c2" or "c3"))
+        {
+            Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/relationships", relationship, Json)).StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task The_integrations_switch_is_separate_from_relations_and_adds_only_endpoints_and_the_kind()
+    {
+        using var host = new Host(entitled: true);
+        var client = host.Api("t-int-file");
+        await SeedConnectionsAsync(client);
+
+        var stage1 = await GetDigestAsync(client, "?relations=true");
+        var stage2 = await GetDigestAsync(client, "?relations=true&integrations=true");
+
+        Assert.DoesNotContain(stage1["digest"]!["relations"]!.AsArray(), e => e!["kind"]!.GetValue<string>() == "integrates");
+        var digest = stage2["digest"]!;
+        var result = DigestV2Schema().Evaluate(JsonSerializer.SerializeToElement(digest), new EvaluationOptions { OutputFormat = OutputFormat.List });
+        Assert.True(result.IsValid, string.Join("; ", (result.Details ?? []).Where(d => d.Errors is not null).SelectMany(d => d.Errors!.Select(e => $"{d.InstanceLocation}: {e.Value}"))));
+        var integrates = digest["relations"]!.AsArray().Where(e => e!["kind"]!.GetValue<string>() == "integrates").ToList();
+        Assert.Equal(2, integrates.Count);
+        Assert.All(integrates, e => Assert.Equal(["from", "kind", "to"], e!.AsObject().Select(p => p.Key).Order()));
+        Assert.True(Verifies(stage2));
+        Assert.DoesNotContain("SECRET", digest.ToJsonString());
+        Assert.Contains(host.Audit.Events, e => e.Tenant.TenantId == "t-int-file" && e.Action == "atlas.landscape.shared" && e.Resource.Value.Contains("&runsOn=2&suppliedBy=2&integrates=2"));
+        Assert.Contains(host.Audit.Events, e => e.Tenant.TenantId == "t-int-file" && e.Action == "atlas.landscape.shared" && e.Resource.Value.Contains("&integrates=0"));
+    }
+
+    [Fact]
+    public async Task Integrations_without_relations_are_refused_and_without_the_grant_denied_before_anything_is_signed()
+    {
+        using var entitled = new Host(entitled: true);
+        var client = entitled.Api("t-int-needs-relations");
+        var refused = await client.GetAsync("/api/v1/share/digest?integrations=true");
+        var refusedPreview = await client.GetAsync("/api/v1/share/digest/preview?integrations=true");
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, refusedPreview.StatusCode);
+        Assert.DoesNotContain(entitled.Audit.Events, e => e.Tenant.TenantId == "t-int-needs-relations" && e.Action == "atlas.landscape.shared");
+        Assert.Equal(1, (await GetDigestAsync(client))["digest"]!["sequence"]!.GetValue<int>());
+
+        using var denied = new Host(entitled: false);
+        var other = denied.Api("t-int-denied");
+        Assert.Equal(HttpStatusCode.Forbidden, (await other.GetAsync("/api/v1/share/digest?relations=true&integrations=true")).StatusCode);
+        Assert.DoesNotContain(denied.Audit.Events, e => e.Tenant.TenantId == "t-int-denied" && e.Action == "atlas.landscape.shared");
+    }
+
+    [Fact]
+    public async Task The_preview_names_the_integration_pairs_and_says_what_they_reveal()
+    {
+        using var host = new Host(entitled: true);
+        var client = host.Api("t-int-preview");
+        await SeedConnectionsAsync(client);
+
+        var preview = JsonNode.Parse(await client.GetStringAsync("/api/v1/share/digest/preview?relations=true&integrations=true"))!;
+
+        Assert.Equal(2, preview["integratesCount"]!.GetValue<int>());
+        Assert.Contains(preview["relations"]!.AsArray(), r => r!["kind"]!.GetValue<string>() == "integrates");
+        Assert.Contains(preview["shared"]!.AsArray().Select(x => x!.GetValue<string>()), x => x.Contains("exchange data"));
+        var stage1 = JsonNode.Parse(await client.GetStringAsync("/api/v1/share/digest/preview?relations=true"))!;
+        Assert.Equal(0, stage1["integratesCount"]!.GetValue<int>());
+        Assert.DoesNotContain(stage1["shared"]!.AsArray().Select(x => x!.GetValue<string>()), x => x.Contains("exchange data"));
+    }
+
+    [Fact]
+    public async Task A_consumer_on_stage_1_is_not_widened_to_integrations_until_an_admin_turns_it_on()
+    {
+        using var host = new Host(entitled: true);
+        var api = host.Api("t-int-push");
+        await SeedConnectionsAsync(api);
+        var created = await api.PostAsJsonAsync("/api/v1/share/consumers", new { name = "Partner", destinationUrl = Destination, activationCode = "AAAA-BBBB", shareRelations = true }, Json);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var consumer = JsonNode.Parse(await created.Content.ReadAsStringAsync())!;
+        Assert.False(consumer["shareIntegrations"]!.GetValue<bool>());
+
+        await host.RunRoundAsync();
+        Assert.DoesNotContain(JsonNode.Parse(host.Consumer.Pushes.Single())!["digest"]!["relations"]!.AsArray(), e => e!["kind"]!.GetValue<string>() == "integrates");
+
+        var id = consumer["id"]!.GetValue<string>();
+        Assert.Equal(HttpStatusCode.BadRequest, (await api.PutAsJsonAsync($"/api/v1/share/consumers/{id}/scope", new { shareRelations = false, shareIntegrations = true }, Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await api.PutAsJsonAsync($"/api/v1/share/consumers/{id}/scope", new { shareRelations = true, shareIntegrations = true }, Json)).StatusCode);
+        host.Time.Advance(TimeSpan.FromMinutes(5));
+        await host.RunRoundAsync();
+
+        var pushed = JsonNode.Parse(host.Consumer.Pushes.Last())!;
+        Assert.Equal(2, pushed["digest"]!["relations"]!.AsArray().Count(e => e!["kind"]!.GetValue<string>() == "integrates"));
+        Assert.True(Verifies(pushed));
+        Assert.Contains(host.Audit.Events, e => e.Tenant.TenantId == "t-int-push" && e.Resource.Value.StartsWith("atlas:landscape/share/push/") && e.Resource.Value.Contains("&integrates=2"));
+    }
 }

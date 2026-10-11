@@ -41,7 +41,9 @@ public sealed record ConnectedConsumer(
     DateTimeOffset? NextAttemptAt = null,
     string? LastContentFingerprint = null,
     /// <summary>The admin's opt-in to share relations (runsOn, suppliedBy, layer) with this consumer. Off unless explicitly turned on; the separate grant is checked at every push.</summary>
-    bool ShareRelations = false);
+    bool ShareRelations = false,
+    /// <summary>The separate stage 2 opt-in: also share which systems integrate with each other. Never implied by <see cref="ShareRelations"/>; an installation that opted in to stage 1 stays on stage 1 until an admin turns this on.</summary>
+    bool ShareIntegrations = false);
 
 /// <summary>A due consumer found by the scheduler, with the tenant it belongs to.</summary>
 public sealed record DueConsumer(string TenantId, string ConsumerId);

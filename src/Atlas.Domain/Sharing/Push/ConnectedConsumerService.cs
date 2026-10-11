@@ -62,9 +62,10 @@ public sealed class ConnectedConsumerService(
         return await store.ListAsync(context.Tenant, ct);
     }
 
-    public async Task<ConnectedConsumer> ConnectAsync(string? name, string? destinationUrl, string? activationCode, LandscapeDigestScope scope, bool shareRelations = false, CancellationToken ct = default)
+    public async Task<ConnectedConsumer> ConnectAsync(string? name, string? destinationUrl, string? activationCode, LandscapeDigestScope scope, bool shareRelations = false, bool shareIntegrations = false, CancellationToken ct = default)
     {
         Authorize();
+        new RelationOptions(shareRelations, shareIntegrations).Validated();
         if (shareRelations) gate.Require(AtlasCapabilities.LandscapeShareRelations, LandscapeResource);
         var (url, problem) = DestinationPolicy.Validate(destinationUrl, settings.AllowInsecureHttp, settings.AllowedHosts);
         if (url is null) throw new ConnectedConsumerException(problem!);
@@ -88,24 +89,25 @@ public sealed class ConnectedConsumerService(
 
         var consumer = new ConnectedConsumer(
             Guid.NewGuid().ToString("N"), CleanName(name, url), url, result.EnrollmentId!, ConnectedConsumerState.Active, scope,
-            clock.GetUtcNow(), context.Principal.PrincipalId, result.CredentialExpiresAt, ShareRelations: shareRelations);
+            clock.GetUtcNow(), context.Principal.PrincipalId, result.CredentialExpiresAt, ShareRelations: shareRelations, ShareIntegrations: shareIntegrations);
         await store.AddAsync(context.Tenant, consumer, result.Credential!, ct);
-        await EmitAsync(DataSharingAuditVocabulary.EnrollmentActivateAction, $"atlas:landscape/share/consumer/{consumer.Id}?enrollment={consumer.EnrollmentId}&relations={(shareRelations ? "on" : "off")}", AuditOutcome.Success, ct);
+        await EmitAsync(DataSharingAuditVocabulary.EnrollmentActivateAction, $"atlas:landscape/share/consumer/{consumer.Id}?enrollment={consumer.EnrollmentId}&relations={(shareRelations ? "on" : "off")}&integrations={(shareIntegrations ? "on" : "off")}", AuditOutcome.Success, ct);
         return consumer;
     }
 
-    public async Task<ConnectedConsumer> UpdateScopeAsync(string id, LandscapeDigestScope scope, bool shareRelations = false, CancellationToken ct = default)
+    public async Task<ConnectedConsumer> UpdateScopeAsync(string id, LandscapeDigestScope scope, bool shareRelations = false, bool shareIntegrations = false, CancellationToken ct = default)
     {
         Authorize();
+        new RelationOptions(shareRelations, shareIntegrations).Validated();
         // Turning relations off needs nothing; turning them on needs the separate grant.
         if (shareRelations) gate.Require(AtlasCapabilities.LandscapeShareRelations, LandscapeResource);
         if (scope.Kinds.Length == 0) throw new ConnectedConsumerException("Choose at least one kind to share.");
         var consumer = await RequireAsync(id, ct);
         if (consumer.State == ConnectedConsumerState.Revoked) throw new ConnectedConsumerException("This consumer is revoked.");
         // The new scope applies from the next push; forgetting the fingerprint makes that push happen soon.
-        var updated = consumer with { Scope = scope, ShareRelations = shareRelations, LastContentFingerprint = null, NextAttemptAt = null };
+        var updated = consumer with { Scope = scope, ShareRelations = shareRelations, ShareIntegrations = shareIntegrations, LastContentFingerprint = null, NextAttemptAt = null };
         await store.UpdateAsync(context.Tenant, updated, ct);
-        await EmitAsync("atlas.landscape.share.scope.update", $"atlas:landscape/share/consumer/{id}?kinds={scope.Kinds.Length}&tags={scope.Tags.Length}&relations={(shareRelations ? "on" : "off")}", AuditOutcome.Success, ct);
+        await EmitAsync("atlas.landscape.share.scope.update", $"atlas:landscape/share/consumer/{id}?kinds={scope.Kinds.Length}&tags={scope.Tags.Length}&relations={(shareRelations ? "on" : "off")}&integrations={(shareIntegrations ? "on" : "off")}", AuditOutcome.Success, ct);
         return updated;
     }
 

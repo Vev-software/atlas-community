@@ -253,6 +253,22 @@ Relations need the **separate Fabric grant** `atlas.landscape.share.relations` i
 the file are denied with a reason code (`403`), no sequence number is used and nothing is audited. The switch records the admin's consent; a
 signed payload scope is never authorization. The audit record of the file adds `relations=true`, `runsOn` and `suppliedBy` counts (never names).
 
+#### Sharing integrations between systems (stage 2)
+
+A second, **separate** switch, **Share integrations between systems** (`integrations=true`, off by default, only available together with relations),
+adds undirected `integrates` edges. They reveal which systems and applications exchange data with each other, which is why the stage 1 opt-in never
+implies them: an existing relations opt-in, for a file or for a connected consumer, stays on stage 1 until an admin turns this on too.
+
+- An edge comes from a `connects-to` relationship only (the `integration` asset kind is never exported) and only between two items that are both in the
+  digest and are systems or applications; a pair with a filtered-out end is dropped. The pair is ordered by ref, so A-B and B-A are one edge.
+- An edge carries `from`, `to` and the kind, nothing else: the relationship description is never read and no direction, label, protocol or data text is shared.
+- It uses the same separate grant as stage 1 (`atlas.landscape.share.relations`); no new capability. A request for integrations without relations is
+  refused (`400`), not ignored.
+- `integrationCount` on an item is unchanged and is **not** required to equal the number of exported edges for that item: edges can be dropped by the
+  scope or the endpoint-kind rule, and the count includes every `connects-to` of the component.
+- The audit record adds `integrates=<count>` (counts only). With the switch off the output equals stage 1.
+- A receiver must accept stage 2 before it is enabled; a receiver that has not been upgraded rejects the whole file.
+
 To keep a consenting consumer up to date without handing over files, an admin can **connect** it and Atlas will push the same digest
 outbound: see [Pushing the landscape digest to a connected consumer](./landscape-share-push.md).
 

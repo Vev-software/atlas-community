@@ -33,6 +33,7 @@ internal sealed class ConnectedConsumerRow
     public DateTimeOffset? NextAttemptAt { get; set; }
     public string? LastContentFingerprint { get; set; }
     public bool ShareRelations { get; set; }
+    public bool ShareIntegrations { get; set; }
 }
 
 /// <summary>EF-backed connected consumers. The credential is protected with the data protection keys, like the AI provider key.</summary>
@@ -131,11 +132,12 @@ public sealed class EfConnectedConsumerStore(AtlasDbContext db, IDataProtectionP
         row.NextAttemptAt = c.NextAttemptAt;
         row.LastContentFingerprint = c.LastContentFingerprint;
         row.ShareRelations = c.ShareRelations;
+        row.ShareIntegrations = c.ShareIntegrations;
     }
 
     private static ConnectedConsumer ToConsumer(ConnectedConsumerRow r) => new(
         r.Id, r.Name, r.DestinationUrl, r.EnrollmentId, Enum.Parse<ConnectedConsumerState>(r.State),
         new LandscapeDigestScope(JsonSerializer.Deserialize<ImmutableArray<DigestKind>>(r.KindsJson, Json), JsonSerializer.Deserialize<ImmutableArray<Tag>>(r.TagsJson, Json)),
         r.CreatedAt, r.CreatedBy, r.CredentialExpiresAt, r.StopReason, r.LastAttemptAt, r.LastSuccessAt, r.LastSuccessSequence, r.LastError,
-        r.FailureCount, r.NextAttemptAt, r.LastContentFingerprint, r.ShareRelations);
+        r.FailureCount, r.NextAttemptAt, r.LastContentFingerprint, r.ShareRelations, r.ShareIntegrations);
 }
