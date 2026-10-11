@@ -435,11 +435,11 @@ public static class AssetEndpoints
 
         // The landscape share digest (atlas#175): a minimized, signed summary for a consented consumer, delivered as a file.
         // Elevated like the export, audited once per digest, and throttled per tenant.
-        portability.MapGet("/share/digest/preview", async (string[]? kinds, string[]? tag, bool? relations, LandscapeShareService service, CancellationToken ct) =>
+        portability.MapGet("/share/digest/preview", async (string[]? kinds, string[]? tag, bool? relations, bool? integrations, LandscapeShareService service, CancellationToken ct) =>
         {
             try
             {
-                return Results.Ok(await service.PreviewAsync(LandscapeShareService.ParseScope(kinds, tag), relations == true, ct));
+                return Results.Ok(await service.PreviewAsync(LandscapeShareService.ParseScope(kinds, tag), new RelationOptions(relations == true, integrations == true), ct));
             }
             catch (ArgumentException ex)
             {
@@ -449,7 +449,7 @@ public static class AssetEndpoints
             .WithName("PreviewLandscapeDigest")
             .WithSummary("Show exactly which items and fields a landscape digest would hold, without creating one.");
 
-        portability.MapGet("/share/digest", async (string[]? kinds, string[]? tag, bool? relations, LandscapeShareService service, CancellationToken ct) =>
+        portability.MapGet("/share/digest", async (string[]? kinds, string[]? tag, bool? relations, bool? integrations, LandscapeShareService service, CancellationToken ct) =>
         {
             LandscapeDigestScope scope;
             try
@@ -461,11 +461,11 @@ public static class AssetEndpoints
                 return Results.BadRequest(new { message = ex.Message });
             }
 
-            var signed = await service.CreateAsync(scope, relations == true, ct);
+            var signed = await service.CreateAsync(scope, new RelationOptions(relations == true, integrations == true), ct);
             return Results.File(LandscapeShareService.Render(signed), "application/json", "atlas-landscape-digest.json");
         })
             .WithName("CreateLandscapeDigest")
-            .WithSummary("Create a signed landscape share digest as a downloadable file: contract v1, or v2 with relations (runsOn, suppliedBy, layer) when relations=true, which also needs the separate relations grant.")
+            .WithSummary("Create a signed landscape share digest as a downloadable file: contract v1, or v2 with relations (runsOn, suppliedBy, layer) when relations=true, which also needs the separate relations grant, and with integrates edges between systems only when integrations=true as well (stage 2, separate consent).")
             .RequireRateLimiting(ShareRateLimit.PolicyName);
 
         // Connected consumers (atlas#176): keep a consenting consumer up to date by pushing the same digest outbound. Same elevated
@@ -488,7 +488,7 @@ public static class AssetEndpoints
                 return Results.BadRequest(new { message = ex.Message });
             }
 
-            var consumer = await service.ConnectAsync(request.Name, request.DestinationUrl, request.ActivationCode, scope, request.ShareRelations == true, ct);
+            var consumer = await service.ConnectAsync(request.Name, request.DestinationUrl, request.ActivationCode, scope, request.ShareRelations == true, request.ShareIntegrations == true, ct);
             return Results.Created($"{v1}/share/consumers/{consumer.Id}", consumer);
         })
             .WithName("ConnectConsumer")
@@ -499,7 +499,7 @@ public static class AssetEndpoints
         {
             try
             {
-                return Results.Ok(await service.UpdateScopeAsync(id, LandscapeShareService.ParseScope(request.Kinds, request.Tags), request.ShareRelations == true, ct));
+                return Results.Ok(await service.UpdateScopeAsync(id, LandscapeShareService.ParseScope(request.Kinds, request.Tags), request.ShareRelations == true, request.ShareIntegrations == true, ct));
             }
             catch (ArgumentException ex)
             {
@@ -637,7 +637,7 @@ public static class AssetEndpoints
 }
 
 /// <summary>Connect a consumer: where it listens, the one-time code it showed, and what to share (kinds, and tags as key:value).</summary>
-public sealed record ConnectConsumerRequest(string? Name, string? DestinationUrl, string? ActivationCode, string[]? Kinds, string[]? Tags, bool? ShareRelations = null);
+public sealed record ConnectConsumerRequest(string? Name, string? DestinationUrl, string? ActivationCode, string[]? Kinds, string[]? Tags, bool? ShareRelations = null, bool? ShareIntegrations = null);
 
 /// <summary>What to share with a consumer: kinds, and tags as key:value.</summary>
-public sealed record ScopeRequest(string[]? Kinds, string[]? Tags, bool? ShareRelations = null);
+public sealed record ScopeRequest(string[]? Kinds, string[]? Tags, bool? ShareRelations = null, bool? ShareIntegrations = null);

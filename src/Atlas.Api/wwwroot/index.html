@@ -1306,6 +1306,10 @@
           <label><input type="checkbox" id="shareRelations" /> Share relations (optional, off by default)</label>
           <p class="hint">Adds which system or application runs on which platform, which vendor supplies which component, and a layer hint per item. Nothing else about a relationship is shared, and only between items that are included above. Needs the separate relations grant; you are recording that you, as the admin, choose to share it.</p>
         </div>
+<div class="field" style="margin-left: 22px;">
+          <label><input type="checkbox" id="shareIntegrations" disabled /> Share integrations between systems (separate consent, off by default)</label>
+          <p class="hint">Reveals which systems and applications exchange data with each other, as undirected pairs of included items. No direction, label, protocol or data description is shared. Needs &lsquo;Share relations&rsquo; above, and is a separate decision from it.</p>
+        </div>
         <div class="field">
           <strong id="shareCount">Preview</strong>
           <ul id="sharePreview" style="max-height: 180px; overflow:auto; margin: 6px 0; padding-left: 18px;"></ul>
@@ -1367,6 +1371,10 @@
           <p class="hint">Adds which system or application runs on which platform, which vendor supplies which component, and a layer hint per item. Nothing else about a relationship is shared, and only between items that are included above. Needs the separate relations grant; you are recording that you, as the admin, choose to share it.</p>
         </div>
         
+<div class="field" style="margin-left: 22px;">
+          <label><input type="checkbox" id="consumerIntegrations" disabled /> Share integrations between systems (separate consent, off by default)</label>
+          <p class="hint">Reveals which systems and applications exchange data with each other, as undirected pairs of included items. No direction, label, protocol or data description is shared. Needs &lsquo;Share relations&rsquo; above, and is a separate decision from it.</p>
+        </div>
         <p class="hint"><strong id="consumerCount">Preview</strong> &middot; <span id="consumerNever"></span></p>
       </div>
       <footer>
@@ -4037,7 +4045,11 @@
       const kinds = [...el("shareKinds").querySelectorAll("input:checked")].map(i => i.value);
       for (const kind of kinds) params.append("kinds", kind);
       for (const tag of el("shareTags").value.split(",").map(t => t.trim()).filter(Boolean)) params.append("tag", tag);
+      // Integrations (stage 2) can only be on together with relations; unchecking relations also clears and locks it.
+      el("shareIntegrations").disabled = !el("shareRelations").checked;
+      if (!el("shareRelations").checked) el("shareIntegrations").checked = false;
       if (el("shareRelations").checked) params.append("relations", "true");
+      if (el("shareIntegrations").checked) params.append("integrations", "true");
       return { params, kinds };
     }
 
@@ -4064,7 +4076,7 @@
         el("shareRelationCount").textContent = edges.length === 1 ? "1 relation will be shared" : edges.length + " relations will be shared";
         el("shareRelationPreview").replaceChildren(...edges.map(edge => {
           const li = document.createElement("li");
-          li.textContent = edge.from + " " + (edge.kind === "runsOn" ? "runs on" : "is supplied by") + " " + edge.to;
+          li.textContent = edge.from + " " + (edge.kind === "runsOn" ? "runs on" : edge.kind === "integrates" ? "integrates with" : "is supplied by") + " " + edge.to;
           return li;
         }));
         el("shareShared").textContent = preview.shared.join("; ");
@@ -4117,8 +4129,13 @@
       for (const kind of kinds) params.append("kinds", kind);
       for (const tag of el("consumerTags").value.split(",").map(t => t.trim()).filter(Boolean)) params.append("tag", tag);
       const shareRelations = el("consumerRelations").checked;
+      // Integrations (stage 2) is a separate choice that needs relations; unchecking relations clears and locks it.
+      el("consumerIntegrations").disabled = !shareRelations;
+      if (!shareRelations) el("consumerIntegrations").checked = false;
+      const shareIntegrations = el("consumerIntegrations").checked;
       if (shareRelations) params.append("relations", "true");
-      return { params, kinds, tags: params.getAll("tag"), shareRelations };
+      if (shareIntegrations) params.append("integrations", "true");
+      return { params, kinds, tags: params.getAll("tag"), shareRelations, shareIntegrations };
     }
 
     function consumerStatusText(c) {
@@ -4165,7 +4182,7 @@
           title.textContent = c.name;
           const where = document.createElement("div");
           where.className = "hint";
-          where.textContent = c.destinationUrl + " \u00b7 " + c.scope.kinds.join(", ") + (c.shareRelations ? " \u00b7 with relations" : "");
+          where.textContent = c.destinationUrl + " \u00b7 " + c.scope.kinds.join(", ") + (c.shareRelations ? " \u00b7 with relations" + (c.shareIntegrations ? " and integrations" : "") : "");
           const status = document.createElement("div");
           status.textContent = consumerStatusText(c);
           const actions = document.createElement("div");
@@ -4209,7 +4226,7 @@
       el("consumersConnectFields").hidden = false;
       el("consumersSubmit").textContent = "Connect";
       el("consumersCancelEdit").hidden = true;
-      el("consumerUrl").value = ""; el("consumerCode").value = ""; el("consumerName").value = ""; el("consumerTags").value = ""; el("consumerRelations").checked = false;
+      el("consumerUrl").value = ""; el("consumerCode").value = ""; el("consumerName").value = ""; el("consumerTags").value = ""; el("consumerRelations").checked = false; el("consumerIntegrations").checked = false; el("consumerIntegrations").disabled = true;
       el("consumerKinds").querySelectorAll("input").forEach(i => { i.checked = true; });
     }
 
@@ -4222,12 +4239,14 @@
       el("consumerKinds").querySelectorAll("input").forEach(i => { i.checked = c.scope.kinds.includes(i.value); });
       el("consumerTags").value = c.scope.tags.map(t => t.key + ":" + t.value).join(", ");
       el("consumerRelations").checked = !!c.shareRelations;
+      el("consumerIntegrations").checked = !!c.shareIntegrations;
+      el("consumerIntegrations").disabled = !c.shareRelations;
       refreshConsumerPreview();
     }
 
     async function submitConsumer() {
       if (consumersBusy) return;
-      const { kinds, tags, shareRelations } = consumerScopeQuery();
+      const { kinds, tags, shareRelations, shareIntegrations } = consumerScopeQuery();
       el("consumersError").hidden = true;
       if (kinds.length === 0) { showFormError("consumersError", "Choose at least one kind to share."); return; }
       consumersBusy = true;
@@ -4237,7 +4256,7 @@
         const res = await fetchWithAuth(api(editing ? "/v1/share/consumers/" + encodeURIComponent(editingConsumerId) + "/scope" : "/v1/share/consumers"), {
           method: editing ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(editing ? { kinds, tags, shareRelations } : { name: el("consumerName").value, destinationUrl: el("consumerUrl").value, activationCode: el("consumerCode").value, kinds, tags, shareRelations }),
+          body: JSON.stringify(editing ? { kinds, tags, shareRelations, shareIntegrations } : { name: el("consumerName").value, destinationUrl: el("consumerUrl").value, activationCode: el("consumerCode").value, kinds, tags, shareRelations, shareIntegrations }),
         });
         if (!res.ok) { showFormError("consumersError", await apiError(res)); return; }
         toast(editing ? "Saved. It applies from the next push." : "Connected. The first push is on its way.");
@@ -4266,6 +4285,7 @@
     el("consumersCancelEdit").addEventListener("click", resetConsumerForm);
     el("consumerKinds").addEventListener("change", scheduleConsumerPreview);
     el("consumerRelations").addEventListener("change", scheduleConsumerPreview);
+    el("consumerIntegrations").addEventListener("change", scheduleConsumerPreview);
     el("consumerTags").addEventListener("input", scheduleConsumerPreview);
     el("consumersBackdrop").addEventListener("click", e => { if (e.target === el("consumersBackdrop")) closeConsumers(); });
 
@@ -4275,6 +4295,7 @@
     el("shareDownload").addEventListener("click", downloadShare);
     el("shareKinds").addEventListener("change", scheduleSharePreview);
     el("shareRelations").addEventListener("change", scheduleSharePreview);
+    el("shareIntegrations").addEventListener("change", scheduleSharePreview);
     el("shareTags").addEventListener("input", scheduleSharePreview);
     el("shareBackdrop").addEventListener("click", e => { if (e.target === el("shareBackdrop")) closeShare(); });
 
